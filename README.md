@@ -7,8 +7,8 @@
 ## 安装
 
 ```bash
-git clone https://github.com/Ryujoxys/sushiro.git
-cd sushiro
+git clone https://github.com/Ryujoxys/sushiro-overdose.git
+cd sushiro-overdose
 go build -o sushiro .
 sudo cp sushiro /usr/local/bin/
 ```
