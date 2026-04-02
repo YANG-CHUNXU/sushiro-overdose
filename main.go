@@ -64,7 +64,7 @@ func main() {
 		cmdStatus()
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
-	} else if len(args) >= 1 && args[0] == "config" {
+	} else if len(args) >= 1 && (args[0] == "config" || args[0] == "setting" || args[0] == "settings") {
 		cmdConfig(args[1:])
 	} else {
 		fmt.Println("Usage: sushiro [command]")
@@ -74,7 +74,8 @@ func main() {
 		fmt.Println("  start, -d    Start in background (daemon)")
 		fmt.Println("  status       Show running status")
 		fmt.Println("  exit         Stop background process")
-		fmt.Println("  config       Configure settings (feishu, etc.)")
+		fmt.Println("  setting      Configure settings (feishu, etc.)")
+		fmt.Println("  config       Alias for setting")
 	}
 }
 
@@ -185,8 +186,33 @@ func cmdDaemon() {
 
 func cmdConfig(args []string) {
 	if len(args) == 0 {
-		fmt.Println("Usage: sushiro config feishu <webhook_url>")
-		fmt.Println("       sushiro config feishu --clear")
+		// Interactive mode
+		tokens, err := loadLocalConfig()
+		if err != nil {
+			fmt.Println("暂无配置，请先运行 sushiro")
+			return
+		}
+		fmt.Println("当前设置:")
+		fmt.Printf("  飞书通知: ")
+		tokens.mu.Lock()
+		if tokens.FeishuWebhook != "" {
+			fmt.Printf("已配置 (%s...)\n", tokens.FeishuWebhook[:min(50, len(tokens.FeishuWebhook))])
+		} else {
+			fmt.Println("未配置")
+		}
+		tokens.mu.Unlock()
+		fmt.Println()
+		fmt.Print("配置飞书通知？输入 Webhook 地址（留空跳过，输入 clear 清除）: ")
+		var input string
+		fmt.Scanln(&input)
+		input = strings.TrimSpace(input)
+		if strings.ToLower(input) == "clear" {
+			updateLocalConfigFeishu("")
+			fmt.Println("飞书通知已清除")
+		} else if input != "" {
+			updateLocalConfigFeishu(input)
+			fmt.Println("飞书通知已配置!")
+		}
 		return
 	}
 
@@ -202,7 +228,7 @@ func cmdConfig(args []string) {
 			return
 		}
 		updateLocalConfigFeishu(args[1])
-		fmt.Println("飞书通知已配置: " + args[1][:50] + "...")
+		fmt.Println("飞书通知已配置!")
 	default:
 		fmt.Println("Unknown config key:", args[0])
 	}

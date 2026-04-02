@@ -6,28 +6,24 @@
 
 ## 安装
 
-### 方式一：从源码编译
-
 ```bash
 git clone https://github.com/Ryujoxys/sushiro.git
 cd sushiro
 go build -o sushiro .
+sudo cp sushiro /usr/local/bin/
 ```
 
-### 方式二：一键脚本
+安装后 `sushiro` 命令全局可用。
 
-```bash
-./start.sh
-```
-
-## 使用方法
+## 命令
 
 ```
 sushiro              # 前台交互模式（默认）
 sushiro start        # 后台静默运行
 sushiro status       # 查看运行状态和日志
 sushiro exit         # 停止后台进程
-sushiro config feishu <webhook_url>   # 配置飞书通知
+sushiro setting      # 配置飞书通知等设置（交互式）
+sushiro config feishu <webhook_url>   # 直接配置飞书通知
 sushiro config feishu --clear         # 清除飞书通知
 ```
 
