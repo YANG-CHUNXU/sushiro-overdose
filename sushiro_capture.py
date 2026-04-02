@@ -11,9 +11,12 @@ mitmproxy addon: 从寿司郎微信小程序请求中自动提取预约所需参
 6. 参数会自动保存到 config_auto.json
 """
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime
+from typing import Optional
 from mitmproxy import http
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_auto.json")
@@ -61,7 +64,7 @@ def save_captured():
         json.dump(output, f, ensure_ascii=False, indent=2)
 
 
-def extract_store_id_from_url(path: str) -> str | None:
+def extract_store_id_from_url(path: str) -> Optional[str]:
     """从 URL 中提取 storeId 参数"""
     if "storeId=" in path:
         import urllib.parse
