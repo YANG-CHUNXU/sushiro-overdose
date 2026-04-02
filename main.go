@@ -54,15 +54,15 @@ func printBanner() {
 func main() {
 	args := os.Args[1:]
 
-	if len(args) == 0 || (len(args) == 1 && args[0] == "start") {
+	if len(args) == 0 || (len(args) == 1 && (args[0] == "run" || args[0] == "-f" || args[0] == "--foreground")) {
+		cmdForeground()
+	} else if len(args) == 1 && (args[0] == "start" || args[0] == "-d" || args[0] == "--daemon") {
 		cmdStart()
 	} else if len(args) == 1 && (args[0] == "exit" || args[0] == "stop") {
 		cmdStop()
 	} else if len(args) == 1 && args[0] == "status" {
 		cmdStatus()
-	} else if len(args) == 1 && (args[0] == "run" || args[0] == "-f" || args[0] == "--foreground") {
-		cmdForeground()
-	} else if len(args) == 1 && args[0] == "--daemon" {
+	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
 	} else if len(args) >= 1 && args[0] == "config" {
 		cmdConfig(args[1:])
@@ -70,12 +70,11 @@ func main() {
 		fmt.Println("Usage: sushiro [command]")
 		fmt.Println()
 		fmt.Println("Commands:")
-		fmt.Println("  (no args)  Start in background")
-		fmt.Println("  start      Start in background")
-		fmt.Println("  run, -f    Run in foreground (interactive)")
-		fmt.Println("  status     Show running status")
-		fmt.Println("  exit       Stop background process")
-		fmt.Println("  config     Configure settings (feishu, etc.)")
+		fmt.Println("  (no args)    Run in foreground (interactive)")
+		fmt.Println("  start, -d    Start in background (daemon)")
+		fmt.Println("  status       Show running status")
+		fmt.Println("  exit         Stop background process")
+		fmt.Println("  config       Configure settings (feishu, etc.)")
 	}
 }
 
@@ -91,7 +90,7 @@ func cmdStart() {
 	os.MkdirAll(appDirPath(), 0o755)
 
 	self, _ := os.Executable()
-	cmd := exec.Command(self, "--daemon")
+	cmd := exec.Command(self, "--daemon-child")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
@@ -297,6 +296,33 @@ func run(ctx context.Context) error {
 	}
 
 	settings := tokens.toSettings()
+
+	// Interactive Feishu config
+	tokens.mu.Lock()
+	feishu := tokens.FeishuWebhook
+	tokens.mu.Unlock()
+	if feishu == "" {
+		fmt.Println()
+		fmt.Print("是否配置飞书通知机器人？(y/N): ")
+		var answer string
+		fmt.Scanln(&answer)
+		if strings.TrimSpace(strings.ToLower(answer)) == "y" {
+			fmt.Println("飞书群 → 群设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook 地址")
+			fmt.Print("请输入 Webhook 地址: ")
+			var webhook string
+			fmt.Scanln(&webhook)
+			webhook = strings.TrimSpace(webhook)
+			if webhook != "" {
+				tokens.mu.Lock()
+				tokens.FeishuWebhook = webhook
+				tokens.mu.Unlock()
+				saveLocalConfig(tokens)
+				settings.FeishuWebhook = webhook
+				fmt.Println("飞书通知已配置!")
+			}
+		}
+	}
+
 	client := NewClient(settings)
 
 	// Verify config still works
@@ -551,6 +577,19 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 		_ = saveState(settings.StateFile, state)
 
 		fmt.Println()
+		fmt.Println()
+		fmt.Println("  ╔══════════════════════════════════════╗")
+		fmt.Println("  ║         🎉 预约成功！                ║")
+		fmt.Println("  ╠══════════════════════════════════════╣")
+		fmt.Printf("  ║  门店：%s\n", storeName)
+		fmt.Printf("  ║  时段：%s\n", slotLabel)
+		fmt.Printf("  ║  号码：%s\n", reservation.Number)
+		if storeInfo.Address != "" {
+			fmt.Printf("  ║  地址：%s\n", storeInfo.Address)
+		}
+		fmt.Println("  ╚══════════════════════════════════════╝")
+		fmt.Println()
+
 		logMessage(now, "=== 预约成功 ===")
 		logMessage(now, fmt.Sprintf("  门店：%s", storeName))
 		logMessage(now, fmt.Sprintf("  时段：%s", slotLabel))

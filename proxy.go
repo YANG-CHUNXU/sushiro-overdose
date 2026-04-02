@@ -513,7 +513,14 @@ func runCmd(name string, args ...string) (string, error) {
 // ---- Capture wait loop ----
 
 func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan struct{}) error {
-	ticker := time.NewTicker(2 * time.Second)
+	fmt.Println("等待捕获认证参数...")
+	fmt.Println("请在 PC 微信中打开寿司郎小程序")
+	fmt.Println("⚠️ 需要在目标门店进行一次排队取号/预约，才能捕获全部参数")
+	fmt.Println("按回车跳过等待（手动模式）...")
+	fmt.Println()
+
+	var lastStatus string
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -523,21 +530,19 @@ func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan str
 		case <-skip:
 			return nil
 		case <-ticker.C:
-			fmt.Print("\033[H\033[2J")
-			fmt.Println("等待捕获认证参数...")
-			fmt.Println("请在 PC 微信中打开寿司郎小程序")
-			fmt.Println("⚠️ 需要在目标门店进行一次排队取号/预约，才能捕获全部参数")
-			fmt.Println()
-			for _, line := range tokens.Status() {
-				fmt.Println(line)
+			currentStatus := strings.Join(tokens.Status(), "\n")
+			if currentStatus != lastStatus {
+				lastStatus = currentStatus
+				for _, line := range tokens.Status() {
+					fmt.Println(line)
+				}
+				fmt.Println()
 			}
-			fmt.Println()
 
 			if tokens.IsComplete() {
 				fmt.Println("所有必要参数已捕获!")
 				return nil
 			}
-			fmt.Println("按回车跳过等待（手动模式）...")
 		}
 	}
 }
