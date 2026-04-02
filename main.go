@@ -354,18 +354,17 @@ func run(ctx context.Context) error {
 	// Verify config still works
 	logMessage(time.Now(), "验证认证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
-		if isAuthError(err) {
-			logMessage(time.Now(), "认证已过期，需要重新获取...")
-			sendFeishuNotification(settings, "寿司郎 - 认证过期", "需要重新运行捕获认证参数")
-			deleteLocalConfig()
-			tokens, err = runCapturePhase(ctx)
-			if err != nil {
-				return err
-			}
-			saveLocalConfig(tokens)
-			settings = tokens.toSettings()
-			client = NewClient(settings)
+		logMessage(time.Now(), "验证失败: "+err.Error())
+		logMessage(time.Now(), "认证参数可能已过期，需要重新获取...")
+		sendFeishuNotification(settings, "寿司郎 - 认证过期", "需要重新运行捕获认证参数")
+		deleteLocalConfig()
+		tokens, err = runCapturePhase(ctx)
+		if err != nil {
+			return err
 		}
+		saveLocalConfig(tokens)
+		settings = tokens.toSettings()
+		client = NewClient(settings)
 	}
 
 	selectedStores, err := selectStores(ctx, client, tokens)
