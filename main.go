@@ -62,6 +62,10 @@ func main() {
 		cmdStop()
 	} else if len(args) == 1 && args[0] == "status" {
 		cmdStatus()
+	} else if len(args) == 1 && args[0] == "calendar" {
+		cmdCalendar()
+	} else if args[0] == "sniper" {
+		cmdSniper(args[1:])
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
 	} else if len(args) >= 1 && (args[0] == "config" || args[0] == "setting" || args[0] == "settings") {
@@ -73,6 +77,8 @@ func main() {
 		fmt.Println("  (no args)    Run in foreground (interactive)")
 		fmt.Println("  start, -d    Start in background (daemon)")
 		fmt.Println("  status       Show running status")
+		fmt.Println("  calendar     View available time slots")
+		fmt.Println("  sniper       Sniper mode (pre-book unopened slots)")
 		fmt.Println("  exit         Stop background process")
 		fmt.Println("  setting      Configure settings (feishu, etc.)")
 		fmt.Println("  config       Alias for setting")
@@ -571,8 +577,10 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			}
 
 			if strings.Contains(err.Error(), "500") {
-				fmt.Printf("\r[%s] HTTP 500，暂停1秒...", now.Format("15:04:05"))
-				time.Sleep(1 * time.Second)
+				logMessage(now, "HTTP 500，参数已失效，请重新进入小程序获取")
+				sendFeishuNotification(settings, "寿司郎 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro run`")
+				deleteLocalConfig()
+				return
 			} else if errors.Is(err, errNoReservationAvailable) {
 				fmt.Printf("\r[%s] %s - 名额已满", now.Format("15:04:05"), slotLabel)
 			} else {
