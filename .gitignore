@@ -1,4 +1,9 @@
 sushiro
+sushiro-overdose
+sushiro-overdose.exe
+sushiro-overdose-linux
 .sushiro_local.json
 .sushiro_state.json
+.sushiro_sniper.json
 .DS_Store
+dist/

@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 )
@@ -91,42 +90,6 @@ func loadOrGenerateCA() (tls.Certificate, *rsa.PrivateKey, error) {
 
 	fmt.Println("CA证书已生成:", certPath)
 	return cert, key, nil
-}
-
-func isCertTrusted() (bool, error) {
-	dir := certDirPath()
-	certPath := filepath.Join(dir, "ca.crt")
-
-	if _, err := os.Stat(certPath); err != nil {
-		return false, nil
-	}
-
-	cmd := exec.Command("security", "verify-cert", "-c", certPath, "-p", "basic")
-	if err := cmd.Run(); err != nil {
-		return false, nil
-	}
-	return true, nil
-}
-
-func installCert() error {
-	dir := certDirPath()
-	certPath := filepath.Join(dir, "ca.crt")
-
-	// Add cert to user login keychain
-	cmd := exec.Command("security", "add-certificates", "-k",
-		filepath.Join(os.Getenv("HOME"), "Library/Keychains/login.keychain-db"),
-		certPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("add-certificates: %w", err)
-	}
-
-	// Set trust at user level (no sudo needed on macOS 26+)
-	cmd = exec.Command("security", "add-trusted-cert", "-r", "trustRoot", certPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 func generateHostCert(caTLSCert tls.Certificate, caKey *rsa.PrivateKey, host string) (tls.Certificate, error) {

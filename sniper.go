@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -55,6 +54,9 @@ func cmdSniper(args []string) {
 
 	// Load tokens
 	tokens, ok := tryLoadConfig()
+
+	// Initialize notifier
+	globalNotifier = BuildNotifierFromConfig()
 	if !ok {
 		fmt.Println("暂无配置，请先运行 sushiro")
 		return
@@ -313,12 +315,12 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			if err != nil {
 				if isAuthError(err) {
 					logMessage(time.Now().In(settings.Location), "认证失败，终止狙击")
-					sendFeishuNotification(settings, "寿司郎狙击 - 认证失败", "认证参数已失效")
+					sendNotification("寿司郎狙击 - 认证失败", "认证参数已失效")
 					return
 				}
 				if strings.Contains(err.Error(), "500") {
 					logMessage(time.Now().In(settings.Location), "HTTP 500，参数已失效，请重新进入小程序获取")
-					sendFeishuNotification(settings, "寿司郎狙击 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro sniper`")
+					sendNotification("寿司郎狙击 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro sniper`")
 					deleteLocalConfig()
 					return
 				}
@@ -379,17 +381,15 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 				logMessage(now, fmt.Sprintf("  时段：%s", slotLabel))
 				logMessage(now, fmt.Sprintf("  号码：%s", reservation.Number))
 
-				// macOS notification
+				// Desktop notification
 				title := fmt.Sprintf("寿司郎狙击成功 - %s", storeName)
 				message := fmt.Sprintf("号码: %s | 时段: %s", reservation.Number, slotLabel)
-				_ = exec.Command("osascript", "-e",
-					fmt.Sprintf(`display notification "%s" with title "%s"`, message, title),
-				).Run()
+				DesktopNotification(title, message)
 
 				// Feishu notification
 				content := fmt.Sprintf("### 🎯 狙击成功 - %s\n**号码**：`%s`\n**时段**：%s\n**地址**：%s",
 					storeName, reservation.Number, slotLabel, storeInfo.Address)
-				sendFeishuNotification(settings, title, content)
+				sendNotification(title, content)
 
 				return
 			}

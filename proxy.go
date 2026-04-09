@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -486,57 +485,6 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	}
 }
 
-// ---- System proxy management ----
-
-func setSystemProxy() error {
-	services, err := getNetworkServices()
-	if err != nil {
-		return err
-	}
-	port := fmt.Sprintf("%d", proxyPort)
-	for _, svc := range services {
-		runCmd("networksetup", "-setwebproxy", svc, "127.0.0.1", port)
-		runCmd("networksetup", "-setsecurewebproxy", svc, "127.0.0.1", port)
-		runCmd("networksetup", "-setwebproxystate", svc, "on")
-		runCmd("networksetup", "-setsecurewebproxystate", svc, "on")
-	}
-	return nil
-}
-
-func clearSystemProxy() error {
-	services, err := getNetworkServices()
-	if err != nil {
-		return err
-	}
-	for _, svc := range services {
-		runCmd("networksetup", "-setwebproxystate", svc, "off")
-		runCmd("networksetup", "-setsecurewebproxystate", svc, "off")
-	}
-	return nil
-}
-
-func getNetworkServices() ([]string, error) {
-	out, err := runCmd("networksetup", "-listallnetworkservices")
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	var services []string
-	for _, line := range lines[1:] { // skip header "An asterisk (*) denotes..."
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "*") {
-			services = append(services, line)
-		}
-	}
-	return services, nil
-}
-
-func runCmd(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
 // ---- Capture wait loop ----
 
 func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan struct{}) error {
@@ -588,13 +536,19 @@ func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) (
 	}
 
 	fmt.Println("\n--- 可选门店 ---")
+	reg := GetStoreRegistry()
 	for i, storeID := range storeIDs {
 		storeInfo, err := client.GetStoreInfo(ctx, storeID)
 		if err != nil {
 			fmt.Printf("  %d. 门店 %s（获取详情失败: %v）\n", i+1, storeID, err)
 			continue
 		}
-		fmt.Printf("  %d. %s（%s）- %s\n", i+1, storeInfo.Name, storeID, storeInfo.Address)
+		displayName := reg.DisplayName(storeID, storeInfo.Name)
+		nicknameTag := ""
+		if displayName != storeInfo.Name {
+			nicknameTag = fmt.Sprintf(" [%s]", displayName)
+		}
+		fmt.Printf("  %d. %s%s（%s）- %s\n", i+1, storeInfo.Name, nicknameTag, storeID, storeInfo.Address)
 	}
 
 	fmt.Print("\n请选择门店编号（多个用逗号分隔，直接回车选全部）: ")

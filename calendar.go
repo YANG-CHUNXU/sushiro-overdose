@@ -126,7 +126,9 @@ func displayCalendar(slots []Slot, loc *time.Location, storeNames map[string]str
 			storeTag := ""
 			if len(storeNames) > 1 {
 				if name := storeNames[e.StoreID]; name != "" {
-					storeTag = fmt.Sprintf(" [%s]", name)
+					reg := GetStoreRegistry()
+					displayName := reg.DisplayName(e.StoreID, name)
+					storeTag = fmt.Sprintf(" [%s]", displayName)
 				}
 			}
 

@@ -20,6 +20,9 @@ const (
 	logFilePath = "sushiro.log"
 )
 
+// Version is set via ldflags at build time.
+var Version = "dev"
+
 func appDirPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, appDir)
@@ -43,7 +46,7 @@ func printBanner() {
 	fmt.Println("███    ███ ███   ▄███    ▄█    ███ ███    ███    ▄█    ███   ███    ███   ███")
 	fmt.Println(" ▀██████▀  ████████▀   ▄████████▀  ████████▀   ▄████████▀    ███    █▀    █▀")
 	fmt.Println()
-	fmt.Println("寿司郎重度依赖 - https://github.com/Ryujoxys/sushiro-overdose")
+	fmt.Printf("寿司郎重度依赖 v%s - https://github.com/Ryujoxys/sushiro-overdose\n", Version)
 	fmt.Println()
 }
 
@@ -56,8 +59,13 @@ func printUsage() {
 	fmt.Println("  status       Show running status")
 	fmt.Println("  calendar     View available time slots (nearest 7 days)")
 	fmt.Println("  sniper       Sniper mode - pre-book unopened slots")
+	fmt.Println("  list         Show current reservations")
+	fmt.Println("  cancel <id>  Cancel a reservation by ticket ID")
+	fmt.Println("  web          Launch Web UI")
+	fmt.Println("  trends       Analyze slot availability trends")
+	fmt.Println("  recommend    Smart time slot recommendations")
 	fmt.Println("  exit         Stop background process")
-	fmt.Println("  config       Configure settings (feishu, etc.)")
+	fmt.Println("  config       Configure settings (feishu, telegram, bark, etc.)")
 	fmt.Println("  help         Show this help message")
 }
 
@@ -76,6 +84,16 @@ func main() {
 		cmdCalendar()
 	} else if len(args) >= 1 && args[0] == "sniper" {
 		cmdSniper(args[1:])
+	} else if len(args) == 1 && (args[0] == "list" || args[0] == "reservations") {
+		cmdList()
+	} else if len(args) >= 1 && args[0] == "cancel" {
+		cmdCancel(args[1:])
+	} else if len(args) == 1 && args[0] == "web" {
+		cmdWeb()
+	} else if len(args) == 1 && (args[0] == "trends" || args[0] == "history") {
+		cmdTrends()
+	} else if len(args) == 1 && (args[0] == "recommend" || args[0] == "rec") {
+		cmdRecommend()
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
 	} else if len(args) >= 1 && (args[0] == "config" || args[0] == "setting" || args[0] == "settings") {
@@ -103,7 +121,7 @@ func cmdStart() {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = DaemonProcessAttrs()
 
 	if err := cmd.Start(); err != nil {
 		fmt.Println("启动失败:", err)
@@ -122,7 +140,7 @@ func cmdStop() {
 		fmt.Println("sushiro is not running")
 		return
 	}
-	if err := syscall.Kill(atoi(pid), syscall.SIGTERM); err != nil {
+	if err := KillProcess(atoi(pid)); err != nil {
 		fmt.Println("停止失败:", err)
 		os.Remove(pidFilePath())
 		return
@@ -156,6 +174,12 @@ func cmdStatus() {
 
 func cmdForeground() {
 	printBanner()
+
+	// Check for stale proxy from a previous crashed run
+	if checkStaleProxy() {
+		fmt.Println("已清除上次异常退出的系统代理设置")
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -193,14 +217,15 @@ func cmdDaemon() {
 
 func cmdConfig(args []string) {
 	if len(args) == 0 {
-		fmt.Println("当前设置:")
-		feishu := loadFeishuConfig()
-		fmt.Printf("  飞书通知: ")
-		if feishu != "" {
-			fmt.Printf("已配置 (%s...)\n", feishu[:min(50, len(feishu))])
-		} else {
-			fmt.Println("未配置")
+		fmt.Println("当前通知设置:")
+		cfg, _ := loadNotifyConfig()
+		if cfg == nil {
+			cfg = &notifyConfig{}
 		}
+		fmt.Printf("  飞书: %s\n", notifyStatus(cfg.Feishu.Webhook))
+		fmt.Printf("  Telegram: %s\n", notifyStatus(cfg.Telegram.Token))
+		fmt.Printf("  Bark: %s\n", notifyStatus(cfg.Bark.Key))
+		fmt.Printf("  Server酱: %s\n", notifyStatus(cfg.ServerChan.Key))
 		fmt.Println()
 		fmt.Print("配置飞书通知？输入 Webhook 地址（留空跳过，输入 clear 清除）: ")
 		input := readInput()
@@ -227,10 +252,89 @@ func cmdConfig(args []string) {
 		}
 		updateLocalConfigFeishu(args[1])
 		fmt.Println("飞书通知已配置!")
+	case "telegram":
+		if len(args) < 3 {
+			fmt.Println("Usage: sushiro config telegram <bot_token> <chat_id>")
+			return
+		}
+		cfg, _ := loadNotifyConfig()
+		if cfg == nil {
+			cfg = &notifyConfig{}
+		}
+		cfg.Telegram.Token = args[1]
+		cfg.Telegram.ChatID = args[2]
+		saveNotifyConfig(cfg)
+		fmt.Println("Telegram 通知已配置!")
+	case "bark":
+		if len(args) < 3 {
+			fmt.Println("Usage: sushiro config bark <server_url> <device_key>")
+			return
+		}
+		cfg, _ := loadNotifyConfig()
+		if cfg == nil {
+			cfg = &notifyConfig{}
+		}
+		cfg.Bark.URL = args[1]
+		cfg.Bark.Key = args[2]
+		saveNotifyConfig(cfg)
+		fmt.Println("Bark 通知已配置!")
+	case "serverchan", "server-chan", "sct":
+		if len(args) < 2 {
+			fmt.Println("Usage: sushiro config serverchan <send_key>")
+			return
+		}
+		cfg, _ := loadNotifyConfig()
+		if cfg == nil {
+			cfg = &notifyConfig{}
+		}
+		cfg.ServerChan.Key = args[1]
+		saveNotifyConfig(cfg)
+		fmt.Println("Server酱 通知已配置!")
+	case "store":
+		if len(args) < 2 {
+			reg := GetStoreRegistry()
+			stores := reg.List()
+			if len(stores) == 0 {
+				fmt.Println("无已配置的门店昵称")
+			} else {
+				for _, s := range stores {
+					fmt.Printf("  %s -> %s\n", s.ID, s.Nickname)
+				}
+			}
+			return
+		}
+		reg := GetStoreRegistry()
+		switch args[1] {
+		case "add":
+			if len(args) < 4 {
+				fmt.Println("Usage: sushiro config store add <store_id> <nickname>")
+				return
+			}
+			reg.Add(args[2], args[3])
+			fmt.Printf("门店 %s 昵称已设置为 %s\n", args[2], args[3])
+		case "remove", "rm", "delete":
+			if len(args) < 3 {
+				fmt.Println("Usage: sushiro config store remove <store_id>")
+				return
+			}
+			reg.Remove(args[2])
+			fmt.Printf("门店 %s 昵称已移除\n", args[2])
+		default:
+			fmt.Println("Usage: sushiro config store [add|remove]")
+		}
 	default:
 		fmt.Println("未知配置项:", args[0])
+		fmt.Println("可用: feishu, telegram, bark, serverchan, store")
 	}
 }
+
+func notifyStatus(v string) string {
+	if v != "" {
+		return "已配置 (" + v[:min(30, len(v))] + "...)"
+	}
+	return "未配置"
+}
+
 
 // ---- PID management ----
 
@@ -247,8 +351,7 @@ func isRunning() bool {
 	if pid == "" {
 		return false
 	}
-	err := syscall.Kill(atoi(pid), 0)
-	return err == nil
+	return IsProcessAlive(atoi(pid))
 }
 
 func atoi(s string) int {
@@ -261,6 +364,13 @@ func atoi(s string) int {
 
 func updateLocalConfigFeishu(webhook string) {
 	saveFeishuConfig(webhook)
+	// Also update notify config
+	cfg, _ := loadNotifyConfig()
+	if cfg == nil {
+		cfg = &notifyConfig{}
+	}
+	cfg.Feishu.Webhook = webhook
+	saveNotifyConfig(cfg)
 	// Also update in-memory tokens if loaded
 	tokens, err := loadLocalConfig()
 	if err == nil {
@@ -268,27 +378,15 @@ func updateLocalConfigFeishu(webhook string) {
 	}
 }
 
-// ---- Feishu notification helper ----
+// ---- Notification helper ----
 
-func sendFeishuNotification(settings Settings, title, content string) {
-	if settings.FeishuWebhook == "" {
-		return
+// globalNotifier is initialized once after config is loaded.
+var globalNotifier *MultiNotifier
+
+func sendNotification(title, content string) {
+	if globalNotifier != nil {
+		globalNotifier.Send(context.Background(), title, content)
 	}
-	card := map[string]any{
-		"config": map[string]any{"wide_screen_mode": true},
-		"header": map[string]any{
-			"title":    map[string]any{"tag": "plain_text", "content": title},
-			"template": "green",
-		},
-		"elements": []map[string]any{
-			{"tag": "div", "text": map[string]any{"tag": "lark_md", "content": content}},
-			{"tag": "note", "elements": []map[string]any{
-				{"tag": "plain_text", "content": time.Now().Format("2006-01-02 15:04:05")},
-			}},
-		},
-	}
-	client := NewClient(settings)
-	_ = client.SendFeishuCard(context.Background(), card)
 }
 
 // ---- Main run logic (shared by foreground and daemon) ----
@@ -311,7 +409,10 @@ func run(ctx context.Context) error {
 
 	settings := tokens.toSettings()
 
-	// Interactive Feishu config
+	// Initialize notifier
+	globalNotifier = BuildNotifierFromConfig()
+
+	// Interactive Feishu config (legacy support)
 	tokens.mu.Lock()
 	feishu := tokens.FeishuWebhook
 	tokens.mu.Unlock()
@@ -327,6 +428,8 @@ func run(ctx context.Context) error {
 				tokens.mu.Unlock()
 				saveFeishuConfig(webhook)
 				settings.FeishuWebhook = webhook
+				// Add feishu to notifier
+				globalNotifier.Add(&feishuNotifier{webhook: webhook})
 				fmt.Println("飞书通知已配置!")
 			}
 		}
@@ -339,7 +442,7 @@ func run(ctx context.Context) error {
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
 		logMessage(time.Now(), "验证失败: "+err.Error())
 		logMessage(time.Now(), "认证参数可能已过期，需要重新获取...")
-		sendFeishuNotification(settings, "寿司郎 - 认证过期", "需要重新运行捕获认证参数")
+		sendNotification("寿司郎 - 认证过期", "需要重新运行捕获认证参数")
 		deleteLocalConfig()
 		tokens, err = runCapturePhase(ctx)
 		if err != nil {
@@ -363,6 +466,10 @@ func run(ctx context.Context) error {
 
 	slotConfig := configureSlots()
 
+	// Start background health check
+	healthStop := startHealthCheck(ctx, client, selectedStores)
+	defer close(healthStop)
+
 	logMessage(time.Now(), "开始抢号...")
 	runBookingLoop(ctx, client, settings, selectedStores, slotConfig)
 	return nil
@@ -376,11 +483,11 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	}
 
 	// Check if cert is trusted, offer to install
-	trusted, _ := isCertTrusted()
+	trusted, _ := IsCertTrusted()
 	if !trusted {
 		fmt.Println("\n首次运行需要安装CA证书（用于拦截HTTPS流量）")
 		fmt.Println("安装后需要输入登录密码确认")
-		if err := installCert(); err != nil {
+		if err := InstallCert(); err != nil {
 			return nil, fmt.Errorf("证书安装失败: %w", err)
 		}
 		fmt.Println("证书安装成功!")
@@ -396,14 +503,16 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	defer proxy.close()
 
 	// Set system proxy
-	if err := setSystemProxy(); err != nil {
+	if err := SetSystemProxy(proxyPort); err != nil {
 		return nil, fmt.Errorf("设置系统代理失败: %w", err)
 	}
 	fmt.Println("系统代理已设置 (127.0.0.1:8080)")
+	markProxyActive(proxyPort, os.Getpid())
 
 	// Ensure proxy is cleared on exit
 	defer func() {
-		clearSystemProxy()
+		ClearSystemProxy()
+		markProxyInactive()
 		fmt.Println("系统代理已清除")
 	}()
 
@@ -473,7 +582,6 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 		now := time.Now().In(settings.Location)
 
 		var best *TargetSlot
-		var bestStatus string
 		for _, storeID := range storeIDs {
 			slots, err := client.GetTimeslots(ctx, storeID)
 			if err != nil {
@@ -481,7 +589,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 					authErrors++
 					if authErrors >= 3 {
 						logMessage(now, "认证失败，请重新运行获取新参数")
-						sendFeishuNotification(settings, "寿司郎 - 认证失败", "认证参数已失效，请重新运行 `sushiro run` 获取新参数")
+						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新运行 `sushiro run` 获取新参数")
 						deleteLocalConfig()
 						return
 					}
@@ -498,8 +606,15 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			errStreak = 0
 			authErrors = 0
 
+			// Record slot history
+			appendHistory(slots, storeID)
+
 			for i := range slots {
 				if !cfg.shouldTarget(slots[i], settings.Location) {
+					continue
+				}
+				// Skip non-available slots
+				if strings.ToUpper(slots[i].Availability) != "AVAILABLE" {
 					continue
 				}
 				key := storeID + slots[i].Date + slots[i].Start
@@ -514,7 +629,6 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				}
 				if best == nil || t.Date+t.Start > best.Date+best.Start {
 					best = t
-					bestStatus = slots[i].Availability
 				}
 			}
 		}
@@ -526,11 +640,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 		}
 
 		slotLabel := formatSlotWindow(best.Date, best.Start, best.End, settings.Location)
-		statusTag := ""
-		if bestStatus != "AVAILABLE" {
-			statusTag = " [" + bestStatus + "]"
-		}
-		fmt.Printf("\r[%s] %s%s - 尝试预约...", now.Format("15:04:05"), slotLabel, statusTag)
+		fmt.Printf("\r[%s] %s - 尝试预约...", now.Format("15:04:05"), slotLabel)
 
 		reservation, err := client.CreateReservation(ctx, best.StoreID, best.Date, best.Start)
 		if err != nil {
@@ -544,7 +654,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				authErrors++
 				if authErrors >= 3 {
 					logMessage(now, "认证失败，请重新运行")
-					sendFeishuNotification(settings, "寿司郎 - 认证失败", "请重新运行 `sushiro run`")
+					sendNotification("寿司郎 - 认证失败", "请重新运行 `sushiro run`")
 					deleteLocalConfig()
 					return
 				}
@@ -552,7 +662,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 
 			if strings.Contains(err.Error(), "500") {
 				logMessage(now, "HTTP 500，参数已失效，请重新进入小程序获取")
-				sendFeishuNotification(settings, "寿司郎 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro run`")
+				sendNotification("寿司郎 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro run`")
 				deleteLocalConfig()
 				return
 			} else if errors.Is(err, errNoReservationAvailable) {
@@ -605,17 +715,15 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			logMessage(now, fmt.Sprintf("  地址：%s", storeInfo.Address))
 		}
 
-		// macOS notification
+		// Desktop notification
 		title := fmt.Sprintf("寿司郎预约成功 - %s", storeName)
 		message := fmt.Sprintf("号码: %s | 时段: %s", reservation.Number, slotLabel)
-		_ = exec.Command("osascript", "-e",
-			fmt.Sprintf(`display notification "%s" with title "%s"`, message, title),
-		).Run()
+		DesktopNotification(title, message)
 
 		// Feishu notification
 		content := fmt.Sprintf("### %s\n**号码**：`%s`\n**时段**：%s\n**地址**：%s",
 			storeName, reservation.Number, slotLabel, storeInfo.Address)
-		sendFeishuNotification(settings, title, content)
+		sendNotification(title, content)
 
 		return
 	}

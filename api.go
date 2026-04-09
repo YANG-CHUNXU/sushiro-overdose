@@ -105,36 +105,36 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 	return reservation, nil
 }
 
-func (c *Client) SendFeishuCard(ctx context.Context, card map[string]any) error {
-	payload := map[string]any{
-		"msg_type": "interactive",
-		"card":     card,
-	}
-	body, err := c.doJSON(ctx, http.MethodPost, c.settings.FeishuWebhook, map[string]string{"Content-Type": "application/json"}, payload)
+func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, error) {
+	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/getReservations"
+	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
+		"wechatId":    c.settings.WechatID,
+		"phoneNumber": c.settings.PhoneNumber,
+	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	var response map[string]any
-	if len(body) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("invalid Feishu response: %w", err)
-	}
-	if statusCode, ok := response["StatusCode"]; ok {
-		switch value := statusCode.(type) {
-		case float64:
-			if value != 0 {
-				return fmt.Errorf("Feishu bot error: %s", stringifyJSON(response))
-			}
-		case string:
-			if value != "" && value != "0" {
-				return fmt.Errorf("Feishu bot error: %s", stringifyJSON(response))
-			}
+	var reservations []ReservationRecord
+	if err := json.Unmarshal(body, &reservations); err != nil {
+		var wrapper struct {
+			Data []ReservationRecord `json:"data"`
 		}
+		if err2 := json.Unmarshal(body, &wrapper); err2 == nil && len(wrapper.Data) > 0 {
+			return wrapper.Data, nil
+		}
+		return nil, fmt.Errorf("reservations response parse error: %w", err)
 	}
-	return nil
+	return reservations, nil
+}
+
+func (c *Client) CancelReservation(ctx context.Context, ticketID int64) error {
+	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/cancelReservation"
+	_, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
+		"ticketId":    ticketID,
+		"wechatId":    c.settings.WechatID,
+		"phoneNumber": c.settings.PhoneNumber,
+	})
+	return err
 }
 
 func (c *Client) baseHeaders(authorization, contentType string) map[string]string {
