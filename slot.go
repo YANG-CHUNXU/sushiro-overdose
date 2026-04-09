@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -42,11 +41,6 @@ type ReservationRecord struct {
 	StoreName        string `json:"store_name,omitempty"`
 	StoreAddress     string `json:"store_address,omitempty"`
 	SlotLabel        string `json:"slot_label,omitempty"`
-}
-
-type StoreCandidate struct {
-	StoreID string
-	Slot    Slot
 }
 
 func parseCompactDate(raw string, loc *time.Location) (time.Time, error) {
@@ -122,124 +116,10 @@ func slotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
 	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, second, 0, loc), nil
 }
 
-func isBookableStatus(status string, allowedStatuses map[string]struct{}) bool {
-	_, ok := allowedStatuses[strings.ToUpper(strings.TrimSpace(status))]
-	return ok
-}
-
-func targetWeekendDateSet(today time.Time) map[string]struct{} {
-	start := startOfWeek(today)
-	result := map[string]struct{}{}
-	for _, offset := range []int{5, 6} {
-		target := start.AddDate(0, 0, offset)
-		if !target.Before(beginningOfDay(today)) {
-			result[target.Format("2006-01-02")] = struct{}{}
-		}
-	}
-	return result
-}
-
-func filterCandidateSlots(slots []Slot, now time.Time, allowedStatuses map[string]struct{}, debug bool) []Slot {
-	targets := targetWeekendDateSet(now)
-	if !debug && len(targets) == 0 {
-		return nil
-	}
-
-	result := make([]Slot, 0)
-	for _, slot := range slots {
-		if !isBookableStatus(slot.Availability, allowedStatuses) {
-			continue
-		}
-		slotStart, err := slotDateTime(slot, now.Location())
-		if err != nil || !slotStart.After(now) {
-			continue
-		}
-		if !debug {
-			if _, ok := targets[slotStart.Format("2006-01-02")]; !ok {
-				continue
-			}
-		}
-		result = append(result, slot)
-	}
-	sortSlots(result, now.Location())
-	return result
-}
-
-func filterMonthlyWeekendSlots(slots []Slot, now time.Time, allowedStatuses map[string]struct{}, daysAhead int) []Slot {
-	limit := now.AddDate(0, 0, daysAhead)
-	result := make([]Slot, 0)
-	for _, slot := range slots {
-		if !isBookableStatus(slot.Availability, allowedStatuses) {
-			continue
-		}
-		slotStart, err := slotDateTime(slot, now.Location())
-		if err != nil || !slotStart.After(now) || slotStart.After(limit) {
-			continue
-		}
-		if slotStart.Weekday() != time.Saturday && slotStart.Weekday() != time.Sunday {
-			continue
-		}
-		result = append(result, slot)
-	}
-	sortSlots(result, now.Location())
-	return result
-}
-
-func filterCurrentWeekWeekdayEveningSlots(slots []Slot, now time.Time, allowedStatuses map[string]struct{}) []Slot {
-	weekStart := startOfWeek(now)
-	weekEnd := weekStart.AddDate(0, 0, 4)
-	result := make([]Slot, 0)
-	for _, slot := range slots {
-		if !isBookableStatus(slot.Availability, allowedStatuses) {
-			continue
-		}
-		slotStart, err := slotDateTime(slot, now.Location())
-		if err != nil || !slotStart.After(now) {
-			continue
-		}
-		if slotStart.Weekday() == time.Saturday || slotStart.Weekday() == time.Sunday {
-			continue
-		}
-		if slotStart.Before(weekStart) || slotStart.After(weekEnd.Add(24*time.Hour-time.Nanosecond)) {
-			continue
-		}
-		if slot.Start < "190000" {
-			continue
-		}
-		result = append(result, slot)
-	}
-	sortSlots(result, now.Location())
-	return result
-}
-
 func sortSlots(slots []Slot, loc *time.Location) {
 	sort.Slice(slots, func(i, j int) bool {
 		left, _ := slotDateTime(slots[i], loc)
 		right, _ := slotDateTime(slots[j], loc)
 		return left.Before(right)
 	})
-}
-
-func collectCandidateSlotsByStore(timeslotsByStore map[string][]Slot, storeIDs []string, now time.Time, allowedStatuses map[string]struct{}, debug bool) []StoreCandidate {
-	storeOrder := map[string]int{}
-	for index, storeID := range storeIDs {
-		storeOrder[storeID] = index
-	}
-
-	result := make([]StoreCandidate, 0)
-	for _, storeID := range storeIDs {
-		for _, slot := range filterCandidateSlots(timeslotsByStore[storeID], now, allowedStatuses, debug) {
-			result = append(result, StoreCandidate{StoreID: storeID, Slot: slot})
-		}
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		left, _ := slotDateTime(result[i].Slot, now.Location())
-		right, _ := slotDateTime(result[j].Slot, now.Location())
-		if left.Equal(right) {
-			return storeOrder[result[i].StoreID] < storeOrder[result[j].StoreID]
-		}
-		return left.Before(right)
-	})
-	return result
 }

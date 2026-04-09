@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -51,6 +47,20 @@ func printBanner() {
 	fmt.Println()
 }
 
+func printUsage() {
+	fmt.Println("Usage: sushiro [command]")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  (no args)    Run in foreground (interactive)")
+	fmt.Println("  start, -d    Start in background (daemon)")
+	fmt.Println("  status       Show running status")
+	fmt.Println("  calendar     View available time slots (nearest 7 days)")
+	fmt.Println("  sniper       Sniper mode - pre-book unopened slots")
+	fmt.Println("  exit         Stop background process")
+	fmt.Println("  config       Configure settings (feishu, etc.)")
+	fmt.Println("  help         Show this help message")
+}
+
 func main() {
 	args := os.Args[1:]
 
@@ -64,24 +74,16 @@ func main() {
 		cmdStatus()
 	} else if len(args) == 1 && args[0] == "calendar" {
 		cmdCalendar()
-	} else if args[0] == "sniper" {
+	} else if len(args) >= 1 && args[0] == "sniper" {
 		cmdSniper(args[1:])
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
 	} else if len(args) >= 1 && (args[0] == "config" || args[0] == "setting" || args[0] == "settings") {
 		cmdConfig(args[1:])
+	} else if len(args) >= 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
+		printUsage()
 	} else {
-		fmt.Println("Usage: sushiro [command]")
-		fmt.Println()
-		fmt.Println("Commands:")
-		fmt.Println("  (no args)    Run in foreground (interactive)")
-		fmt.Println("  start, -d    Start in background (daemon)")
-		fmt.Println("  status       Show running status")
-		fmt.Println("  calendar     View available time slots")
-		fmt.Println("  sniper       Sniper mode (pre-book unopened slots)")
-		fmt.Println("  exit         Stop background process")
-		fmt.Println("  setting      Configure settings (feishu, etc.)")
-		fmt.Println("  config       Alias for setting")
+		printUsage()
 	}
 }
 
@@ -177,7 +179,6 @@ func cmdDaemon() {
 	os.Stdout = logFile
 	os.Stderr = logFile
 
-	// Also set log output for standard log
 	logMessage(time.Now(), "sushiro daemon started")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -192,26 +193,17 @@ func cmdDaemon() {
 
 func cmdConfig(args []string) {
 	if len(args) == 0 {
-		// Interactive mode
-		tokens, err := loadLocalConfig()
-		if err != nil {
-			fmt.Println("暂无配置，请先运行 sushiro")
-			return
-		}
 		fmt.Println("当前设置:")
+		feishu := loadFeishuConfig()
 		fmt.Printf("  飞书通知: ")
-		tokens.mu.Lock()
-		if tokens.FeishuWebhook != "" {
-			fmt.Printf("已配置 (%s...)\n", tokens.FeishuWebhook[:min(50, len(tokens.FeishuWebhook))])
+		if feishu != "" {
+			fmt.Printf("已配置 (%s...)\n", feishu[:min(50, len(feishu))])
 		} else {
 			fmt.Println("未配置")
 		}
-		tokens.mu.Unlock()
 		fmt.Println()
 		fmt.Print("配置飞书通知？输入 Webhook 地址（留空跳过，输入 clear 清除）: ")
-		var input string
-		fmt.Scanln(&input)
-		input = strings.TrimSpace(input)
+		input := readInput()
 		if strings.ToLower(input) == "clear" {
 			updateLocalConfigFeishu("")
 			fmt.Println("飞书通知已清除")
@@ -236,7 +228,7 @@ func cmdConfig(args []string) {
 		updateLocalConfigFeishu(args[1])
 		fmt.Println("飞书通知已配置!")
 	default:
-		fmt.Println("Unknown config key:", args[0])
+		fmt.Println("未知配置项:", args[0])
 	}
 }
 
@@ -268,14 +260,11 @@ func atoi(s string) int {
 // ---- Update feishu in local config ----
 
 func updateLocalConfigFeishu(webhook string) {
+	saveFeishuConfig(webhook)
+	// Also update in-memory tokens if loaded
 	tokens, err := loadLocalConfig()
-	if err != nil {
-		fmt.Println("无法加载配置:", err)
-		return
-	}
-	tokens.FeishuWebhook = webhook
-	if err := saveLocalConfig(tokens); err != nil {
-		fmt.Println("保存失败:", err)
+	if err == nil {
+		tokens.FeishuWebhook = webhook
 	}
 }
 
@@ -298,15 +287,8 @@ func sendFeishuNotification(settings Settings, title, content string) {
 			}},
 		},
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
-	payload, _ := json.Marshal(map[string]any{"msg_type": "interactive", "card": card})
-	req, _ := http.NewRequest(http.MethodPost, settings.FeishuWebhook, bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err == nil {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-	}
+	client := NewClient(settings)
+	_ = client.SendFeishuCard(context.Background(), card)
 }
 
 // ---- Main run logic (shared by foreground and daemon) ----
@@ -336,19 +318,14 @@ func run(ctx context.Context) error {
 	if feishu == "" {
 		fmt.Println()
 		fmt.Print("是否配置飞书通知机器人？(y/N): ")
-		var answer string
-		fmt.Scanln(&answer)
-		if strings.TrimSpace(strings.ToLower(answer)) == "y" {
+		if answer := readInput(); strings.ToLower(answer) == "y" {
 			fmt.Println("飞书群 → 群设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook 地址")
 			fmt.Print("请输入 Webhook 地址: ")
-			var webhook string
-			fmt.Scanln(&webhook)
-			webhook = strings.TrimSpace(webhook)
-			if webhook != "" {
+			if webhook := readInput(); webhook != "" {
 				tokens.mu.Lock()
 				tokens.FeishuWebhook = webhook
 				tokens.mu.Unlock()
-				saveLocalConfig(tokens)
+				saveFeishuConfig(webhook)
 				settings.FeishuWebhook = webhook
 				fmt.Println("飞书通知已配置!")
 			}
@@ -452,10 +429,9 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	tokens.mu.Unlock()
 	if phone == "" {
 		fmt.Print("\n请输入手机号: ")
-		var input string
-		fmt.Scanln(&input)
+		input := readInput()
 		tokens.mu.Lock()
-		tokens.PhoneNumber = strings.TrimSpace(input)
+		tokens.PhoneNumber = input
 		tokens.mu.Unlock()
 	}
 
@@ -478,10 +454,8 @@ func isAuthError(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "401") ||
-		strings.Contains(msg, "403") ||
-		strings.Contains(msg, "token") ||
-		strings.Contains(msg, "auth")
+	return strings.Contains(msg, "HTTP 401") ||
+		strings.Contains(msg, "HTTP 403")
 }
 
 func runBookingLoop(ctx context.Context, client *Client, settings Settings, storeIDs []string, cfg SlotConfig) {

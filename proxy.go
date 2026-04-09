@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -103,7 +104,6 @@ type localConfigJSON struct {
 	WechatID        string   `json:"wechat_id"`
 	PhoneNumber     string   `json:"phone_number"`
 	StoreIDs        []string `json:"store_ids"`
-	FeishuWebhook   string   `json:"feishu_webhook"`
 }
 
 func saveLocalConfig(tokens *CapturedTokens) error {
@@ -119,7 +119,6 @@ func saveLocalConfig(tokens *CapturedTokens) error {
 		WechatID:        tokens.WechatID,
 		PhoneNumber:     tokens.PhoneNumber,
 		StoreIDs:        tokens.StoreIDs,
-		FeishuWebhook:   tokens.FeishuWebhook,
 	}
 	raw, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
@@ -150,12 +149,40 @@ func loadLocalConfig() (*CapturedTokens, error) {
 		WechatID:        data.WechatID,
 		PhoneNumber:     data.PhoneNumber,
 		StoreIDs:        data.StoreIDs,
-		FeishuWebhook:   data.FeishuWebhook,
+		FeishuWebhook:   loadFeishuConfig(),
 	}, nil
 }
 
 func deleteLocalConfig() {
 	os.Remove(localConfigFile)
+}
+
+// Feishu webhook is stored separately so it survives token refreshes.
+func feishuConfigPath() string {
+	return filepath.Join(appDirPath(), "feishu.json")
+}
+
+func loadFeishuConfig() string {
+	data, err := os.ReadFile(feishuConfigPath())
+	if err != nil {
+		return ""
+	}
+	var cfg struct {
+		Webhook string `json:"webhook"`
+	}
+	if json.Unmarshal(data, &cfg) != nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Webhook)
+}
+
+func saveFeishuConfig(webhook string) {
+	os.MkdirAll(appDirPath(), 0o755)
+	cfg := struct {
+		Webhook string `json:"webhook"`
+	}{Webhook: strings.TrimSpace(webhook)}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	_ = os.WriteFile(feishuConfigPath(), data, 0o644)
 }
 
 func (t *CapturedTokens) toSettings() Settings {
@@ -557,9 +584,7 @@ func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) (
 
 	if len(storeIDs) == 0 {
 		fmt.Print("未捕获到门店ID，请手动输入门店编号: ")
-		var input string
-		fmt.Scanln(&input)
-		return []string{strings.TrimSpace(input)}, nil
+		return []string{readInput()}, nil
 	}
 
 	fmt.Println("\n--- 可选门店 ---")
@@ -573,9 +598,7 @@ func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) (
 	}
 
 	fmt.Print("\n请选择门店编号（多个用逗号分隔，直接回车选全部）: ")
-	var input string
-	fmt.Scanln(&input)
-	input = strings.TrimSpace(input)
+	input := readInput()
 
 	if input == "" {
 		return storeIDs, nil
@@ -666,12 +689,12 @@ func configureSlots() SlotConfig {
 				fmt.Printf("  %d. %s\n", i+1, prefNames[p])
 			}
 			fmt.Print("请选择: ")
-			var input string
-			fmt.Scanln(&input)
+			input := readInput()
 			var idx int
 			if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(opts) {
 				return opts[idx-1]
 			}
+			fmt.Printf("  无效输入，请输入 1-%d\n", len(opts))
 		}
 	}
 

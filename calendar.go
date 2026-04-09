@@ -64,13 +64,13 @@ func cmdCalendar() {
 		return
 	}
 
-	// Only show nearest 7 days
+	// Only show nearest 7 days, excluding past slots
 	now := time.Now().In(settings.Location)
 	limit := now.AddDate(0, 0, 7)
 	recentSlots := make([]Slot, 0)
 	for _, s := range allSlots {
 		slotTime, err := slotDateTime(s, settings.Location)
-		if err != nil || slotTime.After(limit) {
+		if err != nil || slotTime.After(limit) || slotTime.Before(now) {
 			continue
 		}
 		recentSlots = append(recentSlots, s)

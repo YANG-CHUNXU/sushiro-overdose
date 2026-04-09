@@ -112,3 +112,10 @@ func shouldSendWeekendSummary(state State, now time.Time) bool {
 func logMessage(now time.Time, message string) {
 	fmt.Printf("[%s] %s\n", now.Format(time.RFC3339), message)
 }
+
+// readInput reads a trimmed line from stdin. Unlike fmt.Scanln it handles spaces.
+func readInput() string {
+	var line string
+	fmt.Scanln(&line)
+	return strings.TrimSpace(line)
+}

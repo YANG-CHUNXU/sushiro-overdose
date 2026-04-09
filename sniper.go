@@ -8,12 +8,17 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 )
 
 const sniperConfigFile = ".sushiro_sniper.json"
+
+func sniperConfigPath() string {
+	return filepath.Join(appDirPath(), sniperConfigFile)
+}
 
 // SniperTarget represents a pre-configured reservation target.
 type SniperTarget struct {
@@ -181,8 +186,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 
 	fmt.Println()
 	fmt.Print("选择日期（输入编号，多个用逗号分隔，如 1,3,7）: ")
-	var dateInput string
-	fmt.Scanln(&dateInput)
+	dateInput := readInput()
 
 	validDates := make([]string, 0)
 	for _, part := range strings.Split(dateInput, ",") {
@@ -203,9 +207,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 	// Time range
 	fmt.Println("\n--- 时间范围 ---")
 	fmt.Print("最早可接受时间 (如 1930): ")
-	var startInput string
-	fmt.Scanln(&startInput)
-	startInput = strings.TrimSpace(startInput)
+	startInput := readInput()
 	startAfter := "000000"
 	if len(startInput) == 4 {
 		startAfter = startInput + "00"
@@ -214,9 +216,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 	}
 
 	fmt.Print("最晚可接受时间 (如 2030): ")
-	var endInput string
-	fmt.Scanln(&endInput)
-	endInput = strings.TrimSpace(endInput)
+	endInput := readInput()
 	startBefore := "235959"
 	if len(endInput) == 4 {
 		startBefore = endInput + "00"
@@ -275,7 +275,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			formatCompactTime(target.StartBefore), storeName)
 
 		// Skip if too far past
-		if openAt.Before(now.Add(-60 * time.Second)) {
+		if openAt.Before(now.Add(-3 * time.Minute)) {
 			// Already open, try immediately
 			logMessage(now, fmt.Sprintf("目标已开放，立即尝试: %s", targetLabel))
 		} else if openAt.After(now) {
@@ -297,7 +297,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 		if openAt.After(now) {
 			deadline = openAt
 		}
-		deadline = deadline.Add(60 * time.Second)
+		deadline = deadline.Add(3 * time.Minute)
 
 		success := false
 		attemptCount := 0
@@ -480,7 +480,7 @@ func printCalendarGrid(days []time.Time, now time.Time) {
 }
 
 func loadSniperConfig() ([]SniperTarget, error) {
-	data, err := os.ReadFile(sniperConfigFile)
+	data, err := os.ReadFile(sniperConfigPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -499,5 +499,5 @@ func saveSniperConfig(targets []SniperTarget) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(sniperConfigFile, data, 0o644)
+	_ = os.WriteFile(sniperConfigPath(), data, 0o644)
 }
