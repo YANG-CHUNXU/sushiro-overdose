@@ -281,8 +281,11 @@ async function loadConfig() {
 }
 
 // SSE
+let currentES = null;
 function connectSSE() {
+  if (currentES) currentES.close();
   const es = new EventSource('/api/events');
+  currentES = es;
   es.addEventListener('calendar', e => {
     try {
       const d = JSON.parse(e.data);
@@ -291,7 +294,7 @@ function connectSSE() {
     } catch(err) {}
   });
   es.addEventListener('ping', () => {});
-  es.onerror = () => setTimeout(connectSSE, 3000);
+  es.onerror = () => { es.close(); currentES = null; setTimeout(connectSSE, 3000); };
 }
 
 // Init

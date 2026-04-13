@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 )
+
+// notifierClient is shared by all notifiers with a 10s timeout.
+var notifierClient = &http.Client{Timeout: 10 * time.Second}
 
 // Notifier sends a notification with a title and markdown content.
 type Notifier interface {
@@ -17,6 +21,7 @@ type Notifier interface {
 
 // MultiNotifier fans out notifications to multiple channels.
 type MultiNotifier struct {
+	mu        sync.Mutex
 	notifiers []Notifier
 }
 
@@ -25,8 +30,13 @@ func NewMultiNotifier(notifiers ...Notifier) *MultiNotifier {
 }
 
 func (m *MultiNotifier) Send(ctx context.Context, title, content string) {
+	m.mu.Lock()
+	snapshot := make([]Notifier, len(m.notifiers))
+	copy(snapshot, m.notifiers)
+	m.mu.Unlock()
+
 	var wg sync.WaitGroup
-	for _, n := range m.notifiers {
+	for _, n := range snapshot {
 		wg.Add(1)
 		go func(n Notifier) {
 			defer wg.Done()
@@ -39,11 +49,17 @@ func (m *MultiNotifier) Send(ctx context.Context, title, content string) {
 }
 
 func (m *MultiNotifier) Add(n Notifier) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.notifiers = append(m.notifiers, n)
 }
 
 func (m *MultiNotifier) List() []Notifier {
-	return m.notifiers
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Notifier, len(m.notifiers))
+	copy(out, m.notifiers)
+	return out
 }
 
 // ---- Notification config ----
@@ -87,7 +103,7 @@ func saveNotifyConfig(cfg *notifyConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(notifyConfigPath(), data, 0o644)
+	return os.WriteFile(notifyConfigPath(), data, 0o600)
 }
 
 // BuildNotifierFromConfig creates a MultiNotifier from saved config.

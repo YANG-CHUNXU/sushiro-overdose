@@ -65,17 +65,18 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleCalendar(w http.ResponseWriter, r *http.Request) {
-	if len(webSettings.StoreIDs) == 0 {
+	ws := getWebSettings()
+	if len(ws.StoreIDs) == 0 {
 		writeError(w, http.StatusServiceUnavailable, "暂无配置，请先运行 sushiro-overdose")
 		return
 	}
 
-	client := NewClient(webSettings)
+	client := getWebClient()
 
 	query := r.URL.Query()
 	storeID := query.Get("store")
 	if storeID == "" {
-		storeID = webSettings.StoreIDs[0]
+		storeID = ws.StoreIDs[0]
 	}
 
 	slots, err := client.GetTimeslots(r.Context(), storeID)
@@ -100,15 +101,16 @@ func handleCalendar(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStores(w http.ResponseWriter, r *http.Request) {
-	if len(webSettings.StoreIDs) == 0 {
+	ws := getWebSettings()
+	if len(ws.StoreIDs) == 0 {
 		writeJSON(w, []map[string]string{})
 		return
 	}
-	client := NewClient(webSettings)
+	client := getWebClient()
 	reg := GetStoreRegistry()
 	stores := make([]map[string]string, 0)
 
-	for _, id := range webSettings.StoreIDs {
+	for _, id := range ws.StoreIDs {
 		info, err := client.GetStoreInfo(r.Context(), id)
 		name := id
 		address := ""
@@ -127,14 +129,15 @@ func handleStores(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		cfg, _ := loadNotifyConfig()
-		if cfg == nil {
-			cfg = &notifyConfig{}
-		}
-		writeJSON(w, cfg)
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
 		return
 	}
+	cfg, _ := loadNotifyConfig()
+	if cfg == nil {
+		cfg = &notifyConfig{}
+	}
+	writeJSON(w, cfg)
 }
 
 func handleSniperStart(w http.ResponseWriter, r *http.Request) {
@@ -150,16 +153,17 @@ func handleSniperStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// This is a simplified API — actual sniper runs in background
-	writeJSON(w, map[string]string{"status": "started", "date": req.Date, "time": req.Time})
+	// TODO: implement background sniper trigger
+	writeError(w, http.StatusNotImplemented, "sniper API not yet implemented — use CLI: sushiro sniper")
 }
 
 func handleReservations(w http.ResponseWriter, r *http.Request) {
-	if len(webSettings.StoreIDs) == 0 {
+	ws := getWebSettings()
+	if len(ws.StoreIDs) == 0 {
 		writeJSON(w, []ReservationRecord{})
 		return
 	}
-	client := NewClient(webSettings)
+	client := getWebClient()
 	reservations, err := client.GetReservations(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

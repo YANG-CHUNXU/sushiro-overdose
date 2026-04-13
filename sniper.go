@@ -56,7 +56,7 @@ func cmdSniper(args []string) {
 	tokens, ok := tryLoadConfig()
 
 	// Initialize notifier
-	globalNotifier = BuildNotifierFromConfig()
+	setNotifier(BuildNotifierFromConfig())
 	if !ok {
 		fmt.Println("暂无配置，请先运行 sushiro")
 		return
@@ -133,6 +133,8 @@ func parseSniperArgs(dateStr, timeStr, storeStr string, defaultStores []string) 
 	startBefore := "235959"
 	if len(parts) >= 1 && len(parts[0]) == 4 {
 		startAfter = parts[0] + "00"
+	} else if len(parts) >= 1 && len(parts[0]) == 6 {
+		startAfter = parts[0]
 	}
 	if len(parts) >= 2 && len(parts[1]) == 4 {
 		startBefore = parts[1] + "00"
@@ -353,47 +355,11 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 				success = true
 				now = time.Now().In(settings.Location)
 				reservation.MonitoredStoreID = target.StoreID
-				reservation.StoreName = storeName
-				reservation.StoreAddress = storeInfo.Address
-				reservation.SlotLabel = slotLabel
-
-				state := State{
-					ActiveReservation: &reservation,
-					SavedAt:           now.Format(time.RFC3339),
-				}
-				_ = saveState(settings.StateFile, state)
-
-				fmt.Println()
-				fmt.Println()
-				fmt.Println("  ╔══════════════════════════════════════╗")
-				fmt.Println("  ║         🎉 狙击成功！                ║")
-				fmt.Println("  ╠══════════════════════════════════════╣")
-				fmt.Printf("  ║  门店：%s\n", storeName)
-				fmt.Printf("  ║  时段：%s\n", slotLabel)
-				fmt.Printf("  ║  号码：%s\n", reservation.Number)
-				if storeInfo.Address != "" {
-					fmt.Printf("  ║  地址：%s\n", storeInfo.Address)
-				}
-				fmt.Println("  ╚══════════════════════════════════════╝")
-
-				logMessage(now, "=== 狙击成功 ===")
-				logMessage(now, fmt.Sprintf("  门店：%s", storeName))
-				logMessage(now, fmt.Sprintf("  时段：%s", slotLabel))
-				logMessage(now, fmt.Sprintf("  号码：%s", reservation.Number))
-
-				// Desktop notification
-				title := fmt.Sprintf("寿司郎狙击成功 - %s", storeName)
-				message := fmt.Sprintf("号码: %s | 时段: %s", reservation.Number, slotLabel)
-				DesktopNotification(title, message)
-
-				// Feishu notification
-				content := fmt.Sprintf("### 🎯 狙击成功 - %s\n**号码**：`%s`\n**时段**：%s\n**地址**：%s",
-					storeName, reservation.Number, slotLabel, storeInfo.Address)
-				sendNotification(title, content)
+				onBookingSuccess(reservation, storeName, storeInfo.Address, slotLabel, "狙击")
 
 				return
-			}
 
+			}
 			time.Sleep(50 * time.Millisecond)
 		}
 
@@ -479,20 +445,6 @@ func printCalendarGrid(days []time.Time, now time.Time) {
 	}
 }
 
-func loadSniperConfig() ([]SniperTarget, error) {
-	data, err := os.ReadFile(sniperConfigPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("read sniper config: %w", err)
-	}
-	var targets []SniperTarget
-	if err := json.Unmarshal(data, &targets); err != nil {
-		return nil, fmt.Errorf("invalid sniper config: %w", err)
-	}
-	return targets, nil
-}
 
 func saveSniperConfig(targets []SniperTarget) {
 	data, err := json.MarshalIndent(targets, "", "  ")

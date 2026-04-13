@@ -65,11 +65,11 @@ func cmdRecommend() {
 	}
 
 	// Filter: only future dates, at least 3 observations
-	now := time.Now().In(webSettings.Location)
-	if webSettings.Location == nil {
-		loc, _ := time.LoadLocation("Asia/Shanghai")
-		webSettings.Location = loc
+	loc := getWebSettings().Location
+	if loc == nil {
+		loc, _ = time.LoadLocation("Asia/Shanghai")
 	}
+	now := time.Now().In(loc)
 
 	validRecs := make([]slotRecommendation, 0)
 	for _, r := range recs {

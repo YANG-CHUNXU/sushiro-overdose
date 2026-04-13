@@ -99,3 +99,49 @@ func cmdCancel(args []string) {
 	fmt.Printf("预约 #%d 已取消\n", ticketID)
 	logMessage(time.Now(), fmt.Sprintf("预约 #%d 已取消", ticketID))
 }
+
+// onBookingSuccess handles the shared logic for a successful booking:
+// save state, print banner, log, send notifications.
+func onBookingSuccess(reservation ReservationRecord, storeName, storeAddress, slotLabel, mode string) {
+	now := time.Now()
+
+	reservation.StoreName = storeName
+	reservation.StoreAddress = storeAddress
+	reservation.SlotLabel = slotLabel
+
+	state := State{
+		ActiveReservation: &reservation,
+		SavedAt:           now.Format(time.RFC3339),
+	}
+	_ = saveState(stateFilePath(), state)
+
+	fmt.Println()
+	fmt.Println()
+	fmt.Println("  ╔══════════════════════════════════════╗")
+	fmt.Printf("  ║         🎉 %s！              ║\n", mode)
+	fmt.Println("  ╠══════════════════════════════════════╣")
+	fmt.Printf("  ║  门店：%s\n", storeName)
+	fmt.Printf("  ║  时段：%s\n", slotLabel)
+	fmt.Printf("  ║  号码：%s\n", reservation.Number)
+	if storeAddress != "" {
+		fmt.Printf("  ║  地址：%s\n", storeAddress)
+	}
+	fmt.Println("  ╚══════════════════════════════════════╝")
+	fmt.Println()
+
+	logMessage(now, fmt.Sprintf("=== %s成功 ===", mode))
+	logMessage(now, fmt.Sprintf("  门店：%s", storeName))
+	logMessage(now, fmt.Sprintf("  时段：%s", slotLabel))
+	logMessage(now, fmt.Sprintf("  号码：%s", reservation.Number))
+	if storeAddress != "" {
+		logMessage(now, fmt.Sprintf("  地址：%s", storeAddress))
+	}
+
+	title := fmt.Sprintf("寿司郎%s成功 - %s", mode, storeName)
+	message := fmt.Sprintf("号码: %s | 时段: %s", reservation.Number, slotLabel)
+	DesktopNotification(title, message)
+
+	content := fmt.Sprintf("### %s成功 - %s\n**号码**：`%s`\n**时段**：%s\n**地址**：%s",
+		mode, storeName, reservation.Number, slotLabel, storeAddress)
+	sendNotification(title, content)
+}

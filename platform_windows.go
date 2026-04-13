@@ -12,24 +12,26 @@ import (
 )
 
 func desktopNotification(title, message string) {
-	// Use PowerShell toast notification on Windows
-	script := fmt.Sprintf(
-		`[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; $n.ShowBalloonTip(5000, '%s', '%s', 'Info')`,
-		title, message,
-	)
-	_ = exec.Command("powershell", "-NoProfile", "-Command", script).Run()
+	// Use PowerShell toast notification on Windows — pass args as separate
+	// parameters to avoid injection through string interpolation.
+	script := `
+[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms')
+$n = New-Object System.Windows.Forms.NotifyIcon
+$n.Icon = [System.Drawing.SystemIcons]::Information
+$n.Visible = $true
+$n.ShowBalloonTip(5000, $args[0], $args[1], 'Info')
+`
+	_ = exec.Command("powershell", "-NoProfile", "-Command", script, title, message).Run()
 }
 
 func setSystemProxy(port int) error {
-	// Windows uses registry-based proxy settings
-	// HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings
 	p := fmt.Sprintf("127.0.0.1:%d", port)
-	enableScript := fmt.Sprintf(
-		`Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 1; `+
-			`Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -Value '%s'`,
-		p,
-	)
-	return exec.Command("powershell", "-NoProfile", "-Command", enableScript).Run()
+	// Use $args instead of string interpolation to avoid injection
+	script := `
+Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 1
+Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -Value $args[0]
+`
+	return exec.Command("powershell", "-NoProfile", "-Command", script, p).Run()
 }
 
 func clearSystemProxy() error {
@@ -72,19 +74,31 @@ func daemonProcessAttrs() *syscall.SysProcAttr {
 }
 
 func killProcess(pid int) error {
-	// On Windows, use taskkill to terminate a process
 	return exec.Command("taskkill", "/F", "/PID", fmt.Sprintf("%d", pid)).Run()
 }
 
 func isProcessAlive(pid int) bool {
-	// Check if process exists using tasklist
+	// Use tasklist with exact PID filter; verify the output line contains
+	// the PID as a standalone number (not a substring of a larger PID).
 	out, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/NH").CombinedOutput()
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(out), fmt.Sprintf("%d", pid))
+	line := strings.TrimSpace(string(out))
+	// tasklist returns "INFO: No tasks are running..." when no match
+	if strings.Contains(line, "No tasks") {
+		return false
+	}
+	// Verify the PID appears as an exact number in the output
+	for _, field := range strings.Fields(line) {
+		if field == fmt.Sprintf("%d", pid) {
+			return true
+		}
+	}
+	return false
 }
 
 func openBrowser(url string) error {
-	return exec.Command("cmd", "/c", "start", url).Run()
+	// Use rundll32 instead of cmd /c start to avoid URL injection
+	return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Run()
 }

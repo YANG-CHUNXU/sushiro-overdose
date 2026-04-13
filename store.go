@@ -18,13 +18,16 @@ type StoreRegistry struct {
 	path    string
 }
 
-var globalRegistry *StoreRegistry
+var (
+	globalRegistry     *StoreRegistry
+	globalRegistryOnce sync.Once
+)
 
 func storeRegistryPath() string {
 	return fmt.Sprintf("%s/stores.json", appDirPath())
 }
 
-func LoadStoreRegistry() *StoreRegistry {
+func loadStoreRegistry() *StoreRegistry {
 	r := &StoreRegistry{
 		entries: map[string]StoreEntry{},
 		path:    storeRegistryPath(),
@@ -42,9 +45,9 @@ func LoadStoreRegistry() *StoreRegistry {
 }
 
 func GetStoreRegistry() *StoreRegistry {
-	if globalRegistry == nil {
-		globalRegistry = LoadStoreRegistry()
-	}
+	globalRegistryOnce.Do(func() {
+		globalRegistry = loadStoreRegistry()
+	})
 	return globalRegistry
 }
 
@@ -88,5 +91,5 @@ func (r *StoreRegistry) save() {
 	}
 	data, _ := json.MarshalIndent(entries, "", "  ")
 	os.MkdirAll(appDirPath(), 0o755)
-	_ = os.WriteFile(r.path, data, 0o644)
+	_ = os.WriteFile(r.path, data, 0o600)
 }

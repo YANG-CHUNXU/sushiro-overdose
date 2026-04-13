@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,20 +12,7 @@ import (
 
 type State struct {
 	ActiveReservation      *ReservationRecord `json:"active_reservation,omitempty"`
-	NotificationSent       bool               `json:"notification_sent,omitempty"`
 	SavedAt                string             `json:"saved_at,omitempty"`
-	NotifiedAt             string             `json:"notified_at,omitempty"`
-	LastWeekendSummaryHour string             `json:"last_weekend_summary_hour,omitempty"`
-	LastWeekendSummaryAt   string             `json:"last_weekend_summary_at,omitempty"`
-}
-
-func (s State) IsZero() bool {
-	return s.ActiveReservation == nil &&
-		!s.NotificationSent &&
-		s.SavedAt == "" &&
-		s.NotifiedAt == "" &&
-		s.LastWeekendSummaryHour == "" &&
-		s.LastWeekendSummaryAt == ""
 }
 
 func loadState(path string) (State, error) {
@@ -69,53 +57,15 @@ func clearState(path string) error {
 	return nil
 }
 
-func pruneExpiredReservation(state *State, today time.Time) bool {
-	if state.ActiveReservation == nil {
-		return false
-	}
-	if activeReservation(*state, today) != nil {
-		return false
-	}
-	state.ActiveReservation = nil
-	state.NotificationSent = false
-	state.SavedAt = ""
-	state.NotifiedAt = ""
-	return true
-}
-
-func activeReservation(state State, today time.Time) *ReservationRecord {
-	if state.ActiveReservation == nil || strings.TrimSpace(state.ActiveReservation.QueueDate) == "" {
-		return nil
-	}
-	reservationDay, err := parseCompactDate(state.ActiveReservation.QueueDate, today.Location())
-	if err != nil {
-		return nil
-	}
-	if reservationDay.Before(beginningOfDay(today)) {
-		return nil
-	}
-	return state.ActiveReservation
-}
-
-func currentSummaryHourKey(now time.Time) string {
-	return now.Format("2006-01-02T15")
-}
-
-func currentMinuteKey(now time.Time) string {
-	return now.Format("2006-01-02T15:04")
-}
-
-func shouldSendWeekendSummary(state State, now time.Time) bool {
-	return state.LastWeekendSummaryHour != currentSummaryHourKey(now)
-}
-
 func logMessage(now time.Time, message string) {
 	fmt.Printf("[%s] %s\n", now.Format(time.RFC3339), message)
 }
 
-// readInput reads a trimmed line from stdin. Unlike fmt.Scanln it handles spaces.
+// stdinReader is a shared buffered reader for stdin to avoid losing data.
+var stdinReader = bufio.NewReader(os.Stdin)
+
+// readInput reads a trimmed line from stdin.
 func readInput() string {
-	var line string
-	fmt.Scanln(&line)
+	line, _ := stdinReader.ReadString('\n')
 	return strings.TrimSpace(line)
 }

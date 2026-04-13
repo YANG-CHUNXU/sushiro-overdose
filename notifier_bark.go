@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 )
@@ -26,11 +27,12 @@ func (b *barkNotifier) Send(ctx context.Context, title, content string) error {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := notifierClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("bark HTTP %d", resp.StatusCode)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -28,11 +29,12 @@ func (s *serverChanNotifier) Send(ctx context.Context, title, content string) er
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := notifierClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("serverchan HTTP %d", resp.StatusCode)

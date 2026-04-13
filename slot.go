@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"time"
 )
@@ -100,9 +99,6 @@ func beginningOfDay(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
-func startOfWeek(now time.Time) time.Time {
-	return beginningOfDay(now).AddDate(0, 0, -weekdayIndexMon0(now.Weekday()))
-}
 
 func slotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
 	day, err := parseCompactDate(slot.Date, loc)
@@ -116,10 +112,3 @@ func slotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
 	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, second, 0, loc), nil
 }
 
-func sortSlots(slots []Slot, loc *time.Location) {
-	sort.Slice(slots, func(i, j int) bool {
-		left, _ := slotDateTime(slots[i], loc)
-		right, _ := slotDateTime(slots[j], loc)
-		return left.Before(right)
-	})
-}

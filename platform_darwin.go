@@ -18,8 +18,11 @@ func runCmd(name string, args ...string) (string, error) {
 }
 
 func desktopNotification(title, message string) {
+	// Escape double quotes to prevent AppleScript injection
+	t := strings.ReplaceAll(title, `"`, `\"`)
+	m := strings.ReplaceAll(message, `"`, `\"`)
 	_ = exec.Command("osascript", "-e",
-		fmt.Sprintf(`display notification "%s" with title "%s"`, message, title),
+		fmt.Sprintf(`display notification "%s" with title "%s"`, m, t),
 	).Run()
 }
 

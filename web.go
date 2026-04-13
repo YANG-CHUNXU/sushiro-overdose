@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -24,7 +25,7 @@ func cmdWeb() {
 	if ok {
 		settings = tokens.toSettings()
 	}
-	globalNotifier = BuildNotifierFromConfig()
+	setNotifier(BuildNotifierFromConfig())
 
 	mux := http.NewServeMux()
 
@@ -50,7 +51,7 @@ func cmdWeb() {
 	defer stop()
 
 	// Store settings in context for handlers
-	webSettings = settings
+	setWebSettings(settings)
 
 	go func() {
 		<-ctx.Done()
@@ -71,4 +72,27 @@ func cmdWeb() {
 	}
 }
 
-var webSettings Settings
+var (
+	webSettingsMu sync.RWMutex
+	webSettings   Settings
+	webClient     *Client
+)
+
+func setWebSettings(s Settings) {
+	webSettingsMu.Lock()
+	webSettings = s
+	webClient = NewClient(s)
+	webSettingsMu.Unlock()
+}
+
+func getWebSettings() Settings {
+	webSettingsMu.RLock()
+	defer webSettingsMu.RUnlock()
+	return webSettings
+}
+
+func getWebClient() *Client {
+	webSettingsMu.RLock()
+	defer webSettingsMu.RUnlock()
+	return webClient
+}

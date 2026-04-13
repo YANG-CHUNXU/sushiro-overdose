@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -23,7 +24,20 @@ func historyPath() string {
 	return filepath.Join(appDirPath(), "history.jsonl")
 }
 
+var (
+	lastHistoryWrite time.Time
+	historyMu        sync.Mutex
+)
+
 func appendHistory(slots []Slot, storeID string) {
+	historyMu.Lock()
+	defer historyMu.Unlock()
+
+	if time.Since(lastHistoryWrite) < 30*time.Second {
+		return
+	}
+	lastHistoryWrite = time.Now()
+
 	f, err := os.OpenFile(historyPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return
@@ -63,7 +77,7 @@ func loadHistory() ([]SlotSnapshot, error) {
 			snapshots = append(snapshots, snap)
 		}
 	}
-	return snapshots, nil
+	return snapshots, scanner.Err()
 }
 
 func cmdTrends() {
@@ -82,6 +96,7 @@ func cmdTrends() {
 	type slotKey struct {
 		Date  string
 		Start string
+		End   string
 	}
 	slotStats := map[slotKey]*struct {
 		total int
@@ -90,7 +105,7 @@ func cmdTrends() {
 	}{}
 
 	for _, s := range snapshots {
-		key := slotKey{Date: s.Date, Start: s.Start}
+		key := slotKey{Date: s.Date, Start: s.Start, End: s.End}
 		if _, ok := slotStats[key]; !ok {
 			slotStats[key] = &struct {
 				total int
@@ -137,7 +152,7 @@ func cmdTrends() {
 		}
 		fmt.Printf("  %s-%s %s %5.1f%% 可用 (%d/%d)\n",
 			formatCompactTime(k.Start),
-			formatCompactTime(defaultString("", "")),
+			formatCompactTime(k.End),
 			bar, rate, stats.avail, stats.total)
 	}
 

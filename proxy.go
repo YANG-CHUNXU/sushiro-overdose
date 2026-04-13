@@ -202,7 +202,7 @@ func (t *CapturedTokens) toSettings() Settings {
 		XAppCode:           t.XAppCode,
 		QueryAuthorization: t.QueryAuth,
 		ReservationAuth:    t.ReservationAuth,
-		XAppClient:         fallbackString(t.XAppClient, "miniapp"),
+		XAppClient:         defaultString(t.XAppClient, "miniapp"),
 		UserAgent:          t.UserAgent,
 		Referer:            t.Referer,
 		StateFile:          ".sushiro_state.json",
@@ -284,11 +284,12 @@ func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte)
 // ---- MITM Proxy Server ----
 
 type proxyServer struct {
-	listener net.Listener
-	done     chan struct{}
-	caCert   tls.Certificate
-	caKey    *rsa.PrivateKey
-	tokens   *CapturedTokens
+	listener  net.Listener
+	done      chan struct{}
+	caCert    tls.Certificate
+	caKey     *rsa.PrivateKey
+	tokens    *CapturedTokens
+	transport *http.Transport
 }
 
 func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens) (*proxyServer, error) {
@@ -303,6 +304,10 @@ func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 		caCert:   caCert,
 		caKey:    caKey,
 		tokens:   tokens,
+		transport: &http.Transport{
+			TLSClientConfig: &tls.Config{},
+			Proxy:           func(*http.Request) (*url.URL, error) { return nil, nil },
+		},
 	}
 
 	go ps.serve()
@@ -312,6 +317,9 @@ func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 func (ps *proxyServer) close() {
 	if ps.listener != nil {
 		ps.listener.Close()
+	}
+	if ps.transport != nil {
+		ps.transport.CloseIdleConnections()
 	}
 	select {
 	case <-ps.done:
@@ -438,13 +446,6 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 
 	logMessage(time.Now(), fmt.Sprintf("MITM established for %s", serverName))
 
-	// Direct transport — bypass system proxy to avoid infinite loop
-	directTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{},
-		Proxy:           func(*http.Request) (*url.URL, error) { return nil, nil },
-	}
-	defer directTransport.CloseIdleConnections()
-
 	// Read-Forward-Relay loop
 	clientReader := bufio.NewReader(tlsClient)
 	for {
@@ -474,7 +475,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		req.ContentLength = int64(len(bodyBytes))
 
 		// Forward
-		resp, err := directTransport.RoundTrip(req)
+		resp, err := ps.transport.RoundTrip(req)
 		if err != nil {
 			return
 		}

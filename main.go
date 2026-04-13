@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 const (
-	localConfig = ".sushiro_local.json"
 	appDir      = ".sushiro"
 	pidFile     = "sushiro.pid"
 	logFilePath = "sushiro.log"
@@ -30,6 +30,10 @@ func appDirPath() string {
 
 func pidFilePath() string {
 	return filepath.Join(appDirPath(), pidFile)
+}
+
+func stateFilePath() string {
+	return filepath.Join(appDirPath(), ".sushiro_state.json")
 }
 
 func logPath() string {
@@ -356,7 +360,9 @@ func isRunning() bool {
 
 func atoi(s string) int {
 	var n int
-	fmt.Sscanf(s, "%d", &n)
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil || n <= 0 {
+		return -1
+	}
 	return n
 }
 
@@ -380,12 +386,21 @@ func updateLocalConfigFeishu(webhook string) {
 
 // ---- Notification helper ----
 
-// globalNotifier is initialized once after config is loaded.
+var globalNotifierMu sync.RWMutex
 var globalNotifier *MultiNotifier
 
+func setNotifier(n *MultiNotifier) {
+	globalNotifierMu.Lock()
+	globalNotifier = n
+	globalNotifierMu.Unlock()
+}
+
 func sendNotification(title, content string) {
-	if globalNotifier != nil {
-		globalNotifier.Send(context.Background(), title, content)
+	globalNotifierMu.RLock()
+	n := globalNotifier
+	globalNotifierMu.RUnlock()
+	if n != nil {
+		n.Send(context.Background(), title, content)
 	}
 }
 
@@ -403,14 +418,14 @@ func run(ctx context.Context) error {
 		if err := saveLocalConfig(tokens); err != nil {
 			logMessage(time.Now(), "保存配置失败: "+err.Error())
 		} else {
-			logMessage(time.Now(), "配置已保存到 "+localConfig)
+			logMessage(time.Now(), "配置已保存到 "+localConfigFile)
 		}
 	}
 
 	settings := tokens.toSettings()
 
 	// Initialize notifier
-	globalNotifier = BuildNotifierFromConfig()
+	setNotifier(BuildNotifierFromConfig())
 
 	// Interactive Feishu config (legacy support)
 	tokens.mu.Lock()
@@ -519,18 +534,19 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	// Wait for capture with skip channel
 	skipCapture := make(chan struct{})
 	go func() {
-		var buf [1]byte
-		os.Stdin.Read(buf[:])
-		close(skipCapture)
+		select {
+		case <-ctx.Done():
+			close(skipCapture)
+		default:
+			var buf [1]byte
+			os.Stdin.Read(buf[:])
+			close(skipCapture)
+		}
 	}()
 
 	if err := waitForCapture(ctx, tokens, skipCapture); err != nil {
 		return nil, err
 	}
-
-	// Clean up proxy
-	proxy.close()
-	clearSystemProxy()
 
 	// Prompt phone number if not captured
 	tokens.mu.Lock()
@@ -627,7 +643,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 					Start:   slots[i].Start,
 					End:     slots[i].End,
 				}
-				if best == nil || t.Date+t.Start > best.Date+best.Start {
+				if best == nil || t.Date+t.Start < best.Date+best.Start {
 					best = t
 				}
 			}
@@ -681,49 +697,8 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 		if storeName == "" {
 			storeName = best.StoreID
 		}
-
 		reservation.MonitoredStoreID = best.StoreID
-		reservation.StoreName = storeName
-		reservation.StoreAddress = storeInfo.Address
-		reservation.SlotLabel = slotLabel
-
-		state := State{
-			ActiveReservation: &reservation,
-			SavedAt:           now.Format(time.RFC3339),
-		}
-		_ = saveState(settings.StateFile, state)
-
-		fmt.Println()
-		fmt.Println()
-		fmt.Println("  ╔══════════════════════════════════════╗")
-		fmt.Println("  ║         🎉 预约成功！                ║")
-		fmt.Println("  ╠══════════════════════════════════════╣")
-		fmt.Printf("  ║  门店：%s\n", storeName)
-		fmt.Printf("  ║  时段：%s\n", slotLabel)
-		fmt.Printf("  ║  号码：%s\n", reservation.Number)
-		if storeInfo.Address != "" {
-			fmt.Printf("  ║  地址：%s\n", storeInfo.Address)
-		}
-		fmt.Println("  ╚══════════════════════════════════════╝")
-		fmt.Println()
-
-		logMessage(now, "=== 预约成功 ===")
-		logMessage(now, fmt.Sprintf("  门店：%s", storeName))
-		logMessage(now, fmt.Sprintf("  时段：%s", slotLabel))
-		logMessage(now, fmt.Sprintf("  号码：%s", reservation.Number))
-		if storeInfo.Address != "" {
-			logMessage(now, fmt.Sprintf("  地址：%s", storeInfo.Address))
-		}
-
-		// Desktop notification
-		title := fmt.Sprintf("寿司郎预约成功 - %s", storeName)
-		message := fmt.Sprintf("号码: %s | 时段: %s", reservation.Number, slotLabel)
-		DesktopNotification(title, message)
-
-		// Feishu notification
-		content := fmt.Sprintf("### %s\n**号码**：`%s`\n**时段**：%s\n**地址**：%s",
-			storeName, reservation.Number, slotLabel, storeInfo.Address)
-		sendNotification(title, content)
+		onBookingSuccess(reservation, storeName, storeInfo.Address, slotLabel, "预约")
 
 		return
 	}
