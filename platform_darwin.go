@@ -119,5 +119,5 @@ func isProcessAlive(pid int) bool {
 }
 
 func openBrowser(url string) error {
-	return exec.Command("open", url).Run()
+	return exec.Command("open", url).Start()
 }

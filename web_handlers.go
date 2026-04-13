@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -11,8 +12,8 @@ import (
 // ---- SSE event bus ----
 
 type eventBus struct {
-	mu      sync.RWMutex
-	chans   map[chan string]struct{}
+	mu    sync.RWMutex
+	chans map[chan string]struct{}
 }
 
 var bus = &eventBus{chans: map[chan string]struct{}{}}
@@ -43,7 +44,7 @@ func (b *eventBus) publish(eventType, data string) {
 	}
 }
 
-// ---- Handlers ----
+// ---- Static ----
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
@@ -54,25 +55,32 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(indexHTML))
 }
 
+// ---- Status ----
+
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	pid := readPID()
+	hasConfig := HasValidConfig()
 	status := map[string]any{
-		"version": Version,
-		"running": isRunning(),
-		"pid":     pid,
+		"version":    Version,
+		"running":    isRunning(),
+		"pid":        pid,
+		"has_config": hasConfig,
+		"platform":   runtime.GOOS,
+		"engine":     engine.GetState(),
 	}
 	writeJSON(w, status)
 }
 
+// ---- Calendar ----
+
 func handleCalendar(w http.ResponseWriter, r *http.Request) {
 	ws := getWebSettings()
 	if len(ws.StoreIDs) == 0 {
-		writeError(w, http.StatusServiceUnavailable, "暂无配置，请先运行 sushiro-overdose")
+		writeError(w, http.StatusServiceUnavailable, "暂无配置，请先完成参数捕获")
 		return
 	}
 
 	client := getWebClient()
-
 	query := r.URL.Query()
 	storeID := query.Get("store")
 	if storeID == "" {
@@ -85,7 +93,6 @@ func handleCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enrich with store info
 	storeInfo, _ := client.GetStoreInfo(r.Context(), storeID)
 	reg := GetStoreRegistry()
 	displayName := reg.DisplayName(storeID, storeInfo.Name)
@@ -99,6 +106,8 @@ func handleCalendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 	bus.publish("calendar", mustJSON(result))
 }
+
+// ---- Stores ----
 
 func handleStores(w http.ResponseWriter, r *http.Request) {
 	ws := getWebSettings()
@@ -119,43 +128,72 @@ func handleStores(w http.ResponseWriter, r *http.Request) {
 			address = info.Address
 		}
 		stores = append(stores, map[string]string{
-			"id":        id,
-			"name":      name,
-			"nickname":  reg.DisplayName(id, name),
-			"address":   address,
+			"id":       id,
+			"name":     name,
+			"nickname": reg.DisplayName(id, name),
+			"address":  address,
 		})
 	}
 	writeJSON(w, stores)
 }
 
-func handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "GET only")
-		return
+// ---- Preferences ----
+
+func handlePreferences(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, LoadPreferences())
+	case http.MethodPost, http.MethodPut:
+		var prefs UserPreferences
+		if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
+			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+			return
+		}
+		if prefs.Adult <= 0 && prefs.Child <= 0 {
+			prefs.Adult = 2
+		}
+		if prefs.TableType == "" {
+			prefs.TableType = "T"
+		}
+		if err := SavePreferences(prefs); err != nil {
+			writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
+			return
+		}
+		refreshWebClient()
+		writeJSON(w, map[string]any{"ok": true, "preferences": prefs})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
 	}
-	cfg, _ := loadNotifyConfig()
-	if cfg == nil {
-		cfg = &notifyConfig{}
-	}
-	writeJSON(w, cfg)
 }
 
-func handleSniperStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "POST only")
-		return
+// ---- Notification config ----
+
+func handleNotifyConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg, _ := loadNotifyConfig()
+		if cfg == nil {
+			cfg = &notifyConfig{}
+		}
+		writeJSON(w, cfg)
+	case http.MethodPost, http.MethodPut:
+		var cfg notifyConfig
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+			return
+		}
+		if err := saveNotifyConfig(&cfg); err != nil {
+			writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
+			return
+		}
+		setNotifier(BuildNotifierFromConfig())
+		writeJSON(w, map[string]any{"ok": true})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
 	}
-	var req struct {
-		Date string `json:"date"`
-		Time string `json:"time"` // "1930-2030"
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	// TODO: implement background sniper trigger
-	writeError(w, http.StatusNotImplemented, "sniper API not yet implemented — use CLI: sushiro sniper")
 }
+
+// ---- Reservations ----
 
 func handleReservations(w http.ResponseWriter, r *http.Request) {
 	ws := getWebSettings()
@@ -172,6 +210,70 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, reservations)
 }
 
+// ---- Engine control ----
+
+func handleEngineState(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, engine.GetState())
+}
+
+func handleEngineCapture(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	if err := engine.StartCapture(); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "message": "捕获已开始"})
+}
+
+func handleEngineBooking(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	refreshWebClient()
+	if err := engine.StartBooking(); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "message": "抢号已开始"})
+}
+
+func handleEngineStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	engine.Stop()
+	writeJSON(w, map[string]any{"ok": true, "message": "已停止"})
+}
+
+func handleEngineLogs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, engine.GetLogs())
+}
+
+// ---- Sniper ----
+
+func handleSniperStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var req struct {
+		Date string `json:"date"`
+		Time string `json:"time"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeError(w, http.StatusNotImplemented, "狙击模式暂时请通过命令行使用: sushiro-overdose sniper")
+}
+
+// ---- SSE ----
+
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -186,7 +288,6 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	ch := bus.subscribe()
 	defer bus.unsubscribe(ch)
 
-	// Send initial ping
 	fmt.Fprintf(w, "event: ping\ndata: {}\n\n")
 	flusher.Flush()
 

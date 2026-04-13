@@ -18,7 +18,7 @@ func cmdCalendar() {
 
 	tokens, ok := tryLoadConfig()
 	if !ok {
-		fmt.Println("暂无配置，请先运行 sushiro")
+		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
 	settings := tokens.toSettings()
@@ -27,7 +27,7 @@ func cmdCalendar() {
 	logMessage(time.Now(), "验证认证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
 		logMessage(time.Now(), "验证失败: "+err.Error())
-		fmt.Println("认证参数已过期，请重新运行 sushiro")
+		fmt.Println("认证参数已过期，请重新运行 sushiro-overdose 重新捕获")
 		return
 	}
 

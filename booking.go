@@ -17,7 +17,7 @@ func cmdList() {
 
 	tokens, ok := tryLoadConfig()
 	if !ok {
-		fmt.Println("暂无配置，请先运行 sushiro")
+		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
 	settings := tokens.toSettings()
@@ -84,7 +84,7 @@ func cmdCancel(args []string) {
 
 	tokens, ok := tryLoadConfig()
 	if !ok {
-		fmt.Println("暂无配置，请先运行 sushiro")
+		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
 	settings := tokens.toSettings()

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,37 +12,51 @@ import (
 	"time"
 )
 
-const webPort = 8081
+const defaultWebPort = 8081
 
 func cmdWeb() {
 	printBanner()
 
-	tokens, ok := tryLoadConfig()
-	if !ok {
-		fmt.Println("暂无配置，部分功能不可用。请先运行 sushiro-overdose 获取认证参数。")
+	if checkStaleProxy() {
+		fmt.Println("已清除上次异常退出的系统代理设置")
 	}
 
-	var settings Settings
-	if ok {
-		settings = tokens.toSettings()
-	}
 	setNotifier(BuildNotifierFromConfig())
 
 	mux := http.NewServeMux()
 
-	// API routes
-	mux.HandleFunc("/api/status", handleStatus)
-	mux.HandleFunc("/api/calendar", handleCalendar)
-	mux.HandleFunc("/api/stores", handleStores)
-	mux.HandleFunc("/api/config", handleGetConfig)
-	mux.HandleFunc("/api/sniper/start", handleSniperStart)
-	mux.HandleFunc("/api/reservations", handleReservations)
-	mux.HandleFunc("/api/events", handleEvents)
-
-	// Static files (embedded)
+	// Static
 	mux.HandleFunc("/", handleIndex)
 
-	addr := fmt.Sprintf("127.0.0.1:%d", webPort)
+	// Status & info
+	mux.HandleFunc("/api/status", handleStatus)
+	mux.HandleFunc("/api/stores", handleStores)
+
+	// Calendar & reservations
+	mux.HandleFunc("/api/calendar", handleCalendar)
+	mux.HandleFunc("/api/reservations", handleReservations)
+
+	// Preferences
+	mux.HandleFunc("/api/preferences", handlePreferences)
+
+	// Notifications config
+	mux.HandleFunc("/api/config", handleNotifyConfig)
+
+	// Engine control
+	mux.HandleFunc("/api/engine/state", handleEngineState)
+	mux.HandleFunc("/api/engine/capture", handleEngineCapture)
+	mux.HandleFunc("/api/engine/booking", handleEngineBooking)
+	mux.HandleFunc("/api/engine/stop", handleEngineStop)
+	mux.HandleFunc("/api/engine/logs", handleEngineLogs)
+
+	// Sniper
+	mux.HandleFunc("/api/sniper/start", handleSniperStart)
+
+	// SSE
+	mux.HandleFunc("/api/events", handleEvents)
+
+	port := findAvailablePort(defaultWebPort)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -50,11 +65,17 @@ func cmdWeb() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Store settings in context for handlers
-	setWebSettings(settings)
+	// Prepare settings for calendar/stores APIs if config exists
+	tokens, ok := tryLoadConfig()
+	if ok {
+		prefs := LoadPreferences()
+		settings := tokens.toSettingsWithPrefs(prefs)
+		setWebSettings(settings)
+	}
 
 	go func() {
 		<-ctx.Done()
+		engine.Stop()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		server.Shutdown(shutdownCtx)
@@ -62,7 +83,7 @@ func cmdWeb() {
 
 	url := fmt.Sprintf("http://%s", addr)
 	fmt.Printf("Web UI 启动于 %s\n", url)
-	fmt.Println("按 Ctrl+C 退出")
+	fmt.Println("在浏览器中操作，按 Ctrl+C 退出")
 
 	_ = OpenBrowser(url)
 
@@ -70,6 +91,17 @@ func cmdWeb() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func findAvailablePort(preferred int) int {
+	for port := preferred; port < preferred+100; port++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			ln.Close()
+			return port
+		}
+	}
+	return preferred
 }
 
 var (
@@ -95,4 +127,14 @@ func getWebClient() *Client {
 	webSettingsMu.RLock()
 	defer webSettingsMu.RUnlock()
 	return webClient
+}
+
+func refreshWebClient() {
+	tokens, err := loadLocalConfig()
+	if err != nil {
+		return
+	}
+	prefs := LoadPreferences()
+	settings := tokens.toSettingsWithPrefs(prefs)
+	setWebSettings(settings)
 }

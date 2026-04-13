@@ -83,5 +83,5 @@ func isProcessAlive(pid int) bool {
 }
 
 func openBrowser(url string) error {
-	return exec.Command("xdg-open", url).Run()
+	return exec.Command("xdg-open", url).Start()
 }

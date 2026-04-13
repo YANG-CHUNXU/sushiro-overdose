@@ -29,7 +29,7 @@ func startHealthCheck(ctx context.Context, client *Client, storeIDs []string) ch
 					if err != nil {
 						if isAuthError(err) {
 							logMessage(time.Now(), "健康检查：认证参数已失效")
-							sendNotification("寿司郎 - 认证过期", "健康检测发现认证参数已失效，请重新运行 `sushiro`")
+							sendNotification("寿司郎 - 认证过期", "健康检测发现认证参数已失效，请重新打开 sushiro-overdose 重新捕获")
 							deleteLocalConfig()
 							return
 						}

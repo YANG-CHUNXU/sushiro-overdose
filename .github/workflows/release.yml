@@ -28,3 +28,22 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bundle macOS .app
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BINARY="dist/sushiro-overdose_darwin_all/sushiro-overdose"
+          if [ ! -f "$BINARY" ]; then
+            BINARY=$(find dist -name 'sushiro-overdose' -path '*darwin*' | head -1)
+          fi
+          chmod +x scripts/bundle-macos.sh
+          ./scripts/bundle-macos.sh "$BINARY" "$VERSION" dist/
+
+      - name: Upload macOS .app to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release upload "${GITHUB_REF_NAME}" \
+            "dist/Sushiro Overdose-${VERSION}-macOS.zip" \
+            --clobber

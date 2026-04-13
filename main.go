@@ -50,22 +50,23 @@ func printBanner() {
 	fmt.Println("███    ███ ███   ▄███    ▄█    ███ ███    ███    ▄█    ███   ███    ███   ███")
 	fmt.Println(" ▀██████▀  ████████▀   ▄████████▀  ████████▀   ▄████████▀    ███    █▀    █▀")
 	fmt.Println()
-	fmt.Printf("寿司郎重度依赖 v%s - https://github.com/Ryujoxys/sushiro-overdose\n", Version)
+	fmt.Printf("寿司郎 Overdose v%s — https://github.com/Ryujoxys/sushiro-overdose\n", Version)
 	fmt.Println()
 }
 
 func printUsage() {
-	fmt.Println("Usage: sushiro [command]")
+	fmt.Println("Usage: sushiro-overdose [command]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  (no args)    Run in foreground (interactive)")
-	fmt.Println("  start, -d    Start in background (daemon)")
+	fmt.Println("  (no args)    Launch Web UI (recommended)")
+	fmt.Println("  web          Launch Web UI")
+	fmt.Println("  cli          Run in foreground CLI mode (advanced)")
+	fmt.Println("  start, -d    Start booking daemon in background")
 	fmt.Println("  status       Show running status")
 	fmt.Println("  calendar     View available time slots (nearest 7 days)")
 	fmt.Println("  sniper       Sniper mode - pre-book unopened slots")
 	fmt.Println("  list         Show current reservations")
 	fmt.Println("  cancel <id>  Cancel a reservation by ticket ID")
-	fmt.Println("  web          Launch Web UI")
 	fmt.Println("  trends       Analyze slot availability trends")
 	fmt.Println("  recommend    Smart time slot recommendations")
 	fmt.Println("  exit         Stop background process")
@@ -74,9 +75,14 @@ func printUsage() {
 }
 
 func main() {
+	os.MkdirAll(appDirPath(), 0o755)
+	migrateOldConfig()
+
 	args := os.Args[1:]
 
-	if len(args) == 0 || (len(args) == 1 && (args[0] == "run" || args[0] == "-f" || args[0] == "--foreground")) {
+	if len(args) == 0 || (len(args) == 1 && args[0] == "web") {
+		cmdWeb()
+	} else if len(args) == 1 && (args[0] == "cli" || args[0] == "run" || args[0] == "-f" || args[0] == "--foreground") {
 		cmdForeground()
 	} else if len(args) == 1 && (args[0] == "start" || args[0] == "-d" || args[0] == "--daemon") {
 		cmdStart()
@@ -92,8 +98,6 @@ func main() {
 		cmdList()
 	} else if len(args) >= 1 && args[0] == "cancel" {
 		cmdCancel(args[1:])
-	} else if len(args) == 1 && args[0] == "web" {
-		cmdWeb()
 	} else if len(args) == 1 && (args[0] == "trends" || args[0] == "history") {
 		cmdTrends()
 	} else if len(args) == 1 && (args[0] == "recommend" || args[0] == "rec") {
@@ -479,14 +483,25 @@ func run(ctx context.Context) error {
 	tokens.mu.Unlock()
 	saveLocalConfig(tokens)
 
-	slotConfig := configureSlots()
+	prefs := LoadPreferences()
+	prefs.SelectedStores = selectedStores
 
-	// Start background health check
+	// CLI mode: offer to configure slots interactively or use saved
+	if len(prefs.WeekdaySlots) == 0 && len(prefs.SaturdaySlots) == 0 && len(prefs.SundaySlots) == 0 {
+		slotConfig := configureSlots()
+		prefs.WeekdaySlots = slotPrefToRanges(slotConfig.Weekday)
+		prefs.SaturdaySlots = slotPrefToRanges(slotConfig.Saturday)
+		prefs.SundaySlots = slotPrefToRanges(slotConfig.Sunday)
+	} else {
+		fmt.Println("\n使用已保存的时段偏好（可通过 Web UI 修改）")
+	}
+	SavePreferences(prefs)
+
 	healthStop := startHealthCheck(ctx, client, selectedStores)
 	defer close(healthStop)
 
 	logMessage(time.Now(), "开始抢号...")
-	runBookingLoop(ctx, client, settings, selectedStores, slotConfig)
+	runBookingLoop(ctx, client, settings, selectedStores, prefs)
 	return nil
 }
 
@@ -583,7 +598,7 @@ func isAuthError(err error) bool {
 		strings.Contains(msg, "HTTP 403")
 }
 
-func runBookingLoop(ctx context.Context, client *Client, settings Settings, storeIDs []string, cfg SlotConfig) {
+func runBookingLoop(ctx context.Context, client *Client, settings Settings, storeIDs []string, prefs UserPreferences) {
 	var booked map[string]bool
 	errStreak := 0
 	authErrors := 0
@@ -605,7 +620,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 					authErrors++
 					if authErrors >= 3 {
 						logMessage(now, "认证失败，请重新运行获取新参数")
-						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新运行 `sushiro run` 获取新参数")
+						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新打开 sushiro-overdose 重新捕获")
 						deleteLocalConfig()
 						return
 					}
@@ -626,7 +641,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			appendHistory(slots, storeID)
 
 			for i := range slots {
-				if !cfg.shouldTarget(slots[i], settings.Location) {
+				if !prefs.ShouldTarget(slots[i], settings.Location) {
 					continue
 				}
 				// Skip non-available slots
@@ -670,7 +685,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				authErrors++
 				if authErrors >= 3 {
 					logMessage(now, "认证失败，请重新运行")
-					sendNotification("寿司郎 - 认证失败", "请重新运行 `sushiro run`")
+					sendNotification("寿司郎 - 认证失败", "请重新打开 sushiro-overdose 重新捕获")
 					deleteLocalConfig()
 					return
 				}

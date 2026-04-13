@@ -52,6 +52,11 @@ func newCapturedTokens() *CapturedTokens {
 func (t *CapturedTokens) IsComplete() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.IsCompleteUnlocked()
+}
+
+// IsCompleteUnlocked checks completeness without locking (caller must hold lock).
+func (t *CapturedTokens) IsCompleteUnlocked() bool {
 	return t.XAppCode != "" &&
 		t.QueryAuth != "" &&
 		t.ReservationAuth != "" &&
@@ -91,7 +96,32 @@ func maskToken(v string) string {
 	return v[:8] + "..."
 }
 
-const localConfigFile = ".sushiro_local.json"
+var localConfigFile = localConfigPath()
+
+func localConfigPath() string {
+	return filepath.Join(appDirPath(), "config.json")
+}
+
+// migrateOldConfig moves the old CWD-based config to ~/.sushiro/ if it exists.
+func migrateOldConfig() {
+	oldPath := ".sushiro_local.json"
+	if _, err := os.Stat(oldPath); err != nil {
+		return
+	}
+	newPath := localConfigPath()
+	if _, err := os.Stat(newPath); err == nil {
+		return
+	}
+	data, err := os.ReadFile(oldPath)
+	if err != nil {
+		return
+	}
+	os.MkdirAll(appDirPath(), 0o755)
+	if os.WriteFile(newPath, data, 0o600) == nil {
+		os.Remove(oldPath)
+		logMessage(time.Now(), "配置已迁移到 "+newPath)
+	}
+}
 
 type localConfigJSON struct {
 	XAppCode        string   `json:"x_app_code"`
@@ -123,6 +153,7 @@ func saveLocalConfig(tokens *CapturedTokens) error {
 	if err != nil {
 		return err
 	}
+	os.MkdirAll(appDirPath(), 0o755)
 	return os.WriteFile(localConfigFile, raw, 0o600)
 }
 
@@ -185,17 +216,36 @@ func saveFeishuConfig(webhook string) {
 }
 
 func (t *CapturedTokens) toSettings() Settings {
+	return t.toSettingsWithPrefs(LoadPreferences())
+}
+
+func (t *CapturedTokens) toSettingsWithPrefs(prefs UserPreferences) Settings {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	timezone := "Asia/Shanghai"
 	location, _ := time.LoadLocation(timezone)
 
+	storeIDs := t.StoreIDs
+	if len(prefs.SelectedStores) > 0 {
+		storeIDs = prefs.SelectedStores
+	}
+
+	adult := prefs.Adult
+	if adult <= 0 {
+		adult = 2
+	}
+
+	tableType := prefs.TableType
+	if tableType == "" {
+		tableType = "T"
+	}
+
 	return Settings{
-		StoreIDs:           t.StoreIDs,
-		Adult:              2,
-		Child:              0,
-		TableType:          "T",
+		StoreIDs:           storeIDs,
+		Adult:              adult,
+		Child:              prefs.Child,
+		TableType:          tableType,
 		Debug:              true,
 		PhoneNumber:        t.PhoneNumber,
 		WechatID:           t.WechatID,
@@ -205,7 +255,7 @@ func (t *CapturedTokens) toSettings() Settings {
 		XAppClient:         defaultString(t.XAppClient, "miniapp"),
 		UserAgent:          t.UserAgent,
 		Referer:            t.Referer,
-		StateFile:          ".sushiro_state.json",
+		StateFile:          stateFilePath(),
 		Timezone:           timezone,
 		Location:           location,
 		PollInterval:       60 * time.Second,
@@ -658,5 +708,18 @@ func configureSlots() SlotConfig {
 		Weekday:  choose("工作日 (周一-周五)"),
 		Saturday: choose("周六"),
 		Sunday:   choose("周日"),
+	}
+}
+
+func slotPrefToRanges(pref SlotPref) []TimeRange {
+	switch pref {
+	case Pref1930to2030:
+		return []TimeRange{{Start: "1930", End: "2030"}}
+	case PrefBefore2000:
+		return []TimeRange{{Start: "0000", End: "2000"}}
+	case Pref1030to1300:
+		return []TimeRange{{Start: "1030", End: "1300"}}
+	default:
+		return nil
 	}
 }
