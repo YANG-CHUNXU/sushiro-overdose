@@ -10,20 +10,55 @@
 
 ## 下载安装
 
-从 [GitHub Releases](https://github.com/Ryujoxys/sushiro-overdose/releases) 下载最新版本：
+### Windows 用户（推荐：一键安装）
+
+任选一种方式：
+
+**方式 A：双击 install.bat（最简单）**
+
+1. 下载 [install.bat](https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install.bat)（右键「另存为」）
+2. 双击运行，自动完成下载、解压、加入 PATH、创建桌面快捷方式
+3. 安装完成后，双击桌面「Sushiro Overdose」图标即可使用
+
+**方式 B：PowerShell 一行命令**
+
+打开 PowerShell（按 `Win+X` → 选「终端」或「PowerShell」），粘贴执行：
+
+```powershell
+irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/install.ps1 | iex
+```
+
+**方式 C：手动下载 .exe**
+
+从 [GitHub Releases](https://github.com/Ryujoxys/sushiro-overdose/releases) 下载 `sushiro-overdose_*_windows_amd64.zip`，解压后双击 `sushiro-overdose.exe` 即可。
+
+> Windows 注意事项：
+> - 首次运行 SmartScreen 可能弹窗提示「Windows 已保护你的电脑」，点击「更多信息」→「仍要运行」即可。
+> - 程序会自动安装一张本地 MITM 证书并临时设置系统代理，**退出时自动恢复**。
+> - 如杀毒软件误报，请将 `%LOCALAPPDATA%\sushiro\sushiro-overdose.exe` 加入白名单。
+> - 抓包阶段仅拦截寿司郎域名，不影响其他流量。
+
+### macOS / Linux 用户
 
 | 平台 | 下载文件 | 使用方式 |
 |------|---------|---------|
 | **macOS** | `Sushiro Overdose-*-macOS.zip` | 解压得到 .app，双击运行 |
-| **Windows** | `sushiro-overdose_*_windows_amd64.zip` | 解压得到 .exe，双击运行 |
 | **Linux** | `sushiro-overdose_*_linux_amd64.tar.gz` | 解压后终端运行 |
+
+也可使用一键脚本：
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/install.sh | bash
+```
 
 ### 从源码构建
 
 ```bash
 git clone https://github.com/Ryujoxys/sushiro-overdose.git
 cd sushiro-overdose
-go build -o sushiro-overdose .
+go build -o sushiro-overdose .       # macOS / Linux
+# Windows (PowerShell):
+# go build -o sushiro-overdose.exe .
 ```
 
 ---
