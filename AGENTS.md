@@ -64,6 +64,7 @@ main.go (默认启动 Web UI)
 | `web_engine.go` | 状态、预约、引擎控制、洞察 API |
 | `web_preferences.go` | 偏好、通知、repair/uninstall API |
 | `web_sniper.go` | Web 狙击计划 API |
+| `web_sampling.go` | Web 后台采样 API |
 | `web_events.go` | SSE 事件总线 |
 | `web_static.go` | `sushiroLogoSVG` Logo SVG 常量 + `indexHTML` 完整单页（Sushiro 品牌配色 + 官网同款布局） |
 
@@ -115,6 +116,10 @@ main.go (默认启动 Web UI)
 | `history.go` | `history.jsonl` 追加（节流 30s），`cmdTrends` 趋势分析 |
 | `recommend.go` | `cmdRecommend` 基于历史数据的时段推荐 |
 | `insights.go` | Web/CLI 可复用的历史洞察：按门店/星期/时段统计开放概率、售罄速度与推荐 |
+| `activity.go` | 主流程活动标记与采样跨进程锁，确保采样避让抢号/捕获/狙击 |
+| `sampling.go` | 后台采样配置、运行状态、定时采样 runner，仅记录历史不抢号 |
+| `sampling_cli.go` | `sample` CLI：单次采样、前台采样、后台静默采样 start/stop/status |
+| `update_check.go` | GitHub Latest Release 检查与版本比较 |
 | `health.go` | 每 5 分钟验证 Token 有效性 |
 | `state.go` | `State` JSON 读写，`logMessage`，`readInput` |
 | `store.go` | `StoreRegistry` 门店昵称管理 `~/.sushiro/stores.json` |
@@ -151,9 +156,14 @@ main.go (默认启动 Web UI)
 ├── preferences.json     用户偏好（人数/桌型/目标时段/优先级）
 ├── notify.json          通知渠道配置
 ├── stores.json          门店昵称
+├── sampling.json        后台采样配置
 ├── history.jsonl        历史时段数据（JSONL 格式）
 ├── sushiro.log          后台模式日志
+├── sampling.log         后台采样日志
 ├── sushiro.pid          后台进程 PID
+├── sampling.pid         后台采样进程 PID
+├── sampling.lock        后台采样跨进程互斥锁
+├── main_active.json     主流程活动标记（采样避让用）
 ├── .sushiro_state.json  预约状态
 └── proxy_active.json    代理活跃标记（watchdog 用）
 
@@ -179,6 +189,7 @@ main.go (默认启动 Web UI)
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
 | GET | `/api/diagnostics` | 只读、脱敏的本机诊断信息 |
+| GET | `/api/update` | 检查 GitHub 最新 Release |
 | POST | `/api/notifications/test` | 发送通知渠道测试 |
 | POST | `/api/repair-proxy` | 恢复系统代理并清理代理 marker |
 | POST | `/api/uninstall` | 清理本地敏感数据和证书 |
@@ -189,7 +200,11 @@ main.go (默认启动 Web UI)
 | GET | `/api/engine/logs` | 获取引擎日志 |
 | GET/POST | `/api/sniper/plan` | 读取/保存 Web 狙击计划 |
 | POST | `/api/sniper/start` | 启动 Web 狙击计划 |
-| GET | `/api/events` | SSE 事件流（engine/log/calendar 事件） |
+| GET/POST | `/api/sampling` | 读取/保存后台采样配置 |
+| POST | `/api/sampling/start` | 启动后台采样 |
+| POST | `/api/sampling/stop` | 停止后台采样 |
+| POST | `/api/sampling/once` | 立即采样一次 |
+| GET | `/api/events` | SSE 事件流（engine/log/calendar/sampling 事件） |
 
 ---
 

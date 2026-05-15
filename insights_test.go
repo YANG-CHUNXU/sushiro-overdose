@@ -112,6 +112,7 @@ func TestAnalyzeSlotHistoryTopNRecommendations(t *testing.T) {
 		insightSnapshot("2026-05-08T10:30:00+08:00", "001", "20260522", "193000", "200000", "AVAILABLE"),
 		insightSnapshot("2026-05-02T10:00:00+08:00", "002", "20260516", "180000", "183000", "AVAILABLE"),
 		insightSnapshot("2026-05-02T10:30:00+08:00", "002", "20260516", "180000", "183000", "AVAILABLE"),
+		insightSnapshot("2026-05-09T10:00:00+08:00", "002", "20260523", "180000", "183000", "AVAILABLE"),
 	}
 
 	analysis := AnalyzeSlotHistoryTopN(snapshots, now, 1)

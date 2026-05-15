@@ -8,15 +8,19 @@ import (
 	"time"
 )
 
-const defaultInsightTopN = 10
+const (
+	defaultInsightTopN                   = 10
+	minInsightRecommendationObservations = 3
+)
 
 type SlotHistoryAnalysis struct {
-	GeneratedAt      string                      `json:"generated_at"`
-	TotalSnapshots   int                         `json:"total_snapshots"`
-	ValidSnapshots   int                         `json:"valid_snapshots"`
-	SkippedSnapshots int                         `json:"skipped_snapshots"`
-	Stores           []StoreHistoryInsight       `json:"stores"`
-	Recommendations  []SlotInsightRecommendation `json:"recommendations"`
+	GeneratedAt                   string                      `json:"generated_at"`
+	TotalSnapshots                int                         `json:"total_snapshots"`
+	ValidSnapshots                int                         `json:"valid_snapshots"`
+	SkippedSnapshots              int                         `json:"skipped_snapshots"`
+	MinRecommendationObservations int                         `json:"min_recommendation_observations"`
+	Stores                        []StoreHistoryInsight       `json:"stores"`
+	Recommendations               []SlotInsightRecommendation `json:"recommendations"`
 }
 
 type StoreHistoryInsight struct {
@@ -113,8 +117,9 @@ func AnalyzeSlotHistoryTopN(snapshots []SlotSnapshot, now time.Time, topN int) S
 	stats := map[insightStatKey]*insightStatAccumulator{}
 	transitions := map[insightTransitionKey][]insightObservation{}
 	analysis := SlotHistoryAnalysis{
-		GeneratedAt:    now.Format(time.RFC3339),
-		TotalSnapshots: len(snapshots),
+		GeneratedAt:                   now.Format(time.RFC3339),
+		TotalSnapshots:                len(snapshots),
+		MinRecommendationObservations: minInsightRecommendationObservations,
 	}
 
 	for _, snapshot := range snapshots {
@@ -173,7 +178,7 @@ func TopSlotInsightRecommendations(analysis SlotHistoryAnalysis, topN int) []Slo
 	stats := flattenSlotHistoryStats(analysis.Stores)
 	recommendations := make([]SlotInsightRecommendation, 0, len(stats))
 	for _, stat := range stats {
-		if stat.Observations == 0 {
+		if stat.Observations < minInsightRecommendationObservations {
 			continue
 		}
 		recommendations = append(recommendations, SlotInsightRecommendation{

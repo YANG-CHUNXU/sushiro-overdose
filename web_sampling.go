@@ -1,0 +1,76 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+)
+
+func handleSampling(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]any{
+			"config": LoadSamplingConfig(),
+			"state":  sampler.GetState(),
+		})
+	case http.MethodPost, http.MethodPut:
+		var cfg SamplingConfig
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+			return
+		}
+		cfg = NormalizeSamplingConfig(cfg)
+		if err := SaveSamplingConfig(cfg); err != nil {
+			writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
+			return
+		}
+		if !cfg.Enabled {
+			sampler.Stop()
+		} else if sampler.IsRunning() {
+			if err := sampler.Restart(context.Background(), cfg); err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+		}
+		writeJSON(w, map[string]any{"ok": true, "config": cfg, "state": sampler.GetState()})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
+	}
+}
+
+func handleSamplingStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	if err := sampler.Start(context.Background()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "state": sampler.GetState()})
+}
+
+func handleSamplingStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	sampler.Stop()
+	if _, err := stopSamplingDaemon(); err != nil {
+		writeError(w, http.StatusInternalServerError, "停止守护采样失败: "+err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "state": sampler.GetState()})
+}
+
+func handleSamplingOnce(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	cfg := LoadSamplingConfig()
+	cfg.Enabled = true
+	result := sampler.RunOnceNow(r.Context(), cfg)
+	sampler.applyRunResult(result)
+	writeJSON(w, map[string]any{"ok": !result.Skipped, "result": result, "state": sampler.GetState()})
+}

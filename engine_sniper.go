@@ -22,12 +22,15 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 		return fmt.Errorf("引擎正在运行中")
 	}
 	e.cancel = cancel
+	done := make(chan struct{})
+	e.done = done
 	e.state.Status = EngineSniping
 	e.state.Message = "正在验证狙击计划..."
 	e.state.Attempts = 0
 	e.state.Reservation = nil
 	e.mu.Unlock()
 	bus.publish("engine", mustJSON(e.GetState()))
+	pauseSamplingForMainFlow()
 
 	tokens, err := loadLocalConfig()
 	if err != nil {
@@ -71,7 +74,10 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	}
 
 	setNotifier(BuildNotifierFromConfig())
-	go e.runSniper(ctx, client, settings, targets)
+	go func() {
+		defer close(done)
+		e.runSniper(ctx, client, settings, targets)
+	}()
 	return nil
 }
 
@@ -129,6 +135,9 @@ func validateSniperTargetsForSettings(targets []SniperTarget, settings Settings)
 }
 
 func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings Settings, targets []SniperTarget) {
+	doneActivity := markMainFlowActive("sniping")
+	defer doneActivity()
+
 	sortSniperTargets(targets, settings.Location)
 	e.setState(EngineSniping, fmt.Sprintf("狙击计划已启动，共 %d 个目标", len(targets)))
 	e.addLog(fmt.Sprintf("开始 Web 狙击计划 — 目标数: %d", len(targets)))

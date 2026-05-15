@@ -18,6 +18,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		"has_config": hasConfig,
 		"platform":   runtime.GOOS,
 		"engine":     engine.GetState(),
+		"sampling":   sampler.GetState(),
 	}
 	writeJSON(w, status)
 }
@@ -96,4 +97,12 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, analysis)
+}
+
+func handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	writeJSON(w, CheckLatestRelease(r.Context()))
 }

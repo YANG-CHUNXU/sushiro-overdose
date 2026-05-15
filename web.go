@@ -38,6 +38,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/diagnostics", handleDiagnostics)
 	mux.HandleFunc("/api/insights", handleInsights)
+	mux.HandleFunc("/api/update", handleUpdateCheck)
 	mux.HandleFunc("/api/stores", handleStores)
 
 	// Calendar & reservations
@@ -64,6 +65,12 @@ func cmdWeb() {
 	mux.HandleFunc("/api/sniper/start", handleSniperStart)
 	mux.HandleFunc("/api/sniper/plan", handleSniperPlan)
 
+	// Background sampling
+	mux.HandleFunc("/api/sampling", handleSampling)
+	mux.HandleFunc("/api/sampling/start", handleSamplingStart)
+	mux.HandleFunc("/api/sampling/stop", handleSamplingStop)
+	mux.HandleFunc("/api/sampling/once", handleSamplingOnce)
+
 	// SSE
 	mux.HandleFunc("/api/events", handleEvents)
 
@@ -84,10 +91,12 @@ func cmdWeb() {
 		settings := tokens.toSettingsWithPrefs(prefs)
 		setWebSettings(settings)
 	}
+	sampler.StartIfAuto(ctx)
 
 	go func() {
 		<-ctx.Done()
 		engine.Stop()
+		sampler.Stop()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		server.Shutdown(shutdownCtx)

@@ -261,6 +261,9 @@ func sniperOpenTime(target SniperTarget, loc *time.Location) time.Time {
 }
 
 func runSniperLoop(ctx context.Context, client *Client, settings Settings, targets []SniperTarget) {
+	doneActivity := markMainFlowActive("sniping")
+	defer doneActivity()
+
 	// Sort targets by open time
 	sortSniperTargets(targets, settings.Location)
 

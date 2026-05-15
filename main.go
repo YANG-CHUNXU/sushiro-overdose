@@ -69,6 +69,7 @@ func printUsage() {
 	fmt.Println("  cancel <id>  Cancel a reservation by ticket ID")
 	fmt.Println("  trends       Analyze slot availability trends")
 	fmt.Println("  recommend    Smart time slot recommendations")
+	fmt.Println("  sample       Background sampling for history insights")
 	fmt.Println("  doctor       Print readonly diagnostics")
 	fmt.Println("  repair-proxy Restore system proxy settings")
 	fmt.Println("  uninstall    Remove local sensitive data and certificate")
@@ -111,6 +112,10 @@ func main() {
 		cmdRecommend()
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
+	} else if len(args) == 1 && args[0] == "--sampler-daemon-child" {
+		cmdSamplerDaemon()
+	} else if len(args) >= 1 && (args[0] == "sample" || args[0] == "sampling") {
+		cmdSample(args[1:])
 	} else if len(args) == 1 && (args[0] == "repair-proxy" || args[0] == "repair") {
 		cmdRepairProxy()
 	} else if len(args) >= 1 && (args[0] == "uninstall" || args[0] == "purge") {
@@ -416,6 +421,9 @@ func run(ctx context.Context) error {
 }
 
 func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
+	doneActivity := markMainFlowActive("capturing")
+	defer doneActivity()
+
 	// Load or generate CA certificate
 	caCert, caKey, err := loadOrGenerateCA()
 	if err != nil {
@@ -524,6 +532,9 @@ func maskPhone(phone string) string {
 }
 
 func runBookingLoop(ctx context.Context, client *Client, settings Settings, storeIDs []string, prefs UserPreferences) {
+	doneActivity := markMainFlowActive("booking")
+	defer doneActivity()
+
 	var booked map[string]bool
 	errStreak := 0
 	authErrors := 0

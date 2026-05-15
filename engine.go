@@ -53,6 +53,7 @@ type BookingEngine struct {
 	mu     sync.RWMutex
 	state  EngineState
 	cancel context.CancelFunc
+	done   chan struct{}
 	tokens *CapturedTokens
 	proxy  *proxyServer
 	logs   []LogEntry
@@ -137,16 +138,25 @@ func (e *BookingEngine) StartCapture() error {
 		return fmt.Errorf("引擎正在运行中")
 	}
 	e.cancel = cancel
+	done := make(chan struct{})
+	e.done = done
 	e.state.Status = EngineCapturing
 	e.state.Message = "正在启动参数捕获..."
 	e.mu.Unlock()
 	bus.publish("engine", mustJSON(e.GetState()))
+	pauseSamplingForMainFlow()
 
-	go e.runCapture(ctx)
+	go func() {
+		defer close(done)
+		e.runCapture(ctx)
+	}()
 	return nil
 }
 
 func (e *BookingEngine) runCapture(ctx context.Context) {
+	doneActivity := markMainFlowActive("capturing")
+	defer doneActivity()
+
 	e.setState(EngineCapturing, "正在准备证书...")
 
 	caCert, caKey, err := loadOrGenerateCA()
@@ -249,12 +259,15 @@ func (e *BookingEngine) StartBooking() error {
 		return fmt.Errorf("引擎正在运行中")
 	}
 	e.cancel = cancel
+	done := make(chan struct{})
+	e.done = done
 	e.state.Status = EngineBooking
 	e.state.Message = "正在验证认证参数..."
 	e.state.Attempts = 0
 	e.state.Reservation = nil
 	e.mu.Unlock()
 	bus.publish("engine", mustJSON(e.GetState()))
+	pauseSamplingForMainFlow()
 
 	tokens, err := loadLocalConfig()
 	if err != nil {
@@ -291,7 +304,10 @@ func (e *BookingEngine) StartBooking() error {
 
 	setNotifier(BuildNotifierFromConfig())
 
-	go e.runBooking(ctx, client, settings, prefs)
+	go func() {
+		defer close(done)
+		e.runBooking(ctx, client, settings, prefs)
+	}()
 	return nil
 }
 
@@ -302,6 +318,9 @@ func (e *BookingEngine) isRunningLocked() bool {
 }
 
 func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings Settings, prefs UserPreferences) {
+	doneActivity := markMainFlowActive("booking")
+	defer doneActivity()
+
 	e.setState(EngineBooking, "正在抢号...")
 	e.addLog(fmt.Sprintf("开始抢号 — 门店: %v, 成人: %d, 儿童: %d", settings.StoreIDs, settings.Adult, settings.Child))
 
@@ -441,15 +460,30 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 // Stop halts any running operation.
 func (e *BookingEngine) Stop() {
 	e.mu.Lock()
+	cancel := e.cancel
+	done := e.done
 	if e.cancel != nil {
 		e.cancel()
-		e.cancel = nil
 	}
 	if e.proxy != nil {
 		e.proxy.close()
 		e.proxy = nil
 		ClearSystemProxy()
 		markProxyInactive()
+	}
+	e.mu.Unlock()
+
+	if cancel != nil && done != nil {
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+		}
+	}
+
+	e.mu.Lock()
+	if e.done == done {
+		e.cancel = nil
+		e.done = nil
 	}
 	e.state.Status = EngineIdle
 	e.state.Message = "已停止"
