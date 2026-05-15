@@ -102,6 +102,20 @@ func installCert() error {
 	return cmd.Run()
 }
 
+func uninstallCert() error {
+	cmd := exec.Command("certutil", "-delstore", "-user", "Root", "Sushiro Proxy CA")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(strings.ToLower(msg), "cannot find") || strings.Contains(strings.ToLower(msg), "not found") {
+			return nil
+		}
+		return fmt.Errorf("删除证书失败: %w: %s", err, msg)
+	}
+	return nil
+}
+
 func daemonProcessAttrs() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
 		HideWindow:    true,

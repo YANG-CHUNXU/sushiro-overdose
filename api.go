@@ -17,6 +17,15 @@ import (
 
 var errNoReservationAvailable = errors.New("no reservation available")
 
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Body)
+}
+
 type Client struct {
 	settings   Settings
 	httpClient *http.Client
@@ -92,7 +101,7 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 	}
 	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), payload)
 	if err != nil {
-		if strings.Contains(err.Error(), "E044") || strings.Contains(err.Error(), "no_more_reservations") {
+		if isNoReservationText(err.Error()) {
 			return ReservationRecord{}, errNoReservationAvailable
 		}
 		return ReservationRecord{}, err
@@ -101,6 +110,18 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 	var reservation ReservationRecord
 	if err := json.Unmarshal(body, &reservation); err != nil {
 		return ReservationRecord{}, fmt.Errorf("reservation response is not a JSON object: %w", err)
+	}
+	if !reservationLooksSuccessful(reservation) {
+		var wrapper struct {
+			Data ReservationRecord `json:"data"`
+		}
+		if err := json.Unmarshal(body, &wrapper); err == nil && reservationLooksSuccessful(wrapper.Data) {
+			return wrapper.Data, nil
+		}
+		if err := reservationBusinessError(body); err != nil {
+			return ReservationRecord{}, err
+		}
+		return ReservationRecord{}, fmt.Errorf("reservation response missing ticket id/number: %s", normalizeErrorBody(body))
 	}
 	return reservation, nil
 }
@@ -180,7 +201,7 @@ func (c *Client) doJSON(ctx context.Context, method, target string, headers map[
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, normalizeErrorBody(responseBody))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: normalizeErrorBody(responseBody)}
 	}
 	if len(responseBody) == 0 {
 		return nil, nil
@@ -189,6 +210,44 @@ func (c *Client) doJSON(ctx context.Context, method, target string, headers map[
 		return nil, fmt.Errorf("response is not JSON: %s", string(responseBody))
 	}
 	return responseBody, nil
+}
+
+func reservationLooksSuccessful(r ReservationRecord) bool {
+	return r.TicketID != 0 || strings.TrimSpace(r.Number) != ""
+}
+
+func reservationBusinessError(body []byte) error {
+	text := normalizeErrorBody(body)
+	if isNoReservationText(text) {
+		return errNoReservationAvailable
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	for _, key := range []string{"code", "errorCode", "error_code", "errCode", "message", "msg", "error"} {
+		if v, ok := payload[key]; ok {
+			if isNoReservationText(fmt.Sprintf("%v", v)) {
+				return errNoReservationAvailable
+			}
+		}
+	}
+	return nil
+}
+
+func isNoReservationText(text string) bool {
+	text = strings.ToLower(text)
+	return strings.Contains(text, "e044") ||
+		strings.Contains(text, "no_more_reservations") ||
+		strings.Contains(text, "no reservation available") ||
+		strings.Contains(text, "名额已满") ||
+		strings.Contains(text, "已满")
+}
+
+func isHTTPStatus(err error, status int) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == status
 }
 
 func normalizeErrorBody(body []byte) string {

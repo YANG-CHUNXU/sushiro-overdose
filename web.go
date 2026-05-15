@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +27,7 @@ func cmdWeb() {
 	}
 
 	setNotifier(BuildNotifierFromConfig())
+	setWebCSRFToken(newWebCSRFToken())
 
 	mux := http.NewServeMux()
 
@@ -30,6 +36,8 @@ func cmdWeb() {
 
 	// Status & info
 	mux.HandleFunc("/api/status", handleStatus)
+	mux.HandleFunc("/api/diagnostics", handleDiagnostics)
+	mux.HandleFunc("/api/insights", handleInsights)
 	mux.HandleFunc("/api/stores", handleStores)
 
 	// Calendar & reservations
@@ -41,6 +49,9 @@ func cmdWeb() {
 
 	// Notifications config
 	mux.HandleFunc("/api/config", handleNotifyConfig)
+	mux.HandleFunc("/api/notifications/test", handleNotificationTest)
+	mux.HandleFunc("/api/repair-proxy", handleRepairProxy)
+	mux.HandleFunc("/api/uninstall", handleUninstall)
 
 	// Engine control
 	mux.HandleFunc("/api/engine/state", handleEngineState)
@@ -51,6 +62,7 @@ func cmdWeb() {
 
 	// Sniper
 	mux.HandleFunc("/api/sniper/start", handleSniperStart)
+	mux.HandleFunc("/api/sniper/plan", handleSniperPlan)
 
 	// SSE
 	mux.HandleFunc("/api/events", handleEvents)
@@ -59,7 +71,7 @@ func cmdWeb() {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: webSecurityMiddleware(mux),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -108,6 +120,9 @@ var (
 	webSettingsMu sync.RWMutex
 	webSettings   Settings
 	webClient     *Client
+
+	webCSRFMu    sync.RWMutex
+	webCSRFToken string
 )
 
 func setWebSettings(s Settings) {
@@ -134,7 +149,91 @@ func refreshWebClient() {
 	if err != nil {
 		return
 	}
+	if err := tokens.validateForQuery(); err != nil {
+		return
+	}
 	prefs := LoadPreferences()
 	settings := tokens.toSettingsWithPrefs(prefs)
 	setWebSettings(settings)
+}
+
+func newWebCSRFToken() string {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		fmt.Fprintln(os.Stderr, "生成 CSRF token 失败:", err)
+		os.Exit(1)
+	}
+	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
+func setWebCSRFToken(token string) {
+	webCSRFMu.Lock()
+	webCSRFToken = token
+	webCSRFMu.Unlock()
+}
+
+func getWebCSRFToken() string {
+	webCSRFMu.RLock()
+	defer webCSRFMu.RUnlock()
+	return webCSRFToken
+}
+
+func webSecurityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isAllowedWebHost(r.Host) {
+			writeError(w, http.StatusForbidden, "非法 Host")
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/") && (r.Method == http.MethodPost || r.Method == http.MethodPut) {
+			if !validWebOrigin(r) {
+				writeError(w, http.StatusForbidden, "非法 Origin")
+				return
+			}
+			if !validWebCSRF(r.Header.Get("X-Sushiro-CSRF")) {
+				writeError(w, http.StatusForbidden, "CSRF 校验失败")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func validWebCSRF(got string) bool {
+	want := getWebCSRFToken()
+	if got == "" || want == "" || len(got) != len(want) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func validWebOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" || origin == "null" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	return normalizeWebHost(u.Host) == normalizeWebHost(r.Host) && isAllowedWebHost(u.Host)
+}
+
+func isAllowedWebHost(host string) bool {
+	h := normalizeWebHost(host)
+	if h == "" {
+		return false
+	}
+	name, _, err := net.SplitHostPort(h)
+	if err == nil {
+		h = name
+	}
+	h = strings.Trim(h, "[]")
+	return h == "127.0.0.1" || h == "localhost" || h == "::1"
+}
+
+func normalizeWebHost(host string) string {
+	return strings.ToLower(strings.TrimSpace(host))
 }

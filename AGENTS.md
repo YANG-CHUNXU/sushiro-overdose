@@ -66,7 +66,7 @@ main.go (默认启动 Web UI)
 |------|------|
 | `api.go` | `Client` — 寿司郎官方 API 封装（门店/时段/创建预约/取消预约） |
 | `config.go` | `Settings` 结构体定义，`LoadSettings` 从 JSON 文件加载（备用，当前未被调用） |
-| `preferences.go` | **用户偏好持久化**：人数/桌型/自定义时段范围，存到 `~/.sushiro/preferences.json` |
+| `preferences.go` | **用户偏好持久化**：人数/桌型/自定义时段范围/日期与时段优先级，存到 `~/.sushiro/preferences.json` |
 | `slot.go` | `Slot`/`StoreInfo`/`ReservationRecord` 数据结构，时间格式化工具 |
 
 ### 代理与捕获
@@ -106,9 +106,13 @@ main.go (默认启动 Web UI)
 | `sniper.go` | 狙击模式：开放前 30 天精准抢号，50ms 高速轮询 |
 | `history.go` | `history.jsonl` 追加（节流 30s），`cmdTrends` 趋势分析 |
 | `recommend.go` | `cmdRecommend` 基于历史数据的时段推荐 |
+| `insights.go` | Web/CLI 可复用的历史洞察：按门店/星期/时段统计开放概率、售罄速度与推荐 |
 | `health.go` | 每 5 分钟验证 Token 有效性 |
 | `state.go` | `State` JSON 读写，`logMessage`，`readInput` |
 | `store.go` | `StoreRegistry` 门店昵称管理 `~/.sushiro/stores.json` |
+| `diagnostics.go` | doctor 只读诊断、通知测试、本机网络/证书/端口/代理检查 |
+| `maintenance.go` | repair-proxy / uninstall 的代理恢复和本地敏感数据清理 |
+| `sniper_plan.go` | Web 狙击计划持久化、倒计时、尝试次数与状态摘要 |
 
 ### 资源与脚本
 
@@ -123,6 +127,7 @@ main.go (默认启动 Web UI)
 
 | 文件 | 职责 |
 |------|------|
+| `.github/workflows/ci.yml` | 常规 CI：push/PR 运行测试、vet、gofmt、go mod tidy diff、安装脚本语法检查 |
 | `.goreleaser.yml` | GoReleaser v2 配置：多平台编译 + Mac Universal Binary |
 | `.github/workflows/release.yml` | GitHub Actions：tag 触发 → GoReleaser → Mac .app 打包 → 上传 Release |
 
@@ -135,7 +140,7 @@ main.go (默认启动 Web UI)
 ```
 ~/.sushiro/
 ├── config.json          认证参数（X-App-Code, Authorization 等）
-├── preferences.json     用户偏好（人数/桌型/目标时段）
+├── preferences.json     用户偏好（人数/桌型/目标时段/优先级）
 ├── notify.json          通知渠道配置
 ├── stores.json          门店昵称
 ├── history.jsonl        历史时段数据（JSONL 格式）
@@ -160,15 +165,22 @@ main.go (默认启动 Web UI)
 | GET | `/` | 内嵌 HTML 单页应用 |
 | GET | `/api/status` | 版本、运行状态、是否有配置、引擎状态、平台信息 |
 | GET | `/api/stores` | 已配置门店列表（含名称/昵称/地址） |
-| GET | `/api/calendar?store=ID` | 指定门店的时段数据 |
+| GET | `/api/calendar?store=ID` 或 `/api/calendar?stores=ID1,ID2&available=1&period=lunch` | 门店时段数据，支持多选、只看可预约、午餐/晚餐过滤 |
 | GET | `/api/reservations` | 当前预约列表 |
+| GET | `/api/insights` | 历史洞察与推荐 |
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
+| GET | `/api/diagnostics` | 只读、脱敏的本机诊断信息 |
+| POST | `/api/notifications/test` | 发送通知渠道测试 |
+| POST | `/api/repair-proxy` | 恢复系统代理并清理代理 marker |
+| POST | `/api/uninstall` | 清理本地敏感数据和证书 |
 | GET | `/api/engine/state` | 引擎当前状态（idle/capturing/booking/success/error） |
 | POST | `/api/engine/capture` | 启动参数捕获（MITM 代理） |
 | POST | `/api/engine/booking` | 启动自动抢号 |
 | POST | `/api/engine/stop` | 停止当前操作 |
 | GET | `/api/engine/logs` | 获取引擎日志 |
+| GET/POST | `/api/sniper/plan` | 读取/保存 Web 狙击计划 |
+| POST | `/api/sniper/start` | 启动 Web 狙击计划 |
 | GET | `/api/events` | SSE 事件流（engine/log/calendar 事件） |
 
 ---
@@ -245,7 +257,7 @@ goreleaser release --snapshot --clean
 ```bash
 # 1. 确认代码状态
 git status                    # 确保工作区干净
-go build ./... && go vet ./.. # 编译和静态检查通过
+go build ./... && go vet ./... # 编译和静态检查通过
 
 # 2. 打 tag（触发 CI）
 git tag v1.2.0
@@ -347,6 +359,7 @@ Sushiro Overdose.app/
 - 二进制体积小（约 8-10MB）
 - 无供应链攻击风险
 - Go 标准库的 `crypto/tls`、`net/http` 已足够实现 MITM 代理
+- 代理只对寿司郎 API 域名做 TLS 解密；其他 HTTPS 域名保持 CONNECT 透传，不读取或解密内容
 
 ### 配置文件为什么在 ~/.sushiro/？
 

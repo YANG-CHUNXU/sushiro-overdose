@@ -36,7 +36,7 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 > - 首次运行 SmartScreen 可能弹窗提示「Windows 已保护你的电脑」，点击「更多信息」→「仍要运行」即可。
 > - 程序会自动安装一张本地 MITM 证书并临时设置系统代理，**退出时自动恢复**。
 > - 如杀毒软件误报，请将 `%LOCALAPPDATA%\sushiro\sushiro-overdose.exe` 加入白名单。
-> - 抓包阶段仅拦截寿司郎域名，不影响其他流量。
+> - 抓包阶段只解密寿司郎 API 域名；其他站点流量保持 CONNECT 透传，不读取或解密内容。
 
 ### macOS / Linux 用户
 
@@ -48,7 +48,7 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 也可使用一键脚本：
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/install.sh | bash
 ```
 
 ### 从源码构建
@@ -70,7 +70,7 @@ go build -o sushiro-overdose .       # macOS / Linux
 1. **运行程序** → 自动打开浏览器
 2. **设置向导** → 安装证书（按提示确认即可）
 3. **捕获参数** → 在 PC 微信中打开寿司郎小程序，进行一次排队/预约操作
-4. **设置偏好** → 选择人数、桌型、目标时段
+4. **设置偏好** → 选择人数、桌型、目标时段和优先级
 5. **开始抢号** → 点击「开始抢号」按钮
 
 > **注意：** 必须使用 **PC 版微信** 中的小程序，手机端无效。
@@ -80,6 +80,17 @@ go build -o sushiro-overdose .       # macOS / Linux
 认证参数捕获后自动保存，下次运行无需重复捕获（过期时会自动提示）。
 
 打开程序 → 点击「开始抢号」→ 成功后自动通知。
+
+### 预约优先级
+
+Web UI 的「设置」页面支持明确控制选号策略：
+
+- **日期优先级**：按日期优先、周末优先、工作日优先
+- **时段策略**：最早可约、最晚可约、接近目标时间
+- **目标时间**：当选择「接近目标时间」时使用，例如 `1930`
+- **每日时段范围**：工作日、周六、周日可分别配置多个时间段
+
+同一天同一时间有多个门店时，会按已选择门店的优先顺序尝试。
 
 ---
 
@@ -101,6 +112,9 @@ sushiro-overdose cancel <id>     取消预约
 
 sushiro-overdose trends          分析时段可用率趋势
 sushiro-overdose recommend       智能推荐最佳时段
+sushiro-overdose doctor          打印只读诊断信息
+sushiro-overdose repair-proxy    一键恢复系统代理
+sushiro-overdose uninstall       恢复代理、移除证书并清理本地敏感数据
 
 sushiro-overdose config                          查看通知配置
 sushiro-overdose config feishu <webhook>         配置飞书通知
@@ -121,6 +135,18 @@ sushiro-overdose config store add <id> <name>    添加门店昵称
 - **Bark** — iOS 推送
 - **Server酱** — 微信推送
 
+Web UI 的「设置」页面可点击「测试全部」，也可单独测试飞书、Telegram、Bark、Server酱。
+
+## Web 增强功能
+
+- **日历增强**：支持门店多选、只看可预约、午餐/晚餐过滤、自动刷新。
+- **历史洞察**：按门店、星期、时段统计开放概率和售罄速度，并反向推荐更值得抢的目标时段。
+- **Web 狙击计划器**：支持多个目标、开放倒计时、开放窗口状态、尝试次数和最后错误。
+- **本机诊断**：检查证书信任、端口占用、代理状态、配置完整性和寿司郎网络连通性。
+- **一键修复/卸载**：设置页可恢复代理；`uninstall` 可移除本地认证、通知配置、历史、证书文件并尝试移除系统信任证书。
+
+排障时可运行 `sushiro-overdose doctor`，或在 Web UI 服务启动后访问 `GET /api/diagnostics` 获取只读、脱敏的诊断信息。
+
 ---
 
 ## 数据文件
@@ -130,7 +156,7 @@ sushiro-overdose config store add <id> <name>    添加门店昵称
 | 文件 | 说明 |
 |------|------|
 | `config.json` | 认证参数 |
-| `preferences.json` | 用户偏好（人数/桌型/时段） |
+| `preferences.json` | 用户偏好（人数/桌型/时段/优先级） |
 | `notify.json` | 通知渠道配置 |
 | `stores.json` | 门店昵称 |
 | `history.jsonl` | 历史时段数据 |
@@ -149,7 +175,7 @@ sushiro-overdose config store add <id> <name>    添加门店昵称
        └── 捕获完成后，清理代理，直连抢号 ──┘
 ```
 
-1. 启动本地 HTTPS 代理 (MITM)，仅拦截寿司郎域名
+1. 启动本地 HTTPS 代理 (MITM)，只对寿司郎 API 域名做 TLS 解密，其他域名保持 CONNECT 透传
 2. 设置系统代理（退出时自动恢复）
 3. 捕获认证参数后清理代理，直连 API 抢号
 4. 后台每 5 分钟验证 Token 有效性

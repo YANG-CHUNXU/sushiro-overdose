@@ -62,7 +62,9 @@ func (t *CapturedTokens) IsCompleteUnlocked() bool {
 		t.ReservationAuth != "" &&
 		t.UserAgent != "" &&
 		t.Referer != "" &&
-		t.WechatID != ""
+		t.WechatID != "" &&
+		t.PhoneNumber != "" &&
+		len(t.StoreIDs) > 0
 }
 
 func (t *CapturedTokens) Status() []string {
@@ -81,8 +83,8 @@ func (t *CapturedTokens) Status() []string {
 		fmt.Sprintf("  User-Agent:       %s %s", check(t.UserAgent), maskToken(t.UserAgent)),
 		fmt.Sprintf("  Referer:          %s %s", check(t.Referer), maskToken(t.Referer)),
 		fmt.Sprintf("  Wechat ID:        %s %s", check(t.WechatID), maskToken(t.WechatID)),
-		fmt.Sprintf("  Phone Number:     %s %s", check(t.PhoneNumber), t.PhoneNumber),
-		fmt.Sprintf("  Store IDs:        %s %v", check(fmt.Sprintf("%v", t.StoreIDs)), t.StoreIDs),
+		fmt.Sprintf("  Phone Number:     %s %s", check(t.PhoneNumber), maskPhone(t.PhoneNumber)),
+		fmt.Sprintf("  Store IDs:        %s %v", check(strings.Join(t.StoreIDs, ",")), t.StoreIDs),
 	}
 }
 
@@ -166,9 +168,6 @@ func loadLocalConfig() (*CapturedTokens, error) {
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return nil, err
 	}
-	if data.XAppCode == "" || data.QueryAuth == "" {
-		return nil, fmt.Errorf("config incomplete")
-	}
 	return &CapturedTokens{
 		XAppCode:        data.XAppCode,
 		QueryAuth:       data.QueryAuth,
@@ -181,6 +180,64 @@ func loadLocalConfig() (*CapturedTokens, error) {
 		StoreIDs:        data.StoreIDs,
 		FeishuWebhook:   loadFeishuConfig(),
 	}, nil
+}
+
+func (t *CapturedTokens) validateForQuery() error {
+	missing := t.missingFields(false)
+	if len(missing) > 0 {
+		return fmt.Errorf("认证参数不完整，缺少: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func (t *CapturedTokens) validateForReservation() error {
+	missing := t.missingFields(true)
+	if len(missing) > 0 {
+		return fmt.Errorf("预约参数不完整，缺少: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func (t *CapturedTokens) missingFields(reservation bool) []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	fields := []struct {
+		name  string
+		value string
+	}{
+		{"X-App-Code", t.XAppCode},
+		{"查询认证", t.QueryAuth},
+		{"User-Agent", t.UserAgent},
+		{"Referer", t.Referer},
+	}
+	if reservation {
+		fields = append(fields,
+			struct {
+				name  string
+				value string
+			}{"预约认证", t.ReservationAuth},
+			struct {
+				name  string
+				value string
+			}{"微信ID", t.WechatID},
+			struct {
+				name  string
+				value string
+			}{"手机号", t.PhoneNumber},
+		)
+	}
+
+	var missing []string
+	for _, f := range fields {
+		if strings.TrimSpace(f.value) == "" {
+			missing = append(missing, f.name)
+		}
+	}
+	if len(t.StoreIDs) == 0 {
+		missing = append(missing, "门店")
+	}
+	return missing
 }
 
 func deleteLocalConfig() {
@@ -212,7 +269,7 @@ func saveFeishuConfig(webhook string) {
 		Webhook string `json:"webhook"`
 	}{Webhook: strings.TrimSpace(webhook)}
 	data, _ := json.MarshalIndent(cfg, "", "  ")
-	_ = os.WriteFile(feishuConfigPath(), data, 0o644)
+	_ = os.WriteFile(feishuConfigPath(), data, 0o600)
 }
 
 func (t *CapturedTokens) toSettings() Settings {
@@ -273,7 +330,7 @@ func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte)
 	if host == "" {
 		host = req.Host
 	}
-	if !strings.Contains(host, sushiroHost) {
+	if !isSushiroTargetHost(host) {
 		return
 	}
 
@@ -329,6 +386,15 @@ func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte)
 			}
 		}
 	}
+}
+
+func isSushiroTargetHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	return host == sushiroHost
 }
 
 // ---- MITM Proxy Server ----
@@ -429,7 +495,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		}
 	}
 
-	isSushiro := strings.Contains(hostPort, sushiroHost)
+	isSushiro := isSushiroTargetHost(hostPort)
 
 	// Dial the real server
 	serverConn, err := net.DialTimeout("tcp", hostPort, 10*time.Second)
@@ -623,20 +689,18 @@ func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) (
 	return selected, nil
 }
 
-
-
 // SlotPref defines what time range to target for a day type.
 type SlotPref int
 
 const (
-	PrefNone      SlotPref = iota // 不预约
-	Pref1930to2030                // 19:30-20:30
-	PrefBefore2000                // 20:00前
-	Pref1030to1300                // 10:30-13:00
+	PrefNone       SlotPref = iota // 不预约
+	Pref1930to2030                 // 19:30-20:30
+	PrefBefore2000                 // 20:00前
+	Pref1030to1300                 // 10:30-13:00
 )
 
 var prefNames = map[SlotPref]string{
-	PrefNone:      "不预约",
+	PrefNone:       "不预约",
 	Pref1930to2030: "19:30-20:30",
 	PrefBefore2000: "20:00前",
 	Pref1030to1300: "10:30-13:00",
@@ -644,7 +708,7 @@ var prefNames = map[SlotPref]string{
 
 // SlotConfig holds per-day-type slot preferences.
 type SlotConfig struct {
-	Weekday SlotPref
+	Weekday  SlotPref
 	Saturday SlotPref
 	Sunday   SlotPref
 }

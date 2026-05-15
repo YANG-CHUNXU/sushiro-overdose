@@ -5,9 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
+
+type calendarStoreResult struct {
+	StoreID   string `json:"store_id"`
+	StoreName string `json:"store_name"`
+	Slots     []Slot `json:"slots"`
+	Error     string `json:"error,omitempty"`
+}
 
 // ---- SSE event bus ----
 
@@ -52,7 +61,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(indexHTML))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write([]byte(strings.Replace(indexHTML, "{{CSRF_TOKEN}}", getWebCSRFToken(), 1)))
 }
 
 // ---- Status ----
@@ -82,29 +92,97 @@ func handleCalendar(w http.ResponseWriter, r *http.Request) {
 
 	client := getWebClient()
 	query := r.URL.Query()
-	storeID := query.Get("store")
-	if storeID == "" {
-		storeID = ws.StoreIDs[0]
-	}
+	storeIDs := requestedCalendarStores(query["store"], query.Get("stores"), ws.StoreIDs)
+	onlyAvailable := query.Get("available") == "1" || strings.EqualFold(query.Get("available"), "true")
+	period := strings.ToLower(strings.TrimSpace(query.Get("period")))
 
-	slots, err := client.GetTimeslots(r.Context(), storeID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	storeInfo, _ := client.GetStoreInfo(r.Context(), storeID)
 	reg := GetStoreRegistry()
-	displayName := reg.DisplayName(storeID, storeInfo.Name)
+	results := make([]calendarStoreResult, 0, len(storeIDs))
+	combined := make([]Slot, 0)
+	for _, storeID := range storeIDs {
+		slots, err := client.GetTimeslots(r.Context(), storeID)
+		storeInfo, _ := client.GetStoreInfo(r.Context(), storeID)
+		displayName := reg.DisplayName(storeID, storeInfo.Name)
+		if displayName == "" {
+			displayName = storeID
+		}
+		result := calendarStoreResult{StoreID: storeID, StoreName: displayName}
+		if err != nil {
+			result.Error = err.Error()
+			results = append(results, result)
+			continue
+		}
+		appendHistory(slots, storeID)
+		result.Slots = filterCalendarSlots(slots, onlyAvailable, period)
+		results = append(results, result)
+		combined = append(combined, result.Slots...)
+	}
 
 	result := map[string]any{
-		"store_id":   storeID,
-		"store_name": displayName,
-		"slots":      slots,
+		"store_id":   results[0].StoreID,
+		"store_name": results[0].StoreName,
+		"slots":      results[0].Slots,
+		"stores":     results,
 		"fetched_at": time.Now().Format(time.RFC3339),
+		"filters": map[string]any{
+			"available": onlyAvailable,
+			"period":    period,
+		},
 	}
 	writeJSON(w, result)
 	bus.publish("calendar", mustJSON(result))
+}
+
+func requestedCalendarStores(storeValues []string, storesValue string, allowed []string) []string {
+	allowedSet := map[string]bool{}
+	for _, storeID := range allowed {
+		allowedSet[storeID] = true
+	}
+	var raw []string
+	raw = append(raw, storeValues...)
+	raw = append(raw, strings.Split(storesValue, ",")...)
+	out := make([]string, 0, len(raw))
+	seen := map[string]bool{}
+	for _, item := range raw {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] || !allowedSet[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	if len(out) == 0 && len(allowed) > 0 {
+		out = append(out, allowed[0])
+	}
+	return out
+}
+
+func filterCalendarSlots(slots []Slot, onlyAvailable bool, period string) []Slot {
+	out := make([]Slot, 0, len(slots))
+	for _, slot := range slots {
+		if onlyAvailable && strings.ToUpper(slot.Availability) != "AVAILABLE" {
+			continue
+		}
+		if !calendarSlotMatchesPeriod(slot, period) {
+			continue
+		}
+		out = append(out, slot)
+	}
+	return out
+}
+
+func calendarSlotMatchesPeriod(slot Slot, period string) bool {
+	switch period {
+	case "", "all":
+		return true
+	case "lunch":
+		seconds := parseTimeSeconds(slot.Start)
+		return seconds >= 10*3600 && seconds < 16*3600
+	case "dinner":
+		return parseTimeSeconds(slot.Start) >= 16*3600
+	default:
+		return true
+	}
 }
 
 // ---- Stores ----
@@ -149,12 +227,7 @@ func handlePreferences(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
 			return
 		}
-		if prefs.Adult <= 0 && prefs.Child <= 0 {
-			prefs.Adult = 2
-		}
-		if prefs.TableType == "" {
-			prefs.TableType = "T"
-		}
+		prefs = NormalizePreferences(prefs)
 		if err := SavePreferences(prefs); err != nil {
 			writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
 			return
@@ -191,6 +264,59 @@ func handleNotifyConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
 	}
+}
+
+func handleRepairProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	report := RepairProxy()
+	status := http.StatusOK
+	if !report.OK {
+		status = http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(report)
+}
+
+func handleUninstall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var options UninstallOptions
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&options)
+	}
+	if !uninstallOptionsSelected(options) {
+		options.All = true
+		options.Certificates = true
+		options.SystemCert = true
+	}
+	repair := dryRunRepairProxyReport()
+	if !options.DryRun {
+		repair = RepairProxy()
+	}
+	uninstall := UninstallLocalData(options)
+	status := http.StatusOK
+	if !repair.OK || !uninstall.OK {
+		status = http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":        repair.OK && uninstall.OK,
+		"repair":    repair,
+		"uninstall": uninstall,
+	})
+}
+
+func uninstallOptionsSelected(options UninstallOptions) bool {
+	return options.All || options.Config || options.Notify || options.Feishu ||
+		options.Preferences || options.Stores || options.State || options.History ||
+		options.PID || options.ProxyMarker || options.Certificates || options.SystemCert
 }
 
 // ---- Reservations ----
@@ -254,6 +380,25 @@ func handleEngineLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, engine.GetLogs())
 }
 
+func handleInsights(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	topN := defaultInsightTopN
+	if raw := strings.TrimSpace(r.URL.Query().Get("top")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			topN = parsed
+		}
+	}
+	analysis, err := LoadSlotHistoryInsights(topN, time.Now())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, analysis)
+}
+
 // ---- Sniper ----
 
 func handleSniperStart(w http.ResponseWriter, r *http.Request) {
@@ -262,14 +407,59 @@ func handleSniperStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Date string `json:"date"`
-		Time string `json:"time"`
+		Date    string         `json:"date"`
+		Time    string         `json:"time"`
+		StoreID string         `json:"store_id"`
+		Targets []SniperTarget `json:"targets"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeError(w, http.StatusNotImplemented, "狙击模式暂时请通过命令行使用: sushiro-overdose sniper")
+	targets := req.Targets
+	if len(targets) == 0 && req.Date != "" && req.Time != "" {
+		ws := getWebSettings()
+		targets = parseSniperArgs(req.Date, req.Time, req.StoreID, ws.StoreIDs)
+	}
+	if err := engine.StartSniper(targets); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "message": "狙击计划已开始"})
+}
+
+func handleSniperPlan(w http.ResponseWriter, r *http.Request) {
+	ws := getWebSettings()
+	loc := time.Local
+	if ws.Location != nil {
+		loc = ws.Location
+	}
+	switch r.Method {
+	case http.MethodGet:
+		plan, err := LoadSniperPlan(loc)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, RefreshSniperPlan(plan, time.Now().In(loc), loc))
+	case http.MethodPost, http.MethodPut:
+		var req struct {
+			Targets []SniperTarget `json:"targets"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		targets := normalizeSniperTargetsForSettings(req.Targets, ws)
+		plan := NormalizeSniperPlan(targets, loc)
+		if err := SaveSniperPlan(plan, loc); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "plan": RefreshSniperPlan(plan, time.Now().In(loc), loc)})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
+	}
 }
 
 // ---- SSE ----
@@ -289,6 +479,7 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	defer bus.unsubscribe(ch)
 
 	fmt.Fprintf(w, "event: ping\ndata: {}\n\n")
+	fmt.Fprintf(w, "event: engine\ndata: %s\n\n", mustJSON(engine.GetState()))
 	flusher.Flush()
 
 	for {

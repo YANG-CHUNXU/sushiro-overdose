@@ -99,7 +99,6 @@ func beginningOfDay(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
-
 func slotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
 	day, err := parseCompactDate(slot.Date, loc)
 	if err != nil {
@@ -111,4 +110,3 @@ func slotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
 	}
 	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, second, 0, loc), nil
 }
-

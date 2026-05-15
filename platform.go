@@ -29,6 +29,11 @@ func InstallCert() error {
 	return installCert()
 }
 
+// UninstallCert removes the CA certificate from the OS trust store when supported.
+func UninstallCert() error {
+	return uninstallCert()
+}
+
 // DaemonProcessAttrs returns syscall.SysProcAttr appropriate for spawning a daemon.
 func DaemonProcessAttrs() *syscall.SysProcAttr {
 	return daemonProcessAttrs()

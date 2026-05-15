@@ -12,11 +12,11 @@ import (
 )
 
 type SlotSnapshot struct {
-	Timestamp   string `json:"ts"`
-	StoreID     string `json:"store_id"`
-	Date        string `json:"date"`
-	Start       string `json:"start"`
-	End         string `json:"end"`
+	Timestamp    string `json:"ts"`
+	StoreID      string `json:"store_id"`
+	Date         string `json:"date"`
+	Start        string `json:"start"`
+	End          string `json:"end"`
 	Availability string `json:"availability"`
 }
 
@@ -25,18 +25,18 @@ func historyPath() string {
 }
 
 var (
-	lastHistoryWrite time.Time
-	historyMu        sync.Mutex
+	lastHistoryWriteByStore = map[string]time.Time{}
+	historyMu               sync.Mutex
 )
 
 func appendHistory(slots []Slot, storeID string) {
 	historyMu.Lock()
 	defer historyMu.Unlock()
 
-	if time.Since(lastHistoryWrite) < 30*time.Second {
+	if time.Since(lastHistoryWriteByStore[storeID]) < 30*time.Second {
 		return
 	}
-	lastHistoryWrite = time.Now()
+	lastHistoryWriteByStore[storeID] = time.Now()
 
 	f, err := os.OpenFile(historyPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -94,9 +94,10 @@ func cmdTrends() {
 
 	// Analyze: group by (date, start_time) → availability rate
 	type slotKey struct {
-		Date  string
-		Start string
-		End   string
+		StoreID string
+		Date    string
+		Start   string
+		End     string
 	}
 	slotStats := map[slotKey]*struct {
 		total int
@@ -105,7 +106,7 @@ func cmdTrends() {
 	}{}
 
 	for _, s := range snapshots {
-		key := slotKey{Date: s.Date, Start: s.Start, End: s.End}
+		key := slotKey{StoreID: s.StoreID, Date: s.Date, Start: s.Start, End: s.End}
 		if _, ok := slotStats[key]; !ok {
 			slotStats[key] = &struct {
 				total int
@@ -129,6 +130,9 @@ func cmdTrends() {
 		if keys[i].Date != keys[j].Date {
 			return keys[i].Date < keys[j].Date
 		}
+		if keys[i].StoreID != keys[j].StoreID {
+			return keys[i].StoreID < keys[j].StoreID
+		}
 		return keys[i].Start < keys[j].Start
 	})
 
@@ -150,7 +154,8 @@ func cmdTrends() {
 				bar += "░"
 			}
 		}
-		fmt.Printf("  %s-%s %s %5.1f%% 可用 (%d/%d)\n",
+		fmt.Printf("  [%s] %s-%s %s %5.1f%% 可用 (%d/%d)\n",
+			k.StoreID,
 			formatCompactTime(k.Start),
 			formatCompactTime(k.End),
 			bar, rate, stats.avail, stats.total)
@@ -181,8 +186,8 @@ func cmdTrends() {
 			if i >= 5 {
 				break
 			}
-			fmt.Printf("  %d. %s %s — %.0f%% 可用 (%d次观察)\n",
-				i+1, r.key.Date, formatCompactTime(r.key.Start),
+			fmt.Printf("  %d. %s %s %s — %.0f%% 可用 (%d次观察)\n",
+				i+1, r.key.StoreID, r.key.Date, formatCompactTime(r.key.Start),
 				r.rate*100, r.total)
 		}
 	}

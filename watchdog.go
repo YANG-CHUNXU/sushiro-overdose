@@ -14,10 +14,10 @@ func proxyStatePath() string {
 }
 
 type proxyState struct {
-	Active   bool      `json:"active"`
-	Port     int       `json:"port"`
-	SetAt    time.Time `json:"set_at"`
-	PID      int       `json:"pid"`
+	Active bool      `json:"active"`
+	Port   int       `json:"port"`
+	SetAt  time.Time `json:"set_at"`
+	PID    int       `json:"pid"`
 }
 
 // markProxyActive records that the system proxy is currently set.

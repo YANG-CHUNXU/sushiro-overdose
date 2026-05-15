@@ -88,21 +88,58 @@ func installCert() error {
 	dir := certDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 
-	// Add cert to user login keychain
-	cmd := exec.Command("security", "add-certificates", "-k",
-		filepath.Join(os.Getenv("HOME"), "Library/Keychains/login.keychain-db"),
-		certPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("add-certificates: %w", err)
+	keychain, err := defaultUserKeychain()
+	if err != nil {
+		return err
 	}
 
-	// Set trust at user level
-	cmd = exec.Command("security", "add-trusted-cert", "-r", "trustRoot", certPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	out, err := exec.Command("security", "add-certificates", "-k", keychain, certPath).CombinedOutput()
+	if err != nil && !isAlreadyExistsOutput(out) {
+		return fmt.Errorf("add-certificates: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	out, err = exec.Command("security", "add-trusted-cert", "-r", "trustRoot", "-k", keychain, certPath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("add-trusted-cert: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func uninstallCert() error {
+	keychain, err := defaultUserKeychain()
+	if err != nil {
+		return err
+	}
+	out, err := exec.Command("security", "delete-certificate", "-c", "Sushiro Proxy CA", keychain).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(strings.ToLower(msg), "could not be found") || strings.Contains(msg, "未找到") {
+			return nil
+		}
+		return fmt.Errorf("delete-certificate: %w: %s", err, msg)
+	}
+	return nil
+}
+
+func defaultUserKeychain() (string, error) {
+	out, err := exec.Command("security", "default-keychain", "-d", "user").CombinedOutput()
+	if err == nil {
+		keychain := strings.Trim(strings.TrimSpace(string(out)), `"`)
+		if keychain != "" {
+			return keychain, nil
+		}
+	}
+
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		return "", fmt.Errorf("resolve user keychain: %w", homeErr)
+	}
+	return filepath.Join(home, "Library/Keychains/login.keychain-db"), nil
+}
+
+func isAlreadyExistsOutput(out []byte) bool {
+	msg := strings.ToLower(string(out))
+	return strings.Contains(msg, "already exists") || strings.Contains(msg, "已存在")
 }
 
 func daemonProcessAttrs() *syscall.SysProcAttr {

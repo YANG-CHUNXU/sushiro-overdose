@@ -11,11 +11,11 @@ import (
 )
 
 type slotRecommendation struct {
-	Date        string
-	Start       string
-	End         string
-	StoreID     string
-	AvailRate   float64
+	Date         string
+	Start        string
+	End          string
+	StoreID      string
+	AvailRate    float64
 	Observations int
 }
 
@@ -76,8 +76,8 @@ func cmdRecommend() {
 		if r.Observations < 3 {
 			continue
 		}
-		day, err := parseCompactDate(r.Date, now.Location())
-		if err != nil || day.Before(now) {
+		slotTime, err := slotDateTime(Slot{Date: r.Date, Start: r.Start}, now.Location())
+		if err != nil || slotTime.Before(now) {
 			continue
 		}
 		validRecs = append(validRecs, r)

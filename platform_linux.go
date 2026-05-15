@@ -69,6 +69,14 @@ func installCert() error {
 	return exec.Command("update-ca-certificates").Run()
 }
 
+func uninstallCert() error {
+	target := "/usr/local/share/ca-certificates/sushiro-proxy.crt"
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove cert (may need sudo): %w", err)
+	}
+	return exec.Command("update-ca-certificates").Run()
+}
+
 func daemonProcessAttrs() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Setpgid: true}
 }

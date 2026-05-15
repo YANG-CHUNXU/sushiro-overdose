@@ -11,8 +11,8 @@ import (
 )
 
 type State struct {
-	ActiveReservation      *ReservationRecord `json:"active_reservation,omitempty"`
-	SavedAt                string             `json:"saved_at,omitempty"`
+	ActiveReservation *ReservationRecord `json:"active_reservation,omitempty"`
+	SavedAt           string             `json:"saved_at,omitempty"`
 }
 
 func loadState(path string) (State, error) {

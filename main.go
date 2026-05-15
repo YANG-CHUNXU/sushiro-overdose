@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -69,16 +70,23 @@ func printUsage() {
 	fmt.Println("  cancel <id>  Cancel a reservation by ticket ID")
 	fmt.Println("  trends       Analyze slot availability trends")
 	fmt.Println("  recommend    Smart time slot recommendations")
+	fmt.Println("  doctor       Print readonly diagnostics")
+	fmt.Println("  repair-proxy Restore system proxy settings")
+	fmt.Println("  uninstall    Remove local sensitive data and certificate")
 	fmt.Println("  exit         Stop background process")
 	fmt.Println("  config       Configure settings (feishu, telegram, bark, etc.)")
 	fmt.Println("  help         Show this help message")
 }
 
 func main() {
+	args := os.Args[1:]
+	if len(args) == 1 && (args[0] == "doctor" || args[0] == "diagnostics") {
+		cmdDoctor()
+		return
+	}
+
 	os.MkdirAll(appDirPath(), 0o755)
 	migrateOldConfig()
-
-	args := os.Args[1:]
 
 	if len(args) == 0 || (len(args) == 1 && args[0] == "web") {
 		cmdWeb()
@@ -104,6 +112,10 @@ func main() {
 		cmdRecommend()
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
+	} else if len(args) == 1 && (args[0] == "repair-proxy" || args[0] == "repair") {
+		cmdRepairProxy()
+	} else if len(args) >= 1 && (args[0] == "uninstall" || args[0] == "purge") {
+		cmdUninstall(args[1:])
 	} else if len(args) >= 1 && (args[0] == "config" || args[0] == "setting" || args[0] == "settings") {
 		cmdConfig(args[1:])
 	} else if len(args) >= 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
@@ -343,7 +355,6 @@ func notifyStatus(v string) string {
 	return "未配置"
 }
 
-
 // ---- PID management ----
 
 func readPID() string {
@@ -472,6 +483,23 @@ func run(ctx context.Context) error {
 		client = NewClient(settings)
 	}
 
+	if err := tokens.validateForReservation(); err != nil {
+		logMessage(time.Now(), "预约参数不完整，需要重新捕获: "+err.Error())
+		deleteLocalConfig()
+		tokens, err = runCapturePhase(ctx)
+		if err != nil {
+			return err
+		}
+		if err := tokens.validateForReservation(); err != nil {
+			return err
+		}
+		if err := saveLocalConfig(tokens); err != nil {
+			logMessage(time.Now(), "保存配置失败: "+err.Error())
+		}
+		settings = tokens.toSettings()
+		client = NewClient(settings)
+	}
+
 	selectedStores, err := selectStores(ctx, client, tokens)
 	if err != nil {
 		return fmt.Errorf("选择门店失败: %w", err)
@@ -583,8 +611,12 @@ func tryLoadConfig() (*CapturedTokens, bool) {
 	if err != nil {
 		return nil, false
 	}
+	if err := tokens.validateForQuery(); err != nil {
+		logMessage(time.Now(), "已保存配置不可用: "+err.Error())
+		return nil, false
+	}
 	logMessage(time.Now(), "使用已保存的配置")
-	logMessage(time.Now(), fmt.Sprintf("  手机号: %s", tokens.PhoneNumber))
+	logMessage(time.Now(), fmt.Sprintf("  手机号: %s", maskPhone(tokens.PhoneNumber)))
 	logMessage(time.Now(), fmt.Sprintf("  门店: %v", tokens.StoreIDs))
 	return tokens, true
 }
@@ -593,9 +625,20 @@ func isAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
+	if isHTTPStatus(err, http.StatusUnauthorized) || isHTTPStatus(err, http.StatusForbidden) {
+		return true
+	}
 	msg := err.Error()
 	return strings.Contains(msg, "HTTP 401") ||
 		strings.Contains(msg, "HTTP 403")
+}
+
+func maskPhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if len(phone) < 7 {
+		return "***"
+	}
+	return phone[:3] + "****" + phone[len(phone)-4:]
 }
 
 func runBookingLoop(ctx context.Context, client *Client, settings Settings, storeIDs []string, prefs UserPreferences) {
@@ -658,7 +701,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 					Start:   slots[i].Start,
 					End:     slots[i].End,
 				}
-				if best == nil || t.Date+t.Start < best.Date+best.Start {
+				if best == nil || prefs.PreferTargetSlot(*t, *best, settings.Location, storeIDs) {
 					best = t
 				}
 			}
@@ -675,12 +718,6 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 
 		reservation, err := client.CreateReservation(ctx, best.StoreID, best.Date, best.Start)
 		if err != nil {
-			key := best.StoreID + best.Date + best.Start
-			if booked == nil {
-				booked = make(map[string]bool)
-			}
-			booked[key] = true
-
 			if isAuthError(err) {
 				authErrors++
 				if authErrors >= 3 {
@@ -691,12 +728,17 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				}
 			}
 
-			if strings.Contains(err.Error(), "500") {
-				logMessage(now, "HTTP 500，参数已失效，请重新进入小程序获取")
-				sendNotification("寿司郎 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro run`")
+			if isHTTPStatus(err, http.StatusInternalServerError) {
+				logMessage(now, "预约接口 HTTP 500，参数可能已失效，请重新进入小程序获取")
+				sendNotification("寿司郎 - HTTP 500", "参数可能已失效，请重新进入小程序刷新并运行 `sushiro run`")
 				deleteLocalConfig()
 				return
 			} else if errors.Is(err, errNoReservationAvailable) {
+				key := best.StoreID + best.Date + best.Start
+				if booked == nil {
+					booked = make(map[string]bool)
+				}
+				booked[key] = true
 				fmt.Printf("\r[%s] %s - 名额已满", now.Format("15:04:05"), slotLabel)
 			} else {
 				fmt.Printf("\r[%s] %s - 失败: %s", now.Format("15:04:05"), slotLabel, err)

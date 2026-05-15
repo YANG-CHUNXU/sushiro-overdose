@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # sushiro-overdose one-click installer
-# Usage: curl -sSL https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/install.sh | bash
 
 set -euo pipefail
 
 REPO="Ryujoxys/sushiro-overdose"
 BINARY="sushiro-overdose"
+INSTALL_DIR="/usr/local/bin"
 
 echo "=== sushiro-overdose installer ==="
 
@@ -35,7 +36,8 @@ esac
 echo "Detected: $OS/$ARCH"
 
 # Find the latest release
-LATEST=$(curl -sL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+LATEST_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")
+LATEST=$(printf '%s\n' "$LATEST_JSON" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)
 if [ -z "$LATEST" ]; then
     echo "Could not determine latest version"
     exit 1
@@ -50,20 +52,33 @@ else
     SUFFIX="tar.gz"
 fi
 
-FILENAME="${BINARY}_${LATEST#v}_${OS}_${ARCH}.${SUFFIX}"
+ASSET_ARCH="$ARCH"
+if [ "$OS" = "darwin" ]; then
+    ASSET_ARCH="all"
+fi
+
+FILENAME="${BINARY}_${LATEST#v}_${OS}_${ASSET_ARCH}.${SUFFIX}"
 URL="https://github.com/$REPO/releases/download/$LATEST/$FILENAME"
 
+TMP_DIR=$(mktemp -d)
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+ARCHIVE_PATH="$TMP_DIR/$FILENAME"
+EXTRACT_DIR="$TMP_DIR/extract"
+mkdir -p "$EXTRACT_DIR"
+
 echo "Downloading $URL..."
-curl -sSL -o "/tmp/$FILENAME" "$URL"
+curl -fsSL -o "$ARCHIVE_PATH" "$URL"
 
 # Extract
-INSTALL_DIR="/usr/local/bin"
 echo "Extracting..."
-cd /tmp
 if [ "$SUFFIX" = "zip" ]; then
-    unzip -o "$FILENAME"
+    unzip -q "$ARCHIVE_PATH" -d "$EXTRACT_DIR"
 else
-    tar xzf "$FILENAME"
+    tar xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR"
 fi
 
 # Install
@@ -73,17 +88,19 @@ else
     BINARY_FILE="$BINARY"
 fi
 
-if [ -w "$INSTALL_DIR" ]; then
-    cp "$BINARY_FILE" "$INSTALL_DIR/$BINARY"
-else
-    echo "需要 sudo 权限安装到 $INSTALL_DIR"
-    sudo cp "$BINARY_FILE" "$INSTALL_DIR/$BINARY"
+BINARY_PATH=$(find "$EXTRACT_DIR" -type f -name "$BINARY_FILE" -print -quit)
+if [ -z "$BINARY_PATH" ] || [ ! -f "$BINARY_PATH" ]; then
+    echo "Archive did not contain expected binary: $BINARY_FILE"
+    exit 1
 fi
 
-chmod +x "$INSTALL_DIR/$BINARY"
-
-# Cleanup
-rm -f "/tmp/$FILENAME" "/tmp/$BINARY_FILE"
+if [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; then
+    install -m 0755 "$BINARY_PATH" "$INSTALL_DIR/$BINARY"
+else
+    echo "需要 sudo 权限安装到 $INSTALL_DIR"
+    sudo install -d -m 0755 "$INSTALL_DIR"
+    sudo install -m 0755 "$BINARY_PATH" "$INSTALL_DIR/$BINARY"
+fi
 
 echo ""
 echo "✓ sushiro-overdose $LATEST installed to $INSTALL_DIR/$BINARY"

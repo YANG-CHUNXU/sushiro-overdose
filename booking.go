@@ -20,6 +20,11 @@ func cmdList() {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
+	if err := tokens.validateForReservation(); err != nil {
+		fmt.Println(err)
+		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
+		return
+	}
 	settings := tokens.toSettings()
 	client := NewClient(settings)
 
@@ -87,6 +92,11 @@ func cmdCancel(args []string) {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
+	if err := tokens.validateForReservation(); err != nil {
+		fmt.Println(err)
+		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
+		return
+	}
 	settings := tokens.toSettings()
 	client := NewClient(settings)
 
@@ -113,7 +123,9 @@ func onBookingSuccess(reservation ReservationRecord, storeName, storeAddress, sl
 		ActiveReservation: &reservation,
 		SavedAt:           now.Format(time.RFC3339),
 	}
-	_ = saveState(stateFilePath(), state)
+	if err := saveState(stateFilePath(), state); err != nil {
+		logMessage(now, "保存预约状态失败: "+err.Error())
+	}
 
 	fmt.Println()
 	fmt.Println()

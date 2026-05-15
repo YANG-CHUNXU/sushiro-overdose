@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -59,6 +60,11 @@ func cmdSniper(args []string) {
 	setNotifier(BuildNotifierFromConfig())
 	if !ok {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
+		return
+	}
+	if err := tokens.validateForReservation(); err != nil {
+		fmt.Println(err)
+		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
 		return
 	}
 	settings := tokens.toSettings()
@@ -347,6 +353,16 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 				if err != nil {
 					if errors.Is(err, errNoReservationAvailable) {
 						fmt.Printf("\r[%s] %s - 名额已满，继续尝试...", time.Now().Format("15:04:05"), slotLabel)
+					} else if isAuthError(err) {
+						logMessage(time.Now().In(settings.Location), "预约认证失败，终止狙击")
+						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
+						deleteLocalConfig()
+						return
+					} else if isHTTPStatus(err, http.StatusInternalServerError) {
+						logMessage(time.Now().In(settings.Location), "预约接口 HTTP 500，参数可能已失效")
+						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效，请重新捕获")
+						deleteLocalConfig()
+						return
 					}
 					continue
 				}
@@ -371,8 +387,8 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 
 func sortSniperTargets(targets []SniperTarget, loc *time.Location) {
 	type indexed struct {
-		target  SniperTarget
-		openAt  time.Time
+		target SniperTarget
+		openAt time.Time
 	}
 	items := make([]indexed, len(targets))
 	for i, t := range targets {
@@ -444,7 +460,6 @@ func printCalendarGrid(days []time.Time, now time.Time) {
 		fmt.Println()
 	}
 }
-
 
 func saveSniperConfig(targets []SniperTarget) {
 	data, err := json.MarshalIndent(targets, "", "  ")
