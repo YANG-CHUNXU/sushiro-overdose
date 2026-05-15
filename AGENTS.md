@@ -51,13 +51,19 @@ main.go (默认启动 Web UI)
 |------|------|
 | `main.go` | 程序入口，CLI 命令分发，PID 管理，前台/守护进程模式，`runBookingLoop` 抢号循环 |
 | `engine.go` | **Web 控制的后台引擎**：管理捕获/抢号生命周期，状态广播到 SSE，可启动/停止 |
+| `engine_sniper.go` | Web 狙击计划执行引擎 |
 
 ### Web UI
 
 | 文件 | 职责 |
 |------|------|
 | `web.go` | HTTP 服务器启动，端口冲突自动换端口，Settings 注入 |
-| `web_handlers.go` | 所有 API 端点 + SSE 事件总线 |
+| `web_handlers.go` | Web 通用 handler/helper 与首页 |
+| `web_calendar.go` | 日历/门店 API |
+| `web_engine.go` | 状态、预约、引擎控制、洞察 API |
+| `web_preferences.go` | 偏好、通知、repair/uninstall API |
+| `web_sniper.go` | Web 狙击计划 API |
+| `web_events.go` | SSE 事件总线 |
 | `web_static.go` | `sushiroLogoSVG` Logo SVG 常量 + `indexHTML` 完整单页（Sushiro 品牌配色 + 官网同款布局） |
 
 ### API 与数据
