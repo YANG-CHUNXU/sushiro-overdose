@@ -69,3 +69,48 @@ func TestLoadSniperPlanReadsLegacyTargets(t *testing.T) {
 		t.Fatalf("target = %#v", plan.Targets[0])
 	}
 }
+
+func TestValidateSniperTargetsAcceptsWebDateAndTime(t *testing.T) {
+	loc := testLocation(t)
+	settings := Settings{StoreIDs: []string{"001"}, Location: loc}
+	targets, rejected := validateSniperTargetsForSettings([]SniperTarget{{
+		Date:        "2026-06-14",
+		StartAfter:  "19:30",
+		StartBefore: "20:30",
+		StoreID:     "001",
+	}}, settings)
+	if len(rejected) != 0 {
+		t.Fatalf("rejected = %#v", rejected)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(targets))
+	}
+	if targets[0].Date != "20260614" || targets[0].StartAfter != "193000" || targets[0].StartBefore != "203000" {
+		t.Fatalf("target = %#v", targets[0])
+	}
+}
+
+func TestValidateSniperTargetsRejectsInvalidRows(t *testing.T) {
+	loc := testLocation(t)
+	settings := Settings{StoreIDs: []string{"001"}, Location: loc}
+	targets, rejected := validateSniperTargetsForSettings([]SniperTarget{
+		{Date: "2026-06-14", StartAfter: "20:30", StartBefore: "19:30", StoreID: "001"},
+		{Date: "2026-06-14", StartAfter: "19:30", StartBefore: "20:30", StoreID: "999"},
+	}, settings)
+	if len(targets) != 0 {
+		t.Fatalf("targets = %#v, want none", targets)
+	}
+	if len(rejected) != 2 {
+		t.Fatalf("rejected = %d, want 2", len(rejected))
+	}
+}
+
+func TestParseSniperArgsAcceptsColonTime(t *testing.T) {
+	targets := parseSniperArgs("20260614", "19:30-20:30", "001", nil)
+	if len(targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(targets))
+	}
+	if targets[0].StartAfter != "193000" || targets[0].StartBefore != "203000" {
+		t.Fatalf("target = %#v", targets[0])
+	}
+}

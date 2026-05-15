@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -127,71 +126,6 @@ func main() {
 
 // ---- CLI Commands ----
 
-func cmdStart() {
-	if isRunning() {
-		fmt.Println("sushiro is already running (PID " + readPID() + ")")
-		return
-	}
-
-	// Ensure app dir
-	os.MkdirAll(appDirPath(), 0o755)
-
-	self, _ := os.Executable()
-	cmd := exec.Command(self, "--daemon-child")
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Stdin = nil
-	cmd.SysProcAttr = DaemonProcessAttrs()
-
-	if err := cmd.Start(); err != nil {
-		fmt.Println("启动失败:", err)
-		os.Exit(1)
-	}
-
-	// Write PID
-	os.WriteFile(pidFilePath(), []byte(fmt.Sprintf("%d", cmd.Process.Pid)), 0o644)
-	fmt.Printf("sushiro started (PID %d)\n", cmd.Process.Pid)
-	fmt.Println("日志: " + logPath())
-}
-
-func cmdStop() {
-	pid := readPID()
-	if pid == "" {
-		fmt.Println("sushiro is not running")
-		return
-	}
-	if err := KillProcess(atoi(pid)); err != nil {
-		fmt.Println("停止失败:", err)
-		os.Remove(pidFilePath())
-		return
-	}
-	os.Remove(pidFilePath())
-	fmt.Println("sushiro stopped")
-}
-
-func cmdStatus() {
-	pid := readPID()
-	if pid == "" || !isRunning() {
-		fmt.Println("sushiro is not running")
-		return
-	}
-	fmt.Printf("sushiro is running (PID %s)\n", pid)
-
-	// Show last 10 lines of log
-	log, err := os.ReadFile(logPath())
-	if err == nil && len(log) > 0 {
-		lines := strings.Split(strings.TrimSpace(string(log)), "\n")
-		start := len(lines) - 10
-		if start < 0 {
-			start = 0
-		}
-		fmt.Println("\n最近日志:")
-		for _, line := range lines[start:] {
-			fmt.Println("  " + line)
-		}
-	}
-}
-
 func cmdForeground() {
 	printBanner()
 
@@ -207,32 +141,6 @@ func cmdForeground() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func cmdDaemon() {
-	// Silent mode — redirect all output to log file
-	os.MkdirAll(appDirPath(), 0o755)
-
-	logFile, err := os.OpenFile(logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return
-	}
-	defer logFile.Close()
-
-	// Redirect stdout and stderr
-	os.Stdout = logFile
-	os.Stderr = logFile
-
-	logMessage(time.Now(), "sushiro daemon started")
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	if err := run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logMessage(time.Now(), "exit with error: "+err.Error())
-	}
-
-	os.Remove(pidFilePath())
 }
 
 func cmdConfig(args []string) {
@@ -355,32 +263,6 @@ func notifyStatus(v string) string {
 	return "未配置"
 }
 
-// ---- PID management ----
-
-func readPID() string {
-	data, err := os.ReadFile(pidFilePath())
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-func isRunning() bool {
-	pid := readPID()
-	if pid == "" {
-		return false
-	}
-	return IsProcessAlive(atoi(pid))
-}
-
-func atoi(s string) int {
-	var n int
-	if _, err := fmt.Sscanf(s, "%d", &n); err != nil || n <= 0 {
-		return -1
-	}
-	return n
-}
-
 // ---- Update feishu in local config ----
 
 func updateLocalConfigFeishu(webhook string) {
@@ -433,7 +315,7 @@ func run(ctx context.Context) error {
 		if err := saveLocalConfig(tokens); err != nil {
 			logMessage(time.Now(), "保存配置失败: "+err.Error())
 		} else {
-			logMessage(time.Now(), "配置已保存到 "+localConfigFile)
+			logMessage(time.Now(), "配置已保存到 "+localConfigPath())
 		}
 	}
 

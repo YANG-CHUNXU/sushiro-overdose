@@ -26,6 +26,18 @@ func handleSniperStart(w http.ResponseWriter, r *http.Request) {
 		ws := getWebSettings()
 		targets = parseSniperArgs(req.Date, req.Time, req.StoreID, ws.StoreIDs)
 	}
+	if len(req.Targets) > 0 {
+		ws := getWebSettings()
+		valid, rejected := validateSniperTargetsForSettings(req.Targets, ws)
+		if len(valid) == 0 {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]any{
+				"error":    "没有有效狙击目标",
+				"rejected": rejected,
+			})
+			return
+		}
+		targets = valid
+	}
 	if err := engine.StartSniper(targets); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -55,13 +67,20 @@ func handleSniperPlan(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		targets := normalizeSniperTargetsForSettings(req.Targets, ws)
+		targets, rejected := validateSniperTargetsForSettings(req.Targets, ws)
+		if len(req.Targets) > 0 && len(targets) == 0 {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]any{
+				"error":    "没有有效狙击目标",
+				"rejected": rejected,
+			})
+			return
+		}
 		plan := NormalizeSniperPlan(targets, loc)
 		if err := SaveSniperPlan(plan, loc); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, map[string]any{"ok": true, "plan": RefreshSniperPlan(plan, time.Now().In(loc), loc)})
+		writeJSON(w, map[string]any{"ok": true, "plan": RefreshSniperPlan(plan, time.Now().In(loc), loc), "rejected": rejected})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
 	}

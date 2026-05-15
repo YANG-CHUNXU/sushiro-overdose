@@ -137,15 +137,15 @@ func parseSniperArgs(dateStr, timeStr, storeStr string, defaultStores []string) 
 	parts := strings.SplitN(timeStr, "-", 2)
 	startAfter := "000000"
 	startBefore := "235959"
-	if len(parts) >= 1 && len(parts[0]) == 4 {
-		startAfter = parts[0] + "00"
-	} else if len(parts) >= 1 && len(parts[0]) == 6 {
-		startAfter = parts[0]
+	if len(parts) >= 1 {
+		if normalized := normalizeTimeStr(parts[0]); parseTimeSeconds(normalized) >= 0 {
+			startAfter = normalized
+		}
 	}
-	if len(parts) >= 2 && len(parts[1]) == 4 {
-		startBefore = parts[1] + "00"
-	} else if len(parts) >= 2 && len(parts[1]) == 6 {
-		startBefore = parts[1]
+	if len(parts) >= 2 {
+		if normalized := normalizeTimeStr(parts[1]); parseTimeSeconds(normalized) >= 0 {
+			startBefore = normalized
+		}
 	}
 
 	// Determine store

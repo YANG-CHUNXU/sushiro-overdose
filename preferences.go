@@ -211,6 +211,7 @@ func (p UserPreferences) dayPriorityRank(day time.Weekday) int {
 
 func normalizeTimeStr(t string) string {
 	t = strings.TrimSpace(t)
+	t = strings.ReplaceAll(t, ":", "")
 	switch len(t) {
 	case 4:
 		return t + "00"

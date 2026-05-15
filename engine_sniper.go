@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+type sniperTargetValidationError struct {
+	Index  int          `json:"index"`
+	Target SniperTarget `json:"target"`
+	Reason string       `json:"reason"`
+}
+
 func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
@@ -70,7 +76,13 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 }
 
 func normalizeSniperTargetsForSettings(targets []SniperTarget, settings Settings) []SniperTarget {
+	valid, _ := validateSniperTargetsForSettings(targets, settings)
+	return valid
+}
+
+func validateSniperTargetsForSettings(targets []SniperTarget, settings Settings) ([]SniperTarget, []sniperTargetValidationError) {
 	out := make([]SniperTarget, 0, len(targets))
+	rejected := make([]sniperTargetValidationError, 0)
 	loc := settings.Location
 	if loc == nil {
 		loc = time.Local
@@ -83,29 +95,37 @@ func normalizeSniperTargetsForSettings(targets []SniperTarget, settings Settings
 	for _, storeID := range settings.StoreIDs {
 		allowedStores[storeID] = true
 	}
-	for _, target := range targets {
-		target.Date = strings.TrimSpace(target.Date)
+	for i, target := range targets {
+		target.Date = strings.ReplaceAll(strings.TrimSpace(target.Date), "-", "")
 		target.StartAfter = normalizeTimeStr(target.StartAfter)
 		target.StartBefore = normalizeTimeStr(target.StartBefore)
 		target.StoreID = strings.TrimSpace(target.StoreID)
 		if target.StoreID == "" {
 			target.StoreID = defaultStore
 		}
+		if target.StoreID == "" {
+			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "请选择门店"})
+			continue
+		}
 		if _, err := parseCompactDate(target.Date, loc); err != nil {
+			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "日期无效，请使用 YYYY-MM-DD 或 YYYYMMDD"})
 			continue
 		}
 		if parseTimeSeconds(target.StartAfter) < 0 || parseTimeSeconds(target.StartBefore) < 0 {
+			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "时间无效，请使用 HH:MM 或 HHMM"})
 			continue
 		}
 		if target.StartAfter >= target.StartBefore {
+			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "最晚时间必须晚于最早时间"})
 			continue
 		}
 		if len(allowedStores) > 0 && !allowedStores[target.StoreID] {
+			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "门店不在已捕获门店列表中"})
 			continue
 		}
 		out = append(out, target)
 	}
-	return out
+	return out, rejected
 }
 
 func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings Settings, targets []SniperTarget) {

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Bundle sushiro-overdose into a macOS .app
+# Bundle sushiro-overdose into a macOS .app and clickable .dmg
 # Usage: ./scripts/bundle-macos.sh <binary-path> <version> <output-dir>
 
 BINARY="${1:?Usage: $0 <binary> <version> <output-dir>}"
@@ -11,6 +11,8 @@ OUTPUT_DIR="${3:?}"
 APP_NAME="Sushiro Overdose"
 BUNDLE_ID="com.sushiro-overdose.app"
 APP_DIR="${OUTPUT_DIR}/${APP_NAME}.app"
+DMG_STAGING_DIR="${OUTPUT_DIR}/dmg-staging"
+DMG_NAME="Sushiro-Overdose-${VERSION}-macOS.dmg"
 
 rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/Contents/MacOS"
@@ -54,7 +56,42 @@ cat > "${APP_DIR}/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
-cd "${OUTPUT_DIR}"
-zip -r "${APP_NAME}-${VERSION}-macOS.zip" "${APP_NAME}.app"
+if [ -n "${MACOS_CODESIGN_IDENTITY:-}" ]; then
+  echo "Codesigning app with identity: ${MACOS_CODESIGN_IDENTITY}"
+  codesign --force --deep --options runtime --timestamp --sign "${MACOS_CODESIGN_IDENTITY}" "${APP_DIR}"
+else
+  echo "MACOS_CODESIGN_IDENTITY is not set; creating an unsigned app."
+fi
 
-echo "Created: ${OUTPUT_DIR}/${APP_NAME}-${VERSION}-macOS.zip"
+rm -rf "${DMG_STAGING_DIR}"
+mkdir -p "${DMG_STAGING_DIR}"
+cp -R "${APP_DIR}" "${DMG_STAGING_DIR}/"
+ln -s /Applications "${DMG_STAGING_DIR}/Applications"
+
+hdiutil create \
+  -volname "${APP_NAME}" \
+  -srcfolder "${DMG_STAGING_DIR}" \
+  -ov \
+  -format UDZO \
+  "${OUTPUT_DIR}/${DMG_NAME}"
+
+if [ -n "${MACOS_CODESIGN_IDENTITY:-}" ]; then
+  echo "Codesigning DMG with identity: ${MACOS_CODESIGN_IDENTITY}"
+  codesign --force --timestamp --sign "${MACOS_CODESIGN_IDENTITY}" "${OUTPUT_DIR}/${DMG_NAME}"
+fi
+
+if [ -n "${MACOS_NOTARY_APPLE_ID:-}" ] && [ -n "${MACOS_NOTARY_PASSWORD:-}" ] && [ -n "${MACOS_NOTARY_TEAM_ID:-}" ]; then
+  echo "Submitting DMG for notarization"
+  xcrun notarytool submit "${OUTPUT_DIR}/${DMG_NAME}" \
+    --apple-id "${MACOS_NOTARY_APPLE_ID}" \
+    --password "${MACOS_NOTARY_PASSWORD}" \
+    --team-id "${MACOS_NOTARY_TEAM_ID}" \
+    --wait
+  xcrun stapler staple "${OUTPUT_DIR}/${DMG_NAME}"
+else
+  echo "Notarization credentials are not set; skipping notarization."
+fi
+
+rm -rf "${DMG_STAGING_DIR}"
+
+echo "Created: ${OUTPUT_DIR}/${DMG_NAME}"

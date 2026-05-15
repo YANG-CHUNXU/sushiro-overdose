@@ -49,7 +49,8 @@ main.go (默认启动 Web UI)
 
 | 文件 | 职责 |
 |------|------|
-| `main.go` | 程序入口，CLI 命令分发，PID 管理，前台/守护进程模式，`runBookingLoop` 抢号循环 |
+| `main.go` | 程序入口、CLI 命令分发、前台 CLI 流程、`runBookingLoop` 抢号循环 |
+| `daemon.go` | 后台启动/停止/status、守护进程子进程与 PID 读写 |
 | `engine.go` | **Web 控制的后台引擎**：管理捕获/抢号生命周期，状态广播到 SSE，可启动/停止 |
 | `engine_sniper.go` | Web 狙击计划执行引擎 |
 
@@ -72,6 +73,7 @@ main.go (默认启动 Web UI)
 |------|------|
 | `api.go` | `Client` — 寿司郎官方 API 封装（门店/时段/创建预约/取消预约） |
 | `config.go` | `Settings` 结构体定义，`LoadSettings` 从 JSON 文件加载（备用，当前未被调用） |
+| `tokens.go` | 捕获到的认证参数模型、本地配置读写、旧配置迁移、认证参数 → `Settings` 转换 |
 | `preferences.go` | **用户偏好持久化**：人数/桌型/自定义时段范围/日期与时段优先级，存到 `~/.sushiro/preferences.json` |
 | `slot.go` | `Slot`/`StoreInfo`/`ReservationRecord` 数据结构，时间格式化工具 |
 
@@ -79,7 +81,7 @@ main.go (默认启动 Web UI)
 
 | 文件 | 职责 |
 |------|------|
-| `proxy.go` | MITM 代理服务器，`CapturedTokens`，认证配置读写（`~/.sushiro/config.json`），门店选择，时段配置 |
+| `proxy.go` | MITM 代理服务器、请求解析捕获、门店选择、旧版时段配置 |
 | `cert.go` | CA/叶子证书生成，存储路径 `~/.sushiro-proxy/` |
 | `watchdog.go` | `proxy_active.json` — 异常退出后清理残留系统代理 |
 
@@ -125,7 +127,7 @@ main.go (默认启动 Web UI)
 | 文件 | 职责 |
 |------|------|
 | `assets/sushiro.png` | 寿司郎官方 Logo PNG（base64 嵌入到 `web_static.go` 的 `logoBase64` 常量中） |
-| `scripts/bundle-macos.sh` | Mac .app 桌面应用打包脚本 |
+| `scripts/bundle-macos.sh` | Mac .app + DMG 桌面应用打包脚本 |
 | `install/install.sh` | macOS/Linux 一键安装脚本 |
 | `install/install.ps1` | Windows PowerShell 一键安装脚本 |
 
@@ -274,8 +276,8 @@ git push origin v1.2.0
 #    b. setup Go 1.23
 #    c. GoReleaser 编译所有平台（含 Mac Universal Binary）
 #    d. 创建 GitHub Release 并上传所有 archive
-#    e. 运行 scripts/bundle-macos.sh 创建 Mac .app
-#    f. 上传 .app.zip 到同一个 Release
+#    e. 运行 scripts/bundle-macos.sh 创建 Mac .app 并封装 DMG
+#    f. 上传 DMG 和 Windows 裸 .exe 到同一个 Release
 
 # 4. 验证 Release
 # 打开 https://github.com/Ryujoxys/sushiro-overdose/releases
@@ -285,7 +287,9 @@ git push origin v1.2.0
 #   - sushiro-overdose_1.2.0_windows_arm64.zip        (Windows ARM)
 #   - sushiro-overdose_1.2.0_linux_amd64.tar.gz      (Linux 64位)
 #   - sushiro-overdose_1.2.0_linux_arm64.tar.gz      (Linux ARM)
-#   - Sushiro Overdose-1.2.0-macOS.zip               (Mac .app 桌面应用)
+#   - Sushiro-Overdose-1.2.0-macOS.dmg              (Mac 双击安装镜像)
+#   - Sushiro-Overdose-1.2.0-windows-amd64.exe      (Windows 双击运行)
+#   - Sushiro-Overdose-1.2.0-windows-arm64.exe      (Windows ARM 双击运行)
 #   - checksums.txt
 ```
 
@@ -294,9 +298,11 @@ git push origin v1.2.0
 | 文件 | 目标用户 | 使用方式 |
 |------|---------|---------|
 | `*_darwin_all.tar.gz` | Mac 高级用户 | 解压后命令行运行 |
-| `Sushiro Overdose-*.zip` | Mac 普通用户 | 解压得到 .app，双击运行 |
-| `*_windows_amd64.zip` | Windows 用户 | 解压得到 .exe，双击运行 |
-| `*_windows_arm64.zip` | Windows ARM 用户 | 同上 |
+| `Sushiro-Overdose-*-macOS.dmg` | Mac 普通用户 | 双击打开，拖到 Applications 后运行 |
+| `Sushiro-Overdose-*-windows-amd64.exe` | Windows 用户 | 下载后双击运行 |
+| `Sushiro-Overdose-*-windows-arm64.exe` | Windows ARM 用户 | 下载后双击运行 |
+| `*_windows_amd64.zip` | Windows 高级用户 | 解压后命令行运行 |
+| `*_windows_arm64.zip` | Windows ARM 高级用户 | 同上 |
 | `*_linux_amd64.tar.gz` | Linux 用户 | 解压后命令行运行 |
 | `*_linux_arm64.tar.gz` | Linux ARM 用户 | 同上 |
 
@@ -332,7 +338,7 @@ git push origin v1.2.0
 
 ```
 输入: 编译好的二进制 + 版本号
-输出: "Sushiro Overdose-1.2.0-macOS.zip"
+输出: "Sushiro-Overdose-1.2.0-macOS.dmg"
 
 目录结构:
 Sushiro Overdose.app/
@@ -346,6 +352,8 @@ Sushiro Overdose.app/
 用户双击 .app → macOS 执行 `Contents/MacOS/sushiro-overdose` → 启动 Web UI → 自动打开浏览器。
 
 如需添加应用图标，将 `.icns` 文件放入 `Resources/` 并在 `Info.plist` 中添加 `CFBundleIconFile`。
+
+签名/公证是可选流程：Release workflow 会把 `MACOS_CODESIGN_IDENTITY`、`MACOS_NOTARY_APPLE_ID`、`MACOS_NOTARY_PASSWORD`、`MACOS_NOTARY_TEAM_ID` 传给 `scripts/bundle-macos.sh`。缺少这些 secrets 时会生成未签名 DMG，并在日志中明确跳过签名/公证。
 
 ---
 

@@ -87,20 +87,50 @@ jobs:
           GORELEASER_CURRENT_TAG: ${{ steps.release.outputs.tag }}
 
       - name: Bundle macOS .app
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           BINARY="dist/sushiro-overdose_darwin_all/sushiro-overdose"
           if [ ! -f "$BINARY" ]; then
             BINARY=$(find dist -name 'sushiro-overdose' -path '*darwin*' | head -1)
           fi
+          if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
+            echo "Darwin binary not found in dist/"
+            find dist -maxdepth 3 -type f | sort
+            exit 1
+          fi
           chmod +x scripts/bundle-macos.sh
           ./scripts/bundle-macos.sh "$BINARY" "$VERSION" dist/
 
-      - name: Upload macOS .app to Release
+      - name: Upload macOS DMG to Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           gh release upload "${{ steps.release.outputs.tag }}" \
-            "dist/Sushiro Overdose-${VERSION}-macOS.zip" \
+            "dist/Sushiro-Overdose-${VERSION}-macOS.dmg" \
             --clobber
+
+      - name: Upload click-to-run Windows executables
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          mkdir -p dist/direct
+          find dist -path '*windows*amd64*' -name 'sushiro-overdose.exe' -type f -print -quit | while read -r exe; do
+            cp "$exe" "dist/direct/Sushiro-Overdose-${VERSION}-windows-amd64.exe"
+          done
+          find dist -path '*windows*arm64*' -name 'sushiro-overdose.exe' -type f -print -quit | while read -r exe; do
+            cp "$exe" "dist/direct/Sushiro-Overdose-${VERSION}-windows-arm64.exe"
+          done
+          if ! ls dist/direct/*.exe >/dev/null 2>&1; then
+            echo "No Windows executables found in dist/"
+            find dist -maxdepth 3 -type f | sort
+            exit 1
+          fi
+          gh release upload "${{ steps.release.outputs.tag }}" dist/direct/*.exe --clobber
