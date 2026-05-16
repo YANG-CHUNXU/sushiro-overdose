@@ -85,6 +85,10 @@ func killProcess(pid int) error {
 	return syscall.Kill(pid, syscall.SIGTERM)
 }
 
+func killRelatedAppProcesses(excludePID int) []MaintenanceResult {
+	return killRelatedAppProcessesByPGrep(excludePID)
+}
+
 func isProcessAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil

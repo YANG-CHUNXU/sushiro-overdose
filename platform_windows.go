@@ -189,6 +189,51 @@ func killProcess(pid int) error {
 	return cmd.Run()
 }
 
+func killRelatedAppProcesses(excludePID int) []MaintenanceResult {
+	script := `
+$exclude = [int]$args[0]
+$matches = Get-CimInstance Win32_Process | Where-Object {
+  $_.ProcessId -ne $exclude -and $_.ProcessId -ne $PID -and (
+    $_.Name -like 'sushiro-overdose*.exe' -or
+    $_.Name -like 'Sushiro-Overdose*.exe' -or
+    $_.ExecutablePath -like '*\sushiro-overdose*.exe' -or
+    $_.ExecutablePath -like '*\Sushiro-Overdose*.exe' -or
+    $_.CommandLine -like '*sushiro-overdose*' -or
+    $_.CommandLine -like '*Sushiro-Overdose*'
+  )
+}
+foreach ($p in $matches) {
+  $status = 'ok'
+  $errorText = ''
+  try {
+    Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
+  } catch {
+    $status = 'error'
+    $errorText = $_.Exception.Message
+  }
+  [pscustomobject]@{
+    pid = $p.ProcessId
+    name = $p.Name
+    path = $p.ExecutablePath
+    status = $status
+    error = $errorText
+  } | ConvertTo-Json -Compress
+}
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, fmt.Sprintf("%d", excludePID))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return []MaintenanceResult{{
+			Name:   "related_processes",
+			Action: "kill_by_name",
+			Status: maintenanceStatusError,
+			Error:  fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(out))),
+		}}
+	}
+	return parseRelatedProcessKillOutput(string(out))
+}
+
 func isProcessAlive(pid int) bool {
 	cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/NH")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}

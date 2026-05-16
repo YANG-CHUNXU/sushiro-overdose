@@ -54,6 +54,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/notifications/test", handleNotificationTest)
 	mux.HandleFunc("/api/repair-proxy", handleRepairProxy)
 	mux.HandleFunc("/api/uninstall", handleUninstall)
+	mux.HandleFunc("/api/processes/stop", handleStopProcesses)
 
 	// Engine control
 	mux.HandleFunc("/api/engine/state", handleEngineState)

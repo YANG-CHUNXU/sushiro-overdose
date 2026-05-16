@@ -99,6 +99,28 @@ func handleUninstall(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func handleStopProcesses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var options StopProcessOptions
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&options)
+	}
+	report := StopAppProcesses(options)
+	status := http.StatusOK
+	if !report.OK {
+		status = http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(report)
+	if options.IncludeSelf && !options.DryRun {
+		scheduleSelfExit()
+	}
+}
+
 func uninstallOptionsSelected(options UninstallOptions) bool {
 	return options.All || options.Config || options.Notify || options.Feishu ||
 		options.Preferences || options.Stores || options.State || options.History ||

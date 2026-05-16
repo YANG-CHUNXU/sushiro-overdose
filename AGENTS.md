@@ -200,6 +200,7 @@ main.go (默认启动 Web UI)
 | POST | `/api/notifications/test` | 发送通知渠道测试 |
 | POST | `/api/repair-proxy` | 恢复系统代理并清理代理 marker |
 | POST | `/api/uninstall` | 清理本地敏感数据和证书 |
+| POST | `/api/processes/stop` | 恢复代理并停止本应用相关进程，支持响应后退出当前进程 |
 | GET | `/api/engine/state` | 引擎当前状态（idle/capturing/booking/success/error） |
 | POST | `/api/engine/capture` | 启动参数捕获（MITM 代理） |
 | POST | `/api/engine/booking` | 启动自动抢号 |

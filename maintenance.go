@@ -1,11 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -46,10 +50,23 @@ type UninstallOptions struct {
 	DryRun       bool `json:"dry_run"`
 }
 
+type StopProcessOptions struct {
+	IncludeSelf bool `json:"include_self"`
+	DryRun      bool `json:"dry_run"`
+}
+
 type maintenanceTarget struct {
 	name     string
 	path     string
 	selected bool
+}
+
+type relatedProcessKillResult struct {
+	PID    int    `json:"pid"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Status string `json:"status"`
+	Error  string `json:"error"`
 }
 
 func RepairProxy() MaintenanceReport {
@@ -118,6 +135,216 @@ func UninstallLocalData(options UninstallOptions) MaintenanceReport {
 
 	report.OK = maintenanceReportOK(report.Results)
 	return report
+}
+
+func StopAppProcesses(options StopProcessOptions) MaintenanceReport {
+	report := MaintenanceReport{Action: "stop_processes"}
+
+	repair := dryRunRepairProxyReport()
+	if !options.DryRun {
+		repair = RepairProxy()
+	}
+	report.Results = append(report.Results, repair.Results...)
+
+	if options.DryRun {
+		report.Results = append(report.Results, MaintenanceResult{
+			Name:   "current_runtime",
+			Action: "stop_runtime",
+			Status: maintenanceStatusWouldRemove,
+		})
+	} else {
+		engine.Stop()
+		sampler.Stop()
+		report.Results = append(report.Results, MaintenanceResult{
+			Name:   "current_runtime",
+			Action: "stop_runtime",
+			Status: maintenanceStatusOK,
+		})
+	}
+
+	pids := processPIDsForCleanup()
+	for _, target := range pids {
+		report.Results = append(report.Results, stopProcessTarget(target, options.DryRun))
+	}
+	if !options.DryRun {
+		cleanupProcessMarkers()
+		report.Results = append(report.Results, KillRelatedAppProcesses(os.Getpid())...)
+	}
+	if options.IncludeSelf {
+		status := maintenanceStatusOK
+		if options.DryRun {
+			status = maintenanceStatusWouldRemove
+		}
+		report.Results = append(report.Results, MaintenanceResult{
+			Name:   "current_process",
+			Action: "exit_after_response",
+			Status: status,
+			Error:  fmt.Sprintf("pid %d", os.Getpid()),
+		})
+	}
+
+	report.OK = maintenanceReportOK(report.Results)
+	return report
+}
+
+type processCleanupTarget struct {
+	name string
+	pid  int
+}
+
+func processPIDsForCleanup() []processCleanupTarget {
+	targets := []processCleanupTarget{}
+	add := func(name string, pid int) {
+		if pid <= 0 || pid == os.Getpid() {
+			return
+		}
+		for _, target := range targets {
+			if target.pid == pid {
+				return
+			}
+		}
+		targets = append(targets, processCleanupTarget{name: name, pid: pid})
+	}
+	add("main_daemon", atoi(readPID()))
+	add("sampling_daemon", atoi(readSamplingPID()))
+	if marker, err := readActivityMarker(mainActivityPath()); err == nil {
+		add("main_activity", marker.PID)
+	}
+	if pid, ok := processLockHolder(samplingLockFileName); ok {
+		add("sampling_lock", pid)
+	}
+	if state, ok := readProxyStateMarker(); ok {
+		add("proxy_owner", state.PID)
+	}
+	return targets
+}
+
+func stopProcessTarget(target processCleanupTarget, dryRun bool) MaintenanceResult {
+	result := MaintenanceResult{
+		Name:   target.name,
+		Action: "kill_process",
+		Status: maintenanceStatusOK,
+		Error:  fmt.Sprintf("pid %d", target.pid),
+	}
+	if dryRun {
+		result.Status = maintenanceStatusWouldRemove
+		return result
+	}
+	if !IsProcessAlive(target.pid) {
+		result.Status = maintenanceStatusMissing
+		return result
+	}
+	if err := KillProcess(target.pid); err != nil {
+		result.Status = maintenanceStatusError
+		result.Error = fmt.Sprintf("pid %d: %s", target.pid, err.Error())
+		return result
+	}
+	return result
+}
+
+func readProxyStateMarker() (proxyState, bool) {
+	data, err := os.ReadFile(proxyStatePath())
+	if err != nil {
+		return proxyState{}, false
+	}
+	var state proxyState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return proxyState{}, false
+	}
+	return state, state.PID > 0
+}
+
+func cleanupProcessMarkers() {
+	_ = os.Remove(pidFilePath())
+	_ = os.Remove(samplingPidFilePath())
+	_ = os.Remove(mainActivityPath())
+	_ = os.Remove(filepath.Join(appDirPath(), samplingLockFileName))
+	markProxyInactive()
+}
+
+func parseRelatedProcessKillOutput(out string) []MaintenanceResult {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	results := []MaintenanceResult{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var item relatedProcessKillResult
+		if err := json.Unmarshal([]byte(line), &item); err != nil {
+			results = append(results, MaintenanceResult{
+				Name:   "related_process",
+				Action: "kill_by_name",
+				Status: maintenanceStatusError,
+				Error:  err.Error() + ": " + line,
+			})
+			continue
+		}
+		status := maintenanceStatusOK
+		if item.Status == maintenanceStatusError || item.Status == "error" {
+			status = maintenanceStatusError
+		}
+		name := item.Name
+		if name == "" {
+			name = "related_process"
+		}
+		result := MaintenanceResult{
+			Name:   name,
+			Action: "kill_by_name",
+			Path:   item.Path,
+			Status: status,
+			Error:  fmt.Sprintf("pid %d", item.PID),
+		}
+		if item.Error != "" {
+			result.Error += ": " + item.Error
+		}
+		results = append(results, result)
+	}
+	if len(results) == 0 {
+		results = append(results, MaintenanceResult{
+			Name:   "related_processes",
+			Action: "kill_by_name",
+			Status: maintenanceStatusMissing,
+		})
+	}
+	return results
+}
+
+func killRelatedAppProcessesByPGrep(excludePID int) []MaintenanceResult {
+	out, err := exec.Command("pgrep", "-f", "sushiro-overdose|Sushiro-Overdose").Output()
+	if err != nil {
+		return []MaintenanceResult{{
+			Name:   "related_processes",
+			Action: "kill_by_name",
+			Status: maintenanceStatusMissing,
+		}}
+	}
+	results := []MaintenanceResult{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || pid <= 0 || pid == excludePID {
+			continue
+		}
+		result := MaintenanceResult{
+			Name:   "related_process",
+			Action: "kill_by_name",
+			Status: maintenanceStatusOK,
+			Error:  fmt.Sprintf("pid %d", pid),
+		}
+		if err := KillProcess(pid); err != nil {
+			result.Status = maintenanceStatusError
+			result.Error = fmt.Sprintf("pid %d: %s", pid, err.Error())
+		}
+		results = append(results, result)
+	}
+	if len(results) == 0 {
+		results = append(results, MaintenanceResult{
+			Name:   "related_processes",
+			Action: "kill_by_name",
+			Status: maintenanceStatusMissing,
+		})
+	}
+	return results
 }
 
 func uninstallSystemCertificate(dryRun bool) MaintenanceResult {
@@ -209,6 +436,11 @@ func cmdUninstall(args []string) {
 	printMaintenanceReport(os.Stdout, UninstallLocalData(options))
 }
 
+func cmdStopProcesses() {
+	printMaintenanceReport(os.Stdout, StopAppProcesses(StopProcessOptions{}))
+	fmt.Println("当前命令结束后，如果没有其他 Sushiro Overdose 窗口，就可以删除应用文件。")
+}
+
 func parseUninstallOptions(args []string) UninstallOptions {
 	var options UninstallOptions
 	selection := false
@@ -290,4 +522,11 @@ func dryRunRepairProxyReport() MaintenanceReport {
 			Status: maintenanceStatusWouldRemove,
 		}},
 	}
+}
+
+func scheduleSelfExit() {
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	}()
 }

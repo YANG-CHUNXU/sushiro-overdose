@@ -73,6 +73,7 @@ func printUsage() {
 	fmt.Println("  doctor       Print readonly diagnostics")
 	fmt.Println("  repair-proxy Restore system proxy settings")
 	fmt.Println("  uninstall    Remove local sensitive data and certificate")
+	fmt.Println("  stop-processes Stop related app processes before deleting the app")
 	fmt.Println("  exit         Stop background process")
 	fmt.Println("  config       Configure settings (feishu, telegram, bark, etc.)")
 	fmt.Println("  help         Show this help message")
@@ -120,6 +121,8 @@ func main() {
 		cmdRepairProxy()
 	} else if len(args) >= 1 && (args[0] == "uninstall" || args[0] == "purge") {
 		cmdUninstall(args[1:])
+	} else if len(args) == 1 && (args[0] == "stop-processes" || args[0] == "kill-processes") {
+		cmdStopProcesses()
 	} else if len(args) >= 1 && (args[0] == "config" || args[0] == "setting" || args[0] == "settings") {
 		cmdConfig(args[1:])
 	} else if len(args) >= 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {

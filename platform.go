@@ -49,6 +49,12 @@ func IsProcessAlive(pid int) bool {
 	return isProcessAlive(pid)
 }
 
+// KillRelatedAppProcesses terminates other running sushiro-overdose processes
+// discovered by platform process listing. excludePID is never terminated.
+func KillRelatedAppProcesses(excludePID int) []MaintenanceResult {
+	return killRelatedAppProcesses(excludePID)
+}
+
 // OpenBrowser opens the local Web UI. Desktop platforms prefer a standalone
 // app-style window when a Chromium-based browser is available, then fall back
 // to the default browser.
