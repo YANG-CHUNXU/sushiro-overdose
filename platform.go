@@ -49,7 +49,9 @@ func IsProcessAlive(pid int) bool {
 	return isProcessAlive(pid)
 }
 
-// OpenBrowser opens the default browser at the given URL.
+// OpenBrowser opens the local Web UI. Desktop platforms prefer a standalone
+// app-style window when a Chromium-based browser is available, then fall back
+// to the default browser.
 func OpenBrowser(url string) error {
 	return openBrowser(url)
 }

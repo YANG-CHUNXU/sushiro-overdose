@@ -122,12 +122,12 @@ jobs:
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           mkdir -p dist/direct
-          find dist -path '*windows*amd64*' -name 'sushiro-overdose.exe' -type f -print -quit | while read -r exe; do
-            cp "$exe" "dist/direct/Sushiro-Overdose-${VERSION}-windows-amd64.exe"
-          done
-          find dist -path '*windows*arm64*' -name 'sushiro-overdose.exe' -type f -print -quit | while read -r exe; do
-            cp "$exe" "dist/direct/Sushiro-Overdose-${VERSION}-windows-arm64.exe"
-          done
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -ldflags "-s -w -H windowsgui -X main.Version=${VERSION}" \
+            -o "dist/direct/Sushiro-Overdose-${VERSION}-windows-amd64.exe" .
+          GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build \
+            -ldflags "-s -w -H windowsgui -X main.Version=${VERSION}" \
+            -o "dist/direct/Sushiro-Overdose-${VERSION}-windows-arm64.exe" .
           if ! ls dist/direct/*.exe >/dev/null 2>&1; then
             echo "No Windows executables found in dist/"
             find dist -maxdepth 3 -type f | sort

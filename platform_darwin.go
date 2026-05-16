@@ -156,5 +156,31 @@ func isProcessAlive(pid int) bool {
 }
 
 func openBrowser(url string) error {
+	for _, exe := range darwinChromiumExecutables() {
+		if _, err := os.Stat(exe); err != nil {
+			continue
+		}
+		if err := exec.Command(exe, "--app="+url, "--new-window").Start(); err == nil {
+			return nil
+		}
+	}
 	return exec.Command("open", url).Start()
+}
+
+func darwinChromiumExecutables() []string {
+	exes := []string{
+		"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+		"/Applications/Chromium.app/Contents/MacOS/Chromium",
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		exes = append(exes,
+			filepath.Join(home, "Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+			filepath.Join(home, "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+			filepath.Join(home, "Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+			filepath.Join(home, "Applications/Chromium.app/Contents/MacOS/Chromium"),
+		)
+	}
+	return exes
 }

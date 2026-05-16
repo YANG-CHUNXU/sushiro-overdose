@@ -149,5 +149,44 @@ func isProcessAlive(pid int) bool {
 }
 
 func openBrowser(url string) error {
+	for _, exe := range windowsChromiumExecutables() {
+		if _, err := os.Stat(exe); err != nil {
+			continue
+		}
+		cmd := exec.Command(exe, "--app="+url, "--new-window")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		if err := cmd.Start(); err == nil {
+			return nil
+		}
+	}
 	return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+}
+
+func windowsChromiumExecutables() []string {
+	names := []string{"msedge.exe", "chrome.exe", "brave.exe"}
+	out := []string{}
+	for _, name := range names {
+		if path, err := exec.LookPath(name); err == nil {
+			out = append(out, path)
+		}
+	}
+	localAppData := os.Getenv("LOCALAPPDATA")
+	programFiles := os.Getenv("PROGRAMFILES")
+	programFilesX86 := os.Getenv("PROGRAMFILES(X86)")
+	appendCandidate := func(base string, parts ...string) {
+		if base == "" {
+			return
+		}
+		out = append(out, filepath.Join(append([]string{base}, parts...)...))
+	}
+	appendCandidate(localAppData, "Microsoft", "Edge", "Application", "msedge.exe")
+	appendCandidate(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe")
+	appendCandidate(programFiles, "Microsoft", "Edge", "Application", "msedge.exe")
+	appendCandidate(localAppData, "Google", "Chrome", "Application", "chrome.exe")
+	appendCandidate(programFiles, "Google", "Chrome", "Application", "chrome.exe")
+	appendCandidate(programFilesX86, "Google", "Chrome", "Application", "chrome.exe")
+	appendCandidate(localAppData, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")
+	appendCandidate(programFiles, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")
+	appendCandidate(programFilesX86, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")
+	return out
 }

@@ -38,7 +38,7 @@ main.go (默认启动 Web UI)
 
 ### 两种使用模式
 
-1. **Web UI 模式（默认）**：无参数运行 → 启动 HTTP 服务 → 自动打开浏览器 → 用户在网页操作一切
+1. **Web UI 模式（默认）**：无参数运行 → 启动 HTTP 服务 → 优先打开独立应用窗口，失败时回退默认浏览器
 2. **CLI 模式（高级）**：`sushiro-overdose cli` → 传统终端交互
 
 ---
@@ -328,9 +328,9 @@ git push origin v1.2.0
 | 文件 | 目标用户 | 使用方式 |
 |------|---------|---------|
 | `*_darwin_all.tar.gz` | Mac 高级用户 | 解压后命令行运行 |
-| `Sushiro-Overdose-*-macOS.dmg` | Mac 普通用户 | 双击打开，拖到 Applications 后运行 |
-| `Sushiro-Overdose-*-windows-amd64.exe` | Windows 用户 | 下载后双击运行 |
-| `Sushiro-Overdose-*-windows-arm64.exe` | Windows ARM 用户 | 下载后双击运行 |
+| `Sushiro-Overdose-*-macOS.dmg` | Mac 普通用户 | 双击打开，拖到 Applications 后运行，独立窗口优先 |
+| `Sushiro-Overdose-*-windows-amd64.exe` | Windows 用户 | 下载后双击运行，GUI 子系统无终端黑框 |
+| `Sushiro-Overdose-*-windows-arm64.exe` | Windows ARM 用户 | 下载后双击运行，GUI 子系统无终端黑框 |
 | `*_windows_amd64.zip` | Windows 高级用户 | 解压后命令行运行 |
 | `*_windows_arm64.zip` | Windows ARM 高级用户 | 同上 |
 | `*_linux_amd64.tar.gz` | Linux 用户 | 解压后命令行运行 |
@@ -379,7 +379,7 @@ Sushiro Overdose.app/
     └── Resources/           (预留给图标 .icns)
 ```
 
-用户双击 .app → macOS 执行 `Contents/MacOS/sushiro-overdose` → 启动 Web UI → 自动打开浏览器。
+用户双击 .app → macOS 执行 `Contents/MacOS/sushiro-overdose` → 启动 Web UI → 优先打开独立应用窗口，失败时回退默认浏览器。
 
 如需添加应用图标，将 `.icns` 文件放入 `Resources/` 并在 `Info.plist` 中添加 `CFBundleIconFile`。
 
@@ -391,7 +391,7 @@ Sushiro Overdose.app/
 
 ### 为什么 Web UI 是默认模式？
 
-大部分用户不熟悉终端操作。Web UI 提供可视化引导，降低使用门槛。CLI 保留给高级用户和自动化场景。
+大部分用户不熟悉终端操作。Web UI 提供可视化引导，并优先以独立应用窗口承载，降低使用门槛。CLI 保留给高级用户和自动化场景。
 
 ### 为什么用内嵌 HTML 而不是前后端分离？
 

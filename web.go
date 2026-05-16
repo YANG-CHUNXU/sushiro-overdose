@@ -106,8 +106,8 @@ func cmdWeb() {
 	}()
 
 	url := fmt.Sprintf("http://%s", addr)
-	fmt.Printf("Web UI 启动于 %s\n", url)
-	fmt.Println("在浏览器中操作，按 Ctrl+C 退出")
+	fmt.Printf("应用窗口启动于 %s\n", url)
+	fmt.Println("会优先打开独立应用窗口；无法打开时回退到默认浏览器。按 Ctrl+C 退出")
 
 	_ = OpenBrowser(url)
 

@@ -91,5 +91,14 @@ func isProcessAlive(pid int) bool {
 }
 
 func openBrowser(url string) error {
+	for _, name := range []string{"microsoft-edge", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		if err := exec.Command(path, "--app="+url, "--new-window").Start(); err == nil {
+			return nil
+		}
+	}
 	return exec.Command("xdg-open", url).Start()
 }

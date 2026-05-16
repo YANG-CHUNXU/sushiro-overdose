@@ -41,11 +41,15 @@ if (-not $Latest) {
 Write-Host "最新版本: $Latest"
 
 # 构造下载链接
-$Filename = "${Binary}_$($Latest -replace '^v')_windows_${Arch}.zip"
+$Version = $Latest -replace '^v'
+$Filename = "${Binary}_${Version}_windows_${Arch}.zip"
 $Url = "https://github.com/$Repo/releases/download/$Latest/$Filename"
+$AppFilename = "Sushiro-Overdose-${Version}-windows-${Arch}.exe"
+$AppUrl = "https://github.com/$Repo/releases/download/$Latest/$AppFilename"
 
 $TempDir = [System.IO.Path]::GetTempPath()
 $ZipPath = Join-Path $TempDir $Filename
+$AppPath = Join-Path $TempDir $AppFilename
 $ExtractDir = Join-Path $TempDir "sushiro-install"
 
 Write-Host "下载 $Url ..."
@@ -67,15 +71,29 @@ if (-not $ExeSource) {
 }
 
 $ExeTarget = Join-Path $InstallDir "$Binary.exe"
+$AppTarget = Join-Path $InstallDir "Sushiro Overdose.exe"
 
 # 如果已在运行，先尝试结束
-Get-Process -Name $Binary -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "检测到正在运行的旧版本，正在停止..." -ForegroundColor Yellow
-    $_ | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+foreach ($ProcessName in @($Binary, "Sushiro Overdose")) {
+    Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Host "检测到正在运行的旧版本，正在停止..." -ForegroundColor Yellow
+        $_ | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
 }
 
 Copy-Item $ExeSource.FullName $ExeTarget -Force
+
+# 下载桌面直下版：GUI 子系统，双击不显示终端黑框。
+$AppInstalled = $false
+try {
+    Write-Host "下载桌面应用 $AppUrl ..."
+    Invoke-WebRequest -Uri $AppUrl -OutFile $AppPath -UseBasicParsing
+    Copy-Item $AppPath $AppTarget -Force
+    $AppInstalled = $true
+} catch {
+    Write-Host "桌面应用直下版下载失败，将使用命令行版作为快捷方式目标: $_" -ForegroundColor DarkYellow
+}
 
 # 加入用户 PATH
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -90,9 +108,10 @@ try {
     $LnkPath = Join-Path $Desktop "Sushiro Overdose.lnk"
     $Shell = New-Object -ComObject WScript.Shell
     $Shortcut = $Shell.CreateShortcut($LnkPath)
-    $Shortcut.TargetPath = $ExeTarget
+    $ShortcutTarget = if ($AppInstalled) { $AppTarget } else { $ExeTarget }
+    $Shortcut.TargetPath = $ShortcutTarget
     $Shortcut.WorkingDirectory = $InstallDir
-    $Shortcut.IconLocation = "$ExeTarget,0"
+    $Shortcut.IconLocation = "$ShortcutTarget,0"
     $Shortcut.Description = "寿司郎 Overdose - 全自动抢号工具"
     $Shortcut.Save()
     Write-Host "已创建桌面快捷方式: Sushiro Overdose.lnk" -ForegroundColor Yellow
@@ -102,11 +121,15 @@ try {
 
 # 清理临时文件
 Remove-Item $ZipPath -Force -ErrorAction SilentlyContinue
+Remove-Item $AppPath -Force -ErrorAction SilentlyContinue
 Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "安装完成！sushiro-overdose $Latest" -ForegroundColor Green
-Write-Host "  安装位置: $ExeTarget" -ForegroundColor Cyan
+Write-Host "  命令行工具: $ExeTarget" -ForegroundColor Cyan
+if ($AppInstalled) {
+    Write-Host "  桌面应用: $AppTarget" -ForegroundColor Cyan
+}
 Write-Host "  使用方式：双击桌面图标，或新开终端执行 sushiro-overdose" -ForegroundColor Cyan
 Write-Host ""
 
@@ -119,5 +142,6 @@ if ($envAuto -eq "1" -or $envAuto -eq "true") {
 }
 if ($launch -eq "" -or $launch -match '^[Yy]') {
     Write-Host "启动中..." -ForegroundColor Green
-    Start-Process -FilePath $ExeTarget -WorkingDirectory $InstallDir
+    $LaunchTarget = if ($AppInstalled) { $AppTarget } else { $ExeTarget }
+    Start-Process -FilePath $LaunchTarget -WorkingDirectory $InstallDir
 }
