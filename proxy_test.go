@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -94,17 +95,45 @@ func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
 	<-done
 }
 
-func TestProxyUpstreamTransportEnablesHTTP2(t *testing.T) {
+func TestProxyUpstreamTransportUsesHTTP1(t *testing.T) {
 	tr := newProxyUpstreamTransport()
-	if !tr.ForceAttemptHTTP2 {
-		t.Fatalf("ForceAttemptHTTP2 = false")
+	if tr.ForceAttemptHTTP2 {
+		t.Fatalf("ForceAttemptHTTP2 = true")
+	}
+	if tr.TLSNextProto == nil {
+		t.Fatalf("TLSNextProto is nil; HTTP/2 should be disabled")
 	}
 	if tr.TLSClientConfig == nil {
 		t.Fatalf("TLSClientConfig is nil")
 	}
 	got := strings.Join(tr.TLSClientConfig.NextProtos, ",")
-	if !strings.Contains(got, "h2") || !strings.Contains(got, "http/1.1") {
-		t.Fatalf("NextProtos = %q, want h2 and http/1.1", got)
+	if got != "http/1.1" {
+		t.Fatalf("NextProtos = %q, want http/1.1", got)
+	}
+}
+
+func TestRelayResponseNormalizesHTTPVersion(t *testing.T) {
+	resp := &http.Response{
+		StatusCode:    http.StatusOK,
+		Status:        "200 OK",
+		Proto:         "HTTP/2.0",
+		ProtoMajor:    2,
+		ProtoMinor:    0,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader("ok")),
+		ContentLength: 2,
+	}
+	target, err := url.Parse("https://crm-cn-prd.sushiro.com.cn/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	ps := &proxyServer{}
+	if err := ps.relayResponse(&out, resp, http.MethodGet, target); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.String(), "HTTP/1.1 200 OK\r\n") {
+		t.Fatalf("response status line = %q", strings.SplitN(out.String(), "\r\n", 2)[0])
 	}
 }
 

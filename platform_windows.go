@@ -46,12 +46,13 @@ $n.Dispose()
 }
 
 func setSystemProxy(port int) error {
-	p := fmt.Sprintf("127.0.0.1:%d", port)
+	proxyServer := fmt.Sprintf("http=127.0.0.1:%d;https=127.0.0.1:%d", port, port)
 	script := `
 Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 1
 Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -Value $args[0]
+Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyOverride -Value '<local>;localhost;127.*;::1;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*'
 `
-	cmd := powershellCommand(script, p)
+	cmd := powershellCommand(script, proxyServer)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("设置系统代理失败: %w", err)
 	}
@@ -103,7 +104,15 @@ func isCertTrusted() (bool, error) {
 
 	script := `
 $thumb = $args[0].ToUpperInvariant()
-$cert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+$blocked = @('Cert:\CurrentUser\Disallowed','Cert:\LocalMachine\Disallowed') |
+  ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue } |
+  Where-Object { $_.Thumbprint -eq $thumb } |
+  Select-Object -First 1
+if ($null -ne $blocked) { throw "certificate is present in Windows Disallowed store" }
+$cert = @('Cert:\CurrentUser\Root','Cert:\LocalMachine\Root') |
+  ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue } |
+  Where-Object { $_.Thumbprint -eq $thumb } |
+  Select-Object -First 1
 if ($null -ne $cert) { Write-Output "trusted" }
 `
 	cmd := powershellCommand(script, thumbprint)
@@ -121,11 +130,14 @@ func installCert() error {
 	if err != nil {
 		return fmt.Errorf("读取本地 CA 证书失败: %w", err)
 	}
-	if trusted, _ := isCertTrusted(); trusted {
+	userTrusted, _ := isCertTrustedInStore(`Cert:\CurrentUser\Root`, thumbprint)
+	machineTrusted, _ := isCertTrustedInStore(`Cert:\LocalMachine\Root`, thumbprint)
+	if userTrusted && machineTrusted {
 		return nil
 	}
 
-	script := `
+	if !userTrusted {
+		userScript := `
 $path = $args[0]
 $thumb = $args[1].ToUpperInvariant()
 Get-ChildItem -Path Cert:\CurrentUser\Root |
@@ -139,14 +151,20 @@ if ($null -eq $existing) {
 $cert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
 if ($null -eq $cert) { throw "certificate was not found in CurrentUser Root after import" }
 `
-	cmd := powershellCommand(script, certPath, thumbprint)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		fallback := exec.Command("certutil", "-f", "-user", "-addstore", "Root", certPath)
-		fallback.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		fallbackOut, fallbackErr := fallback.CombinedOutput()
-		if fallbackErr != nil {
-			return fmt.Errorf("导入证书失败: powershell=%w: %s; certutil=%w: %s", err, strings.TrimSpace(string(out)), fallbackErr, strings.TrimSpace(string(fallbackOut)))
+		cmd := powershellCommand(userScript, certPath, thumbprint)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fallback := exec.Command("certutil", "-f", "-user", "-addstore", "Root", certPath)
+			fallback.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			fallbackOut, fallbackErr := fallback.CombinedOutput()
+			if fallbackErr != nil {
+				return fmt.Errorf("导入证书失败: powershell=%w: %s; certutil=%w: %s", err, strings.TrimSpace(string(out)), fallbackErr, strings.TrimSpace(string(fallbackOut)))
+			}
+		}
+	}
+	if machineTrusted, _ = isCertTrustedInStore(`Cert:\LocalMachine\Root`, thumbprint); !machineTrusted {
+		if err := installCertToLocalMachine(certPath, thumbprint); err != nil {
+			return fmt.Errorf("当前用户证书已安装，但机器级 Root 证书安装失败；Windows PC 微信可能仍不信任本地 CA，请允许管理员权限后重试: %w", err)
 		}
 	}
 	trusted, trustErr := isCertTrusted()
@@ -159,6 +177,42 @@ if ($null -eq $cert) { throw "certificate was not found in CurrentUser Root afte
 	return nil
 }
 
+func isCertTrustedInStore(storePath, thumbprint string) (bool, error) {
+	script := `
+$path = $args[0]
+$thumb = $args[1].ToUpperInvariant()
+$cert = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -ne $cert) { Write-Output "trusted" }
+`
+	cmd := powershellCommand(script, storePath, thumbprint)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return strings.Contains(string(out), "trusted"), nil
+}
+
+func installCertToLocalMachine(certPath, thumbprint string) error {
+	script := `
+$path = $args[0]
+$thumb = $args[1].ToUpperInvariant()
+$existing = Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -eq $existing) {
+  $p = Start-Process -FilePath certutil.exe -ArgumentList @('-f','-addstore','Root',$path) -Verb RunAs -Wait -PassThru
+  if ($null -eq $p) { throw 'elevated certutil did not start' }
+  if ($p.ExitCode -ne 0) { throw "elevated certutil failed with exit code $($p.ExitCode)" }
+}
+$cert = Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -eq $cert) { throw 'certificate was not found in LocalMachine Root after import' }
+`
+	cmd := powershellCommand(script, certPath, thumbprint)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func uninstallCert() error {
 	thumbprint, thumbErr := localCACertSHA1Thumbprint()
 	if thumbErr == nil {
@@ -167,6 +221,19 @@ $thumb = $args[0].ToUpperInvariant()
 Get-ChildItem -Path Cert:\CurrentUser\Root |
   Where-Object { $_.Thumbprint -eq $thumb -or $_.Subject -like '*CN=Sushiro Proxy CA*' } |
   Remove-Item -ErrorAction SilentlyContinue
+$machineCert = Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue |
+  Where-Object { $_.Thumbprint -eq $thumb } |
+  Select-Object -First 1
+if ($null -ne $machineCert) {
+  $p = Start-Process -FilePath certutil.exe -ArgumentList @('-delstore','Root',$thumb) -Verb RunAs -Wait -PassThru
+  if ($null -eq $p) { throw 'elevated certutil did not start' }
+  if ($p.ExitCode -ne 0) { throw "elevated certutil failed with exit code $($p.ExitCode)" }
+}
+$left = @('Cert:\CurrentUser\Root','Cert:\LocalMachine\Root') |
+  ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue } |
+  Where-Object { $_.Thumbprint -eq $thumb } |
+  Select-Object -First 1
+if ($null -ne $left) { throw 'certificate still exists after removal' }
 `
 		cmd := powershellCommand(script, thumbprint)
 		out, err := cmd.CombinedOutput()

@@ -252,6 +252,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	tlsClient := tls.Server(&bufferedConn{Conn: clientConn, reader: br}, &tls.Config{
 		Certificates: []tls.Certificate{hostCert},
 		MinVersion:   tls.VersionTLS12,
+		NextProtos:   []string{"http/1.1"},
 	})
 	defer tlsClient.Close()
 	if err := tlsClient.Handshake(); err != nil {
@@ -375,10 +376,11 @@ func removeHopByHopHeaders(header http.Header) {
 func newProxyUpstreamTransport() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = func(*http.Request) (*url.URL, error) { return nil, nil }
-	transport.ForceAttemptHTTP2 = true
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	transport.TLSClientConfig = &tls.Config{
 		MinVersion: tls.VersionTLS12,
-		NextProtos: []string{"h2", "http/1.1"},
+		NextProtos: []string{"http/1.1"},
 	}
 	return transport
 }
@@ -408,6 +410,9 @@ func hostWithoutPort(hostPort string) string {
 
 func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
 	defer resp.Body.Close()
+	resp.Proto = "HTTP/1.1"
+	resp.ProtoMajor = 1
+	resp.ProtoMinor = 1
 	bodySample := ""
 	if resp.StatusCode >= 400 && resp.ContentLength >= 0 && resp.ContentLength <= proxyErrorBodyLogLimit {
 		bodyBytes, err := io.ReadAll(resp.Body)

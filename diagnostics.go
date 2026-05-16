@@ -81,17 +81,20 @@ type DiagnosticConfig struct {
 }
 
 type DiagnosticCertificate struct {
-	Dir        string `json:"dir"`
-	CertPath   string `json:"cert_path"`
-	KeyPath    string `json:"key_path"`
-	CertExists bool   `json:"cert_exists"`
-	KeyExists  bool   `json:"key_exists"`
-	Trusted    bool   `json:"trusted"`
-	TrustError string `json:"trust_error,omitempty"`
-	Subject    string `json:"subject,omitempty"`
-	NotBefore  string `json:"not_before,omitempty"`
-	NotAfter   string `json:"not_after,omitempty"`
-	ParseError string `json:"parse_error,omitempty"`
+	Dir                 string `json:"dir"`
+	CertPath            string `json:"cert_path"`
+	KeyPath             string `json:"key_path"`
+	CertExists          bool   `json:"cert_exists"`
+	KeyExists           bool   `json:"key_exists"`
+	Trusted             bool   `json:"trusted"`
+	CurrentUserTrusted  bool   `json:"current_user_trusted,omitempty"`
+	LocalMachineTrusted bool   `json:"local_machine_trusted,omitempty"`
+	Disallowed          bool   `json:"disallowed,omitempty"`
+	TrustError          string `json:"trust_error,omitempty"`
+	Subject             string `json:"subject,omitempty"`
+	NotBefore           string `json:"not_before,omitempty"`
+	NotAfter            string `json:"not_after,omitempty"`
+	ParseError          string `json:"parse_error,omitempty"`
 }
 
 type DiagnosticPort struct {
@@ -273,6 +276,11 @@ func collectCertificateDiagnostics() DiagnosticCertificate {
 	out.Trusted = trusted
 	if err != nil {
 		out.TrustError = err.Error()
+	}
+	if runtime.GOOS == "windows" {
+		if thumbprint, thumbErr := localCACertSHA1Thumbprint(); thumbErr == nil {
+			applyWindowsCertificateTrustDetails(&out, thumbprint)
+		}
 	}
 
 	data, err := os.ReadFile(certPath)
@@ -593,7 +601,7 @@ func probeSushiroMITMProxy(port int, certPath string) DiagnosticProbe {
 	}
 	defer resp.Body.Close()
 	probe.OK = true
-	probe.Detail = fmt.Sprintf("CONNECT/TLS/上游响应正常: HTTP %d", resp.StatusCode)
+	probe.Detail = fmt.Sprintf("CONNECT/TLS/上游响应正常: HTTP %d %s", resp.StatusCode, resp.Proto)
 	return probe
 }
 
@@ -698,15 +706,60 @@ func collectWindowsProxySummary() DiagnosticSystemProxy {
 $p = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $enable = (Get-ItemProperty -Path $p -Name ProxyEnable -ErrorAction SilentlyContinue).ProxyEnable
 $server = (Get-ItemProperty -Path $p -Name ProxyServer -ErrorAction SilentlyContinue).ProxyServer
+$override = (Get-ItemProperty -Path $p -Name ProxyOverride -ErrorAction SilentlyContinue).ProxyOverride
+$autoConfig = (Get-ItemProperty -Path $p -Name AutoConfigURL -ErrorAction SilentlyContinue).AutoConfigURL
+$autoDetect = (Get-ItemProperty -Path $p -Name AutoDetect -ErrorAction SilentlyContinue).AutoDetect
 Write-Output ("ProxyEnable={0}" -f $enable)
 Write-Output ("ProxyServer={0}" -f $server)
+Write-Output ("ProxyOverride={0}" -f $override)
+Write-Output ("AutoConfigURL={0}" -f $autoConfig)
+Write-Output ("AutoDetect={0}" -f $autoDetect)
 `
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return DiagnosticSystemProxy{Available: false, Error: strings.TrimSpace(string(out))}
 	}
-	return DiagnosticSystemProxy{Available: true, Summary: splitNonEmptyLines(string(out))}
+	summary := splitNonEmptyLines(string(out))
+	if netshOut, netshErr := exec.Command("netsh", "winhttp", "show", "proxy").CombinedOutput(); netshErr == nil {
+		for _, line := range splitNonEmptyLines(string(netshOut)) {
+			summary = append(summary, "WinHTTP "+line)
+		}
+	}
+	return DiagnosticSystemProxy{Available: true, Summary: summary}
+}
+
+func applyWindowsCertificateTrustDetails(out *DiagnosticCertificate, thumbprint string) {
+	script := `
+$thumb = $args[0].ToUpperInvariant()
+$cu = Get-ChildItem -Path Cert:\CurrentUser\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+$lm = Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+$bad = @('Cert:\CurrentUser\Disallowed','Cert:\LocalMachine\Disallowed') |
+  ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue } |
+  Where-Object { $_.Thumbprint -eq $thumb } |
+  Select-Object -First 1
+[pscustomobject]@{
+  current_user = ($null -ne $cu)
+  local_machine = ($null -ne $lm)
+  disallowed = ($null -ne $bad)
+} | ConvertTo-Json -Compress
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& {\n"+script+"\n}", thumbprint)
+	data, err := cmd.CombinedOutput()
+	if err != nil {
+		return
+	}
+	var parsed struct {
+		CurrentUser  bool `json:"current_user"`
+		LocalMachine bool `json:"local_machine"`
+		Disallowed   bool `json:"disallowed"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &parsed); err != nil {
+		return
+	}
+	out.CurrentUserTrusted = parsed.CurrentUser
+	out.LocalMachineTrusted = parsed.LocalMachine
+	out.Disallowed = parsed.Disallowed
 }
 
 func readSanitizedLogTail(path string, maxLines int) ([]string, error) {
@@ -932,6 +985,9 @@ func printDiagnostics(w io.Writer, d Diagnostics) {
 		fmt.Fprintln(w, "通知渠道: 未配置")
 	}
 	fmt.Fprintf(w, "证书: cert=%t key=%t trusted=%t path=%s\n", d.Certificate.CertExists, d.Certificate.KeyExists, d.Certificate.Trusted, d.Certificate.CertPath)
+	if d.Platform.GOOS == "windows" {
+		fmt.Fprintf(w, "Windows 证书信任: CurrentUser=%t LocalMachine=%t Disallowed=%t\n", d.Certificate.CurrentUserTrusted, d.Certificate.LocalMachineTrusted, d.Certificate.Disallowed)
+	}
 	if d.Certificate.TrustError != "" {
 		fmt.Fprintf(w, "证书信任检查错误: %s\n", d.Certificate.TrustError)
 	}
