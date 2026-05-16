@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -36,6 +38,7 @@ type Diagnostics struct {
 	Ports         []DiagnosticPort      `json:"ports"`
 	ProxyMarker   DiagnosticProxyMarker `json:"proxy_marker"`
 	SystemProxy   DiagnosticSystemProxy `json:"system_proxy"`
+	ProxyChain    DiagnosticProxyChain  `json:"proxy_chain"`
 	Network       DiagnosticNetwork     `json:"network"`
 	Engine        EngineState           `json:"engine"`
 	LogTail       []string              `json:"log_tail"`
@@ -130,6 +133,24 @@ type DiagnosticSystemProxy struct {
 	Error     string   `json:"error,omitempty"`
 }
 
+type DiagnosticProxyChain struct {
+	Checked            bool              `json:"checked"`
+	OK                 bool              `json:"ok"`
+	Port               int               `json:"port,omitempty"`
+	Active             bool              `json:"active"`
+	SystemProxyMatches bool              `json:"system_proxy_matches"`
+	Summary            string            `json:"summary,omitempty"`
+	Probes             []DiagnosticProbe `json:"probes,omitempty"`
+}
+
+type DiagnosticProbe struct {
+	Name      string `json:"name"`
+	OK        bool   `json:"ok"`
+	Skipped   bool   `json:"skipped,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	LatencyMS int64  `json:"latency_ms,omitempty"`
+}
+
 type DiagnosticLogEntry struct {
 	Time    string `json:"time"`
 	Message string `json:"message"`
@@ -145,6 +166,9 @@ type NotificationTestResult struct {
 func CollectDiagnostics() Diagnostics {
 	logTail, logErr := readSanitizedLogTail(logPath(), diagnosticLogLines)
 	engineLogs := sanitizedEngineLogTail(engine.GetLogs(), diagnosticLogLines)
+	certificate := collectCertificateDiagnostics()
+	proxyMarker := collectProxyMarkerDiagnostics()
+	systemProxy := collectSystemProxyDiagnostics()
 
 	d := Diagnostics{
 		GeneratedAt: time.Now().Format(time.RFC3339),
@@ -167,10 +191,11 @@ func CollectDiagnostics() Diagnostics {
 			CertDir:         certDirPath(),
 		},
 		Config:        collectConfigDiagnostics(),
-		Certificate:   collectCertificateDiagnostics(),
+		Certificate:   certificate,
 		Ports:         collectPortDiagnostics(),
-		ProxyMarker:   collectProxyMarkerDiagnostics(),
-		SystemProxy:   collectSystemProxyDiagnostics(),
+		ProxyMarker:   proxyMarker,
+		SystemProxy:   systemProxy,
+		ProxyChain:    collectProxyChainDiagnostics(proxyMarker, systemProxy, certificate),
 		Network:       collectNetworkDiagnostics(),
 		Engine:        engine.GetState(),
 		LogTail:       logTail,
@@ -364,6 +389,234 @@ func collectSystemProxyDiagnostics() DiagnosticSystemProxy {
 	default:
 		return DiagnosticSystemProxy{Available: false, Error: "当前平台未实现系统代理摘要"}
 	}
+}
+
+func collectProxyChainDiagnostics(marker DiagnosticProxyMarker, systemProxy DiagnosticSystemProxy, cert DiagnosticCertificate) DiagnosticProxyChain {
+	out := DiagnosticProxyChain{
+		Port:   marker.Port,
+		Active: marker.Active && marker.PIDAlive,
+	}
+	if !marker.Active || marker.Port == 0 {
+		out.Summary = "捕获代理未运行；点击获取认证后再打开诊断可检查代理链路"
+		return out
+	}
+	out.Checked = true
+	out.SystemProxyMatches = systemProxyMentionsPort(systemProxy, marker.Port)
+	out.Probes = append(out.Probes, DiagnosticProbe{
+		Name: "系统代理指向本应用",
+		OK:   out.SystemProxyMatches,
+		Detail: func() string {
+			if out.SystemProxyMatches {
+				return fmt.Sprintf("系统代理包含 127.0.0.1:%d", marker.Port)
+			}
+			return fmt.Sprintf("系统代理未指向当前捕获端口 127.0.0.1:%d", marker.Port)
+		}(),
+	})
+	out.Probes = append(out.Probes, probeProxyTCP(marker.Port))
+	out.Probes = append(out.Probes, probePlainHTTPProxy(marker.Port))
+	out.Probes = append(out.Probes, probeSushiroMITMProxy(marker.Port, cert.CertPath))
+
+	out.OK = true
+	for _, probe := range out.Probes {
+		if !probe.OK && !probe.Skipped {
+			out.OK = false
+			break
+		}
+	}
+	if out.OK {
+		out.Summary = "代理链路正常"
+	} else {
+		out.Summary = "代理链路存在异常，查看下方失败项"
+	}
+	return out
+}
+
+func systemProxyMentionsPort(systemProxy DiagnosticSystemProxy, port int) bool {
+	if port <= 0 {
+		return false
+	}
+	needles := []string{
+		fmt.Sprintf("127.0.0.1:%d", port),
+		fmt.Sprintf("localhost:%d", port),
+		fmt.Sprintf("127.0.0.1 %d", port),
+		fmt.Sprintf("localhost %d", port),
+	}
+	for _, line := range systemProxy.Summary {
+		normalized := strings.ToLower(strings.Join(strings.Fields(line), " "))
+		compact := strings.ReplaceAll(normalized, " ", "")
+		hasLocalHost := strings.Contains(normalized, "127.0.0.1") || strings.Contains(normalized, "localhost")
+		hasPort := strings.Contains(normalized, fmt.Sprintf("%d", port))
+		if hasLocalHost && hasPort {
+			return true
+		}
+		for _, needle := range needles {
+			needle = strings.ToLower(needle)
+			if strings.Contains(normalized, needle) || strings.Contains(compact, strings.ReplaceAll(needle, " ", "")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func probeProxyTCP(port int) DiagnosticProbe {
+	probe := DiagnosticProbe{Name: "本地代理端口"}
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	probe.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		probe.Detail = err.Error()
+		return probe
+	}
+	_ = conn.Close()
+	probe.OK = true
+	probe.Detail = "TCP 可连接"
+	return probe
+}
+
+func probePlainHTTPProxy(port int) DiagnosticProbe {
+	probe := DiagnosticProbe{Name: "普通 HTTP 代理透传"}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		probe.Skipped = true
+		probe.Detail = "本地探针服务启动失败: " + err.Error()
+		return probe
+	}
+	defer ln.Close()
+
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/__sushiro_proxy_probe__" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("X-Sushiro-Proxy-Probe", "ok")
+		_, _ = w.Write([]byte("ok"))
+	})}
+	go func() {
+		_ = server.Serve(ln)
+	}()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	}()
+
+	targetHost := ln.Addr().String()
+	request := fmt.Sprintf("GET http://%s/__sushiro_proxy_probe__ HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", targetHost, targetHost)
+	start := time.Now()
+	resp, body, err := roundTripRawProxyRequest(port, request, 3*time.Second)
+	probe.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		probe.Detail = err.Error()
+		return probe
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("X-Sushiro-Proxy-Probe") != "ok" || strings.TrimSpace(string(body)) != "ok" {
+		probe.Detail = fmt.Sprintf("响应异常: HTTP %d", resp.StatusCode)
+		return probe
+	}
+	probe.OK = true
+	probe.Detail = "本地 HTTP 请求已经通过代理透传"
+	return probe
+}
+
+func probeSushiroMITMProxy(port int, certPath string) DiagnosticProbe {
+	probe := DiagnosticProbe{Name: "寿司郎 HTTPS MITM 链路"}
+
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		probe.Skipped = true
+		probe.Detail = "读取本地 CA 失败: " + err.Error()
+		return probe
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certPEM) {
+		probe.Skipped = true
+		probe.Detail = "本地 CA PEM 解析失败"
+		return probe
+	}
+
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 3*time.Second)
+	if err != nil {
+		probe.LatencyMS = time.Since(start).Milliseconds()
+		probe.Detail = "连接本地代理失败: " + err.Error()
+		return probe
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(6 * time.Second))
+
+	if _, err := fmt.Fprintf(conn, "CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n", sushiroHost, sushiroHost); err != nil {
+		probe.LatencyMS = time.Since(start).Milliseconds()
+		probe.Detail = "发送 CONNECT 失败: " + err.Error()
+		return probe
+	}
+	connectReader := bufio.NewReader(conn)
+	connectResp, err := http.ReadResponse(connectReader, nil)
+	if err != nil {
+		probe.LatencyMS = time.Since(start).Milliseconds()
+		probe.Detail = "读取 CONNECT 响应失败: " + err.Error()
+		return probe
+	}
+	if connectResp.Body != nil {
+		connectResp.Body.Close()
+	}
+	if connectResp.StatusCode != http.StatusOK {
+		probe.LatencyMS = time.Since(start).Milliseconds()
+		probe.Detail = fmt.Sprintf("CONNECT 返回 HTTP %d", connectResp.StatusCode)
+		return probe
+	}
+
+	tlsConn := tls.Client(&bufferedConn{Conn: conn, reader: connectReader}, &tls.Config{
+		ServerName: sushiroHost,
+		RootCAs:    roots,
+		MinVersion: tls.VersionTLS12,
+	})
+	if err := tlsConn.Handshake(); err != nil {
+		probe.LatencyMS = time.Since(start).Milliseconds()
+		probe.Detail = "TLS 握手失败: " + err.Error()
+		return probe
+	}
+	defer tlsConn.Close()
+	_ = tlsConn.SetDeadline(time.Now().Add(6 * time.Second))
+
+	if _, err := fmt.Fprintf(tlsConn, "GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: sushiro-overdose-diagnostic/%s\r\nConnection: close\r\n\r\n", sushiroHost, Version); err != nil {
+		probe.LatencyMS = time.Since(start).Milliseconds()
+		probe.Detail = "发送 HTTPS 探针失败: " + err.Error()
+		return probe
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(tlsConn), nil)
+	probe.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		probe.Detail = "读取 HTTPS 响应失败: " + err.Error()
+		return probe
+	}
+	defer resp.Body.Close()
+	probe.OK = true
+	probe.Detail = fmt.Sprintf("CONNECT/TLS/上游响应正常: HTTP %d", resp.StatusCode)
+	return probe
+}
+
+func roundTripRawProxyRequest(port int, request string, timeout time.Duration) (*http.Response, []byte, error) {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), timeout)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if _, err := io.WriteString(conn, request); err != nil {
+		return nil, nil, err
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		resp.Body.Close()
+		return nil, nil, readErr
+	}
+	return resp, body, nil
 }
 
 func collectDarwinProxySummary() DiagnosticSystemProxy {
@@ -719,6 +972,27 @@ func printDiagnostics(w io.Writer, d Diagnostics) {
 		}
 	} else if d.SystemProxy.Error != "" {
 		fmt.Fprintf(w, "系统代理摘要: %s\n", d.SystemProxy.Error)
+	}
+	fmt.Fprintf(w, "代理链路: %s", d.ProxyChain.Summary)
+	if d.ProxyChain.Checked {
+		fmt.Fprintf(w, " port=%d ok=%t system_proxy_matches=%t", d.ProxyChain.Port, d.ProxyChain.OK, d.ProxyChain.SystemProxyMatches)
+	}
+	fmt.Fprintln(w)
+	for _, probe := range d.ProxyChain.Probes {
+		state := "异常"
+		if probe.Skipped {
+			state = "跳过"
+		} else if probe.OK {
+			state = "正常"
+		}
+		fmt.Fprintf(w, "  %s %s", probe.Name, state)
+		if probe.LatencyMS > 0 {
+			fmt.Fprintf(w, " %dms", probe.LatencyMS)
+		}
+		if probe.Detail != "" {
+			fmt.Fprintf(w, " - %s", probe.Detail)
+		}
+		fmt.Fprintln(w)
 	}
 	if d.Network.Reachable {
 		fmt.Fprintf(w, "网络连通性: %s:%d 可达 (%dms)\n", d.Network.Host, d.Network.Port, d.Network.LatencyMS)

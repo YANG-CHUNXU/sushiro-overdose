@@ -125,7 +125,7 @@ main.go (默认启动 Web UI)
 | `health.go` | 每 5 分钟验证 Token 有效性 |
 | `state.go` | `State` JSON 读写，`logMessage`，`readInput` |
 | `store.go` | `StoreRegistry` 门店昵称管理 `~/.sushiro/stores.json` |
-| `diagnostics.go` | doctor 只读诊断、通知测试、本机网络/证书/端口/代理检查 |
+| `diagnostics.go` | doctor 只读诊断、通知测试、本机网络/证书/端口/代理链路检查 |
 | `maintenance.go` | repair-proxy / uninstall 的代理恢复和本地敏感数据清理 |
 | `sniper_plan.go` | Web 狙击计划持久化、倒计时、尝试次数与状态摘要 |
 
