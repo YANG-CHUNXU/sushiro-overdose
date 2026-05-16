@@ -92,12 +92,15 @@ type DiagnosticCertificate struct {
 }
 
 type DiagnosticPort struct {
-	Name      string `json:"name"`
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	Available bool   `json:"available"`
-	InUse     bool   `json:"in_use"`
-	Error     string `json:"error,omitempty"`
+	Name         string `json:"name"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	Available    bool   `json:"available"`
+	InUse        bool   `json:"in_use"`
+	Current      bool   `json:"current,omitempty"`
+	FallbackPort int    `json:"fallback_port,omitempty"`
+	Note         string `json:"note,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 type DiagnosticProxyMarker struct {
@@ -275,6 +278,7 @@ func collectPortDiagnostics() []DiagnosticPort {
 		{Name: "MITM 代理", Host: "127.0.0.1", Port: proxyPort},
 		{Name: "Web UI 默认端口", Host: "127.0.0.1", Port: defaultWebPort},
 	}
+	activeWebPort := getActiveWebPort()
 	for i := range ports {
 		addr := fmt.Sprintf("%s:%d", ports[i].Host, ports[i].Port)
 		ln, err := net.Listen("tcp", addr)
@@ -285,6 +289,15 @@ func collectPortDiagnostics() []DiagnosticPort {
 		}
 		ports[i].InUse = true
 		ports[i].Error = err.Error()
+		if ports[i].Port == activeWebPort {
+			ports[i].Current = true
+		}
+		if ports[i].Port == proxyPort {
+			if fallback, ok := firstAvailableLocalPort(proxyPort, proxyPortSearchLimit); ok && fallback != proxyPort {
+				ports[i].FallbackPort = fallback
+				ports[i].Note = fmt.Sprintf("捕获代理会自动改用 127.0.0.1:%d", fallback)
+			}
+		}
 	}
 	return ports
 }
@@ -678,12 +691,17 @@ func printDiagnostics(w io.Writer, d Diagnostics) {
 	fmt.Fprintln(w, "端口检查:")
 	for _, p := range d.Ports {
 		state := "可用"
-		if p.InUse {
+		if p.Current {
+			state = "当前使用中"
+		} else if p.InUse {
 			state = "占用"
 		}
 		fmt.Fprintf(w, "  %s %s:%d %s", p.Name, p.Host, p.Port, state)
 		if p.Error != "" {
 			fmt.Fprintf(w, " (%s)", p.Error)
+		}
+		if p.Note != "" {
+			fmt.Fprintf(w, " - %s", p.Note)
 		}
 		fmt.Fprintln(w)
 	}

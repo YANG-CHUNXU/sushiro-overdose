@@ -408,7 +408,7 @@ Sushiro Overdose.app/
 
 ### 端口冲突处理
 
-`web.go` 中的 `findAvailablePort()` 从 8081 开始尝试，冲突则 +1，最多尝试 100 个端口。避免用户因端口被占用而无法启动。
+`web.go` 中的 `findAvailablePort()` 从 8081 开始尝试，冲突则 +1，最多尝试 100 个端口。MITM 捕获代理也从 8080 开始尝试可用端口，并把实际端口写入系统代理和 `proxy_active.json`。避免用户因端口被占用而无法启动或捕获失败。
 
 ---
 

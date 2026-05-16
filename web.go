@@ -78,6 +78,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/events", handleEvents)
 
 	port := findAvailablePort(defaultWebPort)
+	setActiveWebPort(port)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{
 		Addr:    addr,
@@ -118,12 +119,8 @@ func cmdWeb() {
 }
 
 func findAvailablePort(preferred int) int {
-	for port := preferred; port < preferred+100; port++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-		if err == nil {
-			ln.Close()
-			return port
-		}
+	if port, ok := firstAvailableLocalPort(preferred, 100); ok {
+		return port
 	}
 	return preferred
 }
@@ -132,10 +129,23 @@ var (
 	webSettingsMu sync.RWMutex
 	webSettings   Settings
 	webClient     *Client
+	webPort       int
 
 	webCSRFMu    sync.RWMutex
 	webCSRFToken string
 )
+
+func setActiveWebPort(port int) {
+	webSettingsMu.Lock()
+	webPort = port
+	webSettingsMu.Unlock()
+}
+
+func getActiveWebPort() int {
+	webSettingsMu.RLock()
+	defer webSettingsMu.RUnlock()
+	return webPort
+}
 
 func setWebSettings(s Settings) {
 	webSettingsMu.Lock()

@@ -17,6 +17,7 @@ import (
 )
 
 const proxyPort = 8080
+const proxyPortSearchLimit = 100
 const sushiroHost = "crm-cn-prd.sushiro.com.cn"
 
 func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte) {
@@ -98,6 +99,7 @@ func isSushiroTargetHost(host string) bool {
 
 type proxyServer struct {
 	listener  net.Listener
+	port      int
 	done      chan struct{}
 	caCert    tls.Certificate
 	caKey     *rsa.PrivateKey
@@ -115,13 +117,14 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 }
 
 func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens) (*proxyServer, error) {
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
+	listener, port, err := listenOnAvailableLocalPort(proxyPort, proxyPortSearchLimit)
 	if err != nil {
-		return nil, fmt.Errorf("listen on %d: %w", proxyPort, err)
+		return nil, fmt.Errorf("listen on %d-%d: %w", proxyPort, proxyPort+proxyPortSearchLimit-1, err)
 	}
 
 	ps := &proxyServer{
 		listener: listener,
+		port:     port,
 		done:     make(chan struct{}),
 		caCert:   caCert,
 		caKey:    caKey,

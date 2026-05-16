@@ -452,13 +452,14 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 		return nil, fmt.Errorf("启动代理失败: %w", err)
 	}
 	defer proxy.close()
+	actualPort := proxy.port
 
 	// Set system proxy
-	if err := SetSystemProxy(proxyPort); err != nil {
+	if err := SetSystemProxy(actualPort); err != nil {
 		return nil, fmt.Errorf("设置系统代理失败: %w", err)
 	}
-	fmt.Println("系统代理已设置 (127.0.0.1:8080)")
-	markProxyActive(proxyPort, os.Getpid())
+	fmt.Printf("系统代理已设置 (127.0.0.1:%d)\n", actualPort)
+	markProxyActive(actualPort, os.Getpid())
 
 	// Ensure proxy is cleared on exit
 	defer func() {

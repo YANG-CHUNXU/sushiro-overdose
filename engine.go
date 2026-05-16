@@ -191,17 +191,18 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	e.mu.Lock()
 	e.proxy = proxy
 	e.mu.Unlock()
+	actualPort := proxy.port
 
-	if err := SetSystemProxy(proxyPort); err != nil {
+	if err := SetSystemProxy(actualPort); err != nil {
 		proxy.close()
 		e.setState(EngineError, "设置系统代理失败: "+err.Error())
 		e.addLogLevel("设置系统代理失败: "+err.Error(), "error")
 		return
 	}
-	markProxyActive(proxyPort, os.Getpid())
+	markProxyActive(actualPort, os.Getpid())
 
 	e.setState(EngineCapturing, "等待捕获认证参数，请在 PC 微信中打开寿司郎小程序...")
-	e.addLog("系统代理已设置 (127.0.0.1:8080)，请在 PC 微信中打开寿司郎小程序并操作一次排队/预约")
+	e.addLog(fmt.Sprintf("系统代理已设置 (127.0.0.1:%d)，请在 PC 微信中打开寿司郎小程序并操作一次排队/预约", actualPort))
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
