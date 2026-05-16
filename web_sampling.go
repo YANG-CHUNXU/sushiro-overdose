@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 func handleSampling(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, map[string]any{
-			"config": LoadSamplingConfig(),
-			"state":  sampler.GetState(),
+			"config":      LoadSamplingConfig(),
+			"state":       sampler.GetState(),
+			"autostart":   SamplingAutoStartStatus(),
+			"queue_state": buildQueueSamplingStatus(time.Now(), QueueTrendSummary{}),
 		})
 	case http.MethodPost, http.MethodPut:
 		var cfg SamplingConfig
@@ -33,6 +36,34 @@ func handleSampling(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, map[string]any{"ok": true, "config": cfg, "state": sampler.GetState()})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
+	}
+}
+
+func handleSamplingAutoStart(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, SamplingAutoStartStatus())
+	case http.MethodPost, http.MethodPut:
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+			return
+		}
+		var err error
+		if body.Enabled {
+			err = InstallSamplingAutoStart()
+		} else {
+			err = RemoveSamplingAutoStart()
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "autostart": SamplingAutoStartStatus()})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "GET or POST")
 	}

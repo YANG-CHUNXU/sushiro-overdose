@@ -55,3 +55,23 @@ func IsProcessAlive(pid int) bool {
 func OpenBrowser(url string) error {
 	return openBrowser(url)
 }
+
+type AutoStartStatus struct {
+	Supported bool   `json:"supported"`
+	Enabled   bool   `json:"enabled"`
+	Path      string `json:"path,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+func SamplingAutoStartStatus() AutoStartStatus {
+	return samplingAutoStartStatus()
+}
+
+func InstallSamplingAutoStart() error {
+	return installSamplingAutoStart()
+}
+
+func RemoveSamplingAutoStart() error {
+	return removeSamplingAutoStart()
+}

@@ -190,3 +190,39 @@ func windowsChromiumExecutables() []string {
 	appendCandidate(programFilesX86, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")
 	return out
 }
+
+func samplingAutoStartStatus() AutoStartStatus {
+	status := AutoStartStatus{
+		Supported: true,
+		Path:      `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\SushiroOverdoseSampler`,
+	}
+	cmd := exec.Command("reg", "query", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseSampler")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Run(); err == nil {
+		status.Enabled = true
+		status.Message = "已配置当前用户开机静默启动采样"
+	} else {
+		status.Message = "未配置系统开机自启动"
+	}
+	return status
+}
+
+func installSamplingAutoStart() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	value := `"` + exe + `" --sampler-daemon-child`
+	cmd := exec.Command("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseSampler", "/t", "REG_SZ", "/d", value, "/f")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd.Run()
+}
+
+func removeSamplingAutoStart() error {
+	cmd := exec.Command("reg", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseSampler", "/f")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	return nil
+}

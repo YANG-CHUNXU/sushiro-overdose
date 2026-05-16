@@ -184,3 +184,88 @@ func darwinChromiumExecutables() []string {
 	}
 	return exes
 }
+
+func samplingAutoStartStatus() AutoStartStatus {
+	path := darwinSamplingLaunchAgentPath()
+	if path == "" {
+		return AutoStartStatus{Supported: false, Message: "无法定位 LaunchAgents 目录"}
+	}
+	status := AutoStartStatus{Supported: true, Path: path}
+	if _, err := os.Stat(path); err == nil {
+		status.Enabled = true
+		status.Message = "已配置 LaunchAgent，登录后会静默启动采样"
+	} else if os.IsNotExist(err) {
+		status.Message = "未配置系统开机自启动"
+	} else {
+		status.Error = err.Error()
+	}
+	return status
+}
+
+func installSamplingAutoStart() error {
+	path := darwinSamplingLaunchAgentPath()
+	if path == "" {
+		return fmt.Errorf("无法定位 LaunchAgents 目录")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+		return err
+	}
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sushiro-overdose.sampler</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>` + xmlEscape(exe) + `</string>
+    <string>--sampler-daemon-child</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>` + xmlEscape(samplingLogPath()) + `</string>
+  <key>StandardErrorPath</key><string>` + xmlEscape(samplingLogPath()) + `</string>
+</dict>
+</plist>
+`
+	if err := os.WriteFile(path, []byte(plist), 0o644); err != nil {
+		return err
+	}
+	_ = exec.Command("launchctl", "unload", path).Run()
+	return exec.Command("launchctl", "load", path).Run()
+}
+
+func removeSamplingAutoStart() error {
+	path := darwinSamplingLaunchAgentPath()
+	if path == "" {
+		return nil
+	}
+	_ = exec.Command("launchctl", "unload", path).Run()
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func darwinSamplingLaunchAgentPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", "com.sushiro-overdose.sampler.plist")
+}
+
+func xmlEscape(value string) string {
+	return strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&apos;",
+	).Replace(value)
+}

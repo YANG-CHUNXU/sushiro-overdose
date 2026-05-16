@@ -102,3 +102,70 @@ func openBrowser(url string) error {
 	}
 	return exec.Command("xdg-open", url).Start()
 }
+
+func samplingAutoStartStatus() AutoStartStatus {
+	path := linuxSamplingServicePath()
+	status := AutoStartStatus{Supported: true, Path: path}
+	if _, err := os.Stat(path); err == nil {
+		status.Enabled = true
+		status.Message = "已配置 systemd user 开机启动采样"
+	} else if os.IsNotExist(err) {
+		status.Message = "未配置系统开机自启动"
+	} else {
+		status.Error = err.Error()
+	}
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		status.Supported = false
+		status.Message = "未找到 systemctl，当前环境不支持自动配置开机启动"
+	}
+	return status
+}
+
+func installSamplingAutoStart() error {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	path := linuxSamplingServicePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	unit := `[Unit]
+Description=Sushiro Overdose sampler
+
+[Service]
+Type=simple
+ExecStart=` + exe + ` --sampler-daemon-child
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+`
+	if err := os.WriteFile(path, []byte(unit), 0o644); err != nil {
+		return err
+	}
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	return exec.Command("systemctl", "--user", "enable", "--now", "sushiro-overdose-sampler.service").Run()
+}
+
+func removeSamplingAutoStart() error {
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		_ = exec.Command("systemctl", "--user", "disable", "--now", "sushiro-overdose-sampler.service").Run()
+		_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	}
+	if err := os.Remove(linuxSamplingServicePath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func linuxSamplingServicePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(appDirPath(), "sushiro-overdose-sampler.service")
+	}
+	return filepath.Join(home, ".config", "systemd", "user", "sushiro-overdose-sampler.service")
+}

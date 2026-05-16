@@ -38,11 +38,9 @@ func cmdWeb() {
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/diagnostics", handleDiagnostics)
 	mux.HandleFunc("/api/insights", handleInsights)
+	mux.HandleFunc("/api/queue/trends", handleQueueTrends)
 	mux.HandleFunc("/api/update", handleUpdateCheck)
 	mux.HandleFunc("/api/stores", handleStores)
-	mux.HandleFunc("/api/contribution", handleContribution)
-	mux.HandleFunc("/api/contribution/preview", handleContributionPreview)
-	mux.HandleFunc("/api/contribution/upload", handleContributionUpload)
 
 	// Calendar & reservations
 	mux.HandleFunc("/api/calendar", handleCalendar)
@@ -73,6 +71,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/sampling/start", handleSamplingStart)
 	mux.HandleFunc("/api/sampling/stop", handleSamplingStop)
 	mux.HandleFunc("/api/sampling/once", handleSamplingOnce)
+	mux.HandleFunc("/api/sampling/autostart", handleSamplingAutoStart)
 
 	// SSE
 	mux.HandleFunc("/api/events", handleEvents)

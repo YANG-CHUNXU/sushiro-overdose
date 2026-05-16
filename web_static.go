@@ -116,6 +116,15 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
 .sample-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
 .sample-state{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px}
 .metric{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.chart{min-height:260px;padding:16px;border:1px solid var(--line);border-radius:10px;background:#FBFAF8;overflow:auto}
+.chart svg{width:100%;min-width:680px;height:260px;display:block}
+.chart-grid{stroke:#E5E0DB;stroke-width:1}
+.chart-axis{stroke:#BDB5AD;stroke-width:1.2}
+.chart-label{fill:var(--mute);font-size:11px;font-weight:700}
+.chart-legend{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 0;color:var(--sub);font-size:12px;font-weight:800}
+.legend-line{display:inline-flex;align-items:center;gap:6px}
+.legend-line:before{content:"";width:18px;height:3px;border-radius:999px;background:var(--red)}
+.legend-line.global:before{background:var(--blue)}
 .sn-row{display:grid;grid-template-columns:1.1fr 1fr 1fr 1.1fr auto;gap:8px;align-items:end;margin-bottom:8px}
 .sn-row input,.sn-row select{height:38px}
 .inline-err{grid-column:1/-1;padding:8px 10px;border-radius:8px;background:var(--red-soft);color:var(--red);font-size:12px;font-weight:800}
@@ -174,8 +183,8 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
       <a href="#" class="on" onclick="go('da',this)">首页</a>
       <a href="#" onclick="go('ca',this)">日历</a>
       <a href="#" onclick="go('in',this)">洞察</a>
+      <a href="#" onclick="go('qt',this)">排队趋势</a>
       <a href="#" onclick="go('sm',this)">采样</a>
-      <a href="#" onclick="go('co',this)">贡献</a>
       <a href="#" onclick="go('sn',this)">狙击</a>
       <a href="#" onclick="go('re',this)">预约</a>
       <a href="#" onclick="go('se',this)">设置</a>
@@ -256,9 +265,28 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
     </div>
   </section>
 
+  <section id="p-qt" class="hid">
+    <div class="cd">
+      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">排队趋势</div><p class="mu mt8">所有数据只存本机。实际过号来自确认叫到的取号记录，全局过号来自连续公开叫号快照。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="loadQueueTrends()">刷新趋势</button><button class="bt bt-r bt-s" onclick="setBootSampling(true)">启用开机采样</button></div></div>
+      <div class="fg"><label>门店范围</label><div id="qtStores" class="chips"><span class="mu">从本地数据自动识别</span></div></div>
+      <div class="sample-grid">
+        <div class="fg"><label>日期类型</label><select id="qtType" onchange="loadQueueTrends()"><option value="all">全部</option><option value="weekday">工作日</option><option value="weekend">周末</option><option value="holiday">节假日</option></select></div>
+        <div class="fg"><label>开始日期</label><input type="date" id="qtFrom" onchange="loadQueueTrends()"></div>
+        <div class="fg"><label>结束日期</label><input type="date" id="qtTo" onchange="loadQueueTrends()"></div>
+        <div class="fg"><label>开始时间</label><input type="time" id="qtStart" value="10:00" onchange="loadQueueTrends()"></div>
+        <div class="fg"><label>结束时间</label><input type="time" id="qtEnd" value="22:00" onchange="loadQueueTrends()"></div>
+        <div class="fg"><label>粒度</label><select id="qtBucket" onchange="loadQueueTrends()"><option value="30">30 分钟</option><option value="60">60 分钟</option></select></div>
+      </div>
+      <div id="qtStatus" class="sample-state"><div class="ci">尚未加载</div></div>
+      <div id="qtScope" class="diag-detail hid"></div>
+      <div id="qtChart" class="chart mt16"><div class="empty">加载中</div></div>
+      <div id="qtTable" class="mt16"></div>
+    </div>
+  </section>
+
   <section id="p-sm" class="hid">
     <div class="cd">
-      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">后台采样</div><p class="mu mt8">应用内采样随当前 Web 进程运行；开机静默常驻可用 sample start。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="runSampleOnce()">立即采样</button><button class="bt bt-r bt-s" onclick="startSampling()">启动应用内采样</button><button class="bt bt-o bt-s" onclick="stopSampling()">暂停运行</button></div></div>
+      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">后台采样</div><p class="mu mt8">应用内采样随当前窗口运行；系统开机自启动会在登录后静默常驻。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="runSampleOnce()">立即采样</button><button class="bt bt-r bt-s" onclick="startSampling()">启动应用内采样</button><button class="bt bt-w bt-s" onclick="setBootSampling(true)">启用开机自启动</button><button class="bt bt-o bt-s" onclick="setBootSampling(false)">取消开机自启动</button><button class="bt bt-o bt-s" onclick="stopSampling()">暂停运行</button></div></div>
       <div class="sample-grid">
         <label class="check"><input type="checkbox" id="spEnabled">启用采样</label>
         <label class="check"><input type="checkbox" id="spAuto">应用启动后自动采样</label>
@@ -270,19 +298,6 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
       <div class="fl g8 fw"><button class="bt bt-r" onclick="saveSampling()">保存采样配置</button><button class="bt bt-w" onclick="usePrefSamplingStores()">跟随抢号门店</button></div>
       <div id="sampleState" class="sample-state"><div class="ci">尚未加载</div></div>
       <div id="sampleResult" class="diag-detail hid"></div>
-    </div>
-  </section>
-
-  <section id="p-co" class="hid">
-    <div class="cd">
-      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">匿名数据贡献</div><p class="mu mt8">默认关闭。开启后只上传本地聚合统计，不上传认证参数、手机号、微信 ID、原始票号和单次轨迹。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="loadContribution()">刷新预览</button><button class="bt bt-r bt-s" onclick="uploadContribution()">上传聚合数据</button></div></div>
-      <div class="sample-grid">
-        <label class="check"><input type="checkbox" id="ctEnabled">启用匿名贡献</label>
-        <div class="fg"><label>每桶最小样本</label><input type="number" id="ctMin" min="3" max="100" value="5"></div>
-        <div class="fg" style="grid-column:1/-1"><label>收集地址</label><input type="text" id="ctURL" value="https://queue.sushiro-overdose.com/v1/submit"></div>
-      </div>
-      <div class="fl g8 fw"><button class="bt bt-r" onclick="saveContribution()">保存贡献配置</button><button class="bt bt-w" onclick="loadContribution()">重新生成预览</button></div>
-      <div id="ctPreview" class="mt16"><div class="empty">加载中</div></div>
     </div>
   </section>
 
@@ -347,7 +362,7 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
 <footer class="ft">由 <a href="https://github.com/Ryujoxys/sushiro-overdose">sushiro-overdose</a> 驱动 · 非官方工具，仅供学习</footer>
 
 <script>
-let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},ctCfg={};
+let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qtSelected=[],qtTrendStores=[];
 const W=['日','一','二','三','四','五','六'];
 const need=['x_app_code','query_auth','reservation_auth','user_agent','referer','wechat_id','phone_number','store_ids'];
 const csrfToken=document.querySelector('meta[name="sushiro-csrf"]')?.content||'';
@@ -371,7 +386,7 @@ window.fetch=(input,init)=>{
 function el(id){return document.getElementById(id)}
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
 function escA(s){return esc(s).replaceAll('"','&quot;')}
-function go(n,e){document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));el('p-'+n).classList.remove('hid');document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));if(e)e.classList.add('on');cp=n;({ca:lC,in:lI,sm:lSm,co:lCo,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
+function go(n,e){document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));el('p-'+n).classList.remove('hid');document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));if(e)e.classList.add('on');cp=n;({ca:lC,in:lI,qt:lQT,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
 async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;uE();uSamplingSummary();uD();}catch(e){el('ver').textContent='offline';}}
 async function init(){await loadStatus();await lP();checkUpdate();sse();}
 function isRun(){return ['capturing','booking','sniping'].includes(es.status)}
@@ -439,29 +454,36 @@ function rS(d){const sl=as.filter(s=>s.date===d).sort((a,b)=>(a.store_name||'').
 
 async function lI(){await ensureStores();const c=el('ic');c.innerHTML='<div class="empty">分析中</div>';try{const d=await(await fetch('/api/insights?top=12')).json();if(d.error){c.innerHTML='<div class="empty">'+esc(d.error)+'</div>';return}const rec=d.recommendations||[],min=d.min_recommendation_observations||3;const metrics='<div class="metric">'+chip('历史样本',d.valid_snapshots||0,'ok')+chip('推荐门槛','同一时段 '+min+' 次','warn')+chip('推荐数量',rec.length,'ok')+'</div>';const rows=rec.map(r=>'<tr><td>'+esc(storeName(r.store_id))+'<br><span class="mu">'+esc(r.store_id)+'</span></td><td>'+esc(r.weekday_name)+'</td><td>'+esc(fT(r.start))+'-'+esc(fT(r.end))+'</td><td>'+Math.round((r.availability_rate||0)*100)+'%</td><td>'+(r.sold_out_minutes==null?'-':Math.round(r.sold_out_minutes)+' 分')+'</td><td>'+esc(r.observations)+'</td></tr>').join('');const empty=(d.valid_snapshots||0)?'<div class="empty">样本还不够稳定。保持后台采样，等同一门店、星期、时段至少积累 '+min+' 次观察后再给推荐。<div class="mt8"><button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去采样页</button></div></div>':'<div class="empty">暂无历史数据。<div class="mt8"><button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去采样页</button></div></div>';c.innerHTML=metrics+(rows?'<table class="tbl"><thead><tr><th>门店</th><th>星期</th><th>时段</th><th>开放概率</th><th>售罄速度</th><th>样本</th></tr></thead><tbody>'+rows+'</tbody></table>':empty)}catch(e){c.innerHTML='<div class="empty">洞察加载失败</div>'}}
 
+async function lQT(){await ensureStores();initQueueTrendFilters();renderQueueTrendStores();await loadQueueTrends()}
+function initQueueTrendFilters(){const now=new Date(),from=new Date(now.getTime()-14*86400000);if(!el('qtFrom').value)el('qtFrom').value=localDateInput(from);if(!el('qtTo').value)el('qtTo').value=localDateInput(now);if(!qtSelected.length&&stores.length)qtSelected=stores.map(s=>String(s.id))}
+function renderQueueTrendStores(){const c=el('qtStores');if(!c)return;const base=stores.length?stores:(qtTrendStores||[]).map(s=>({id:s.store_id,name:s.store_name,nickname:s.store_name}));if(!base.length){c.innerHTML='<span class="mu">没有门店筛选时，会使用本地文件中的全部门店。</span>';return}c.innerHTML=base.map(s=>'<button class="chip '+(qtSelected.includes(String(s.id||s.store_id))?'on':'')+'" data-store="'+escA(String(s.id||s.store_id))+'">'+esc(s.nickname||s.name||s.store_name||s.id||s.store_id)+'</button>').join('');c.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{const id=b.dataset.store;qtSelected=qtSelected.includes(id)?qtSelected.filter(x=>x!==id):qtSelected.concat(id);b.classList.toggle('on');loadQueueTrends()})}
+function queueTrendParams(){const p=new URLSearchParams();if(qtSelected.length)p.set('stores',qtSelected.join(','));p.set('date_type',el('qtType').value||'all');p.set('from',el('qtFrom').value||'');p.set('to',el('qtTo').value||'');p.set('start',el('qtStart').value||'10:00');p.set('end',el('qtEnd').value||'22:00');p.set('bucket',el('qtBucket').value||'30');return p}
+async function loadQueueTrends(){const st=el('qtStatus'),chart=el('qtChart'),tbl=el('qtTable');if(!st)return;st.innerHTML='<div class="ci">分析中</div>';chart.innerHTML='<div class="empty">加载中</div>';tbl.innerHTML='';try{const d=await(await fetch('/api/queue/trends?'+queueTrendParams().toString())).json();qtTrendStores=d.stores||qtTrendStores;if(!qtSelected.length&&!stores.length&&(d.stores||[]).length)qtSelected=d.stores.map(x=>String(x.store_id));renderQueueTrendStores();renderQueueTrend(d)}catch(e){st.innerHTML='<div class="ci bad">排队趋势加载失败</div>';chart.innerHTML='<div class="empty">加载失败</div>'}}
+function renderQueueTrend(d){const s=d.summary||{},q=d.sampling||{},warn=d.warnings||[],scope=d.scope||{};el('qtStatus').innerHTML=chip('实际过号',s.actual_passed_total||0,(s.actual_samples||0)?'ok':'warn')+chip('全局过号',s.global_passed_total||0,(s.global_samples||0)?'ok':'warn')+chip('真实取号',s.session_records||0,(s.session_records||0)?'ok':'warn')+chip('公开快照',s.observation_records||0,(s.observation_records||0)?'ok':'warn')+chip('采样权限',queueStatusText(q),q.permission_status==='ok'?'ok':q.needs_auth?'bad':'warn')+chip('开机自启',q.system_auto_start?.enabled?'已配置':q.system_auto_start?.supported?'未配置':'不支持',q.system_auto_start?.enabled?'ok':'warn');const sc=el('qtScope');sc.classList.remove('hid');sc.innerHTML='<b>本地范围</b><br>'+esc(scope.message||'只使用本机数据。')+(q.message?'<br><b>采样提示</b>：'+esc(q.message):'')+(warn.length?'<br><b>提示</b>：'+esc(warn.join('；')):'')+'<div class="fl g8 fw mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取认证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">打开采样设置</button></div>';renderQueueChart(d.series||[]);renderQueueTable(d.series||[])}
+function queueStatusText(q){if(!q)return'未知';if(q.needs_auth)return'认证需更新';if(q.needs_background)return'需常驻';if(q.needs_data_refresh)return'需更新';return'正常'}
+function renderQueueChart(series){const box=el('qtChart');if(!series.length){box.innerHTML='<div class="empty">暂无可绘制数据</div>';return}const buckets=[...new Set(series.map(x=>x.bucket))].sort(),types=[...new Set(series.map(x=>x.date_type))].sort((a,b)=>({weekday:1,weekend:2,holiday:3}[a]||9)-({weekday:1,weekend:2,holiday:3}[b]||9)),by={};series.forEach(x=>{const k=x.date_type+'|'+x.bucket;if(!by[k])by[k]={actual:0,global:0,name:x.date_type_name||x.date_type};by[k].actual+=x.actual_passed||0;by[k].global+=x.global_passed||0});let max=1;Object.values(by).forEach(v=>{max=Math.max(max,v.actual,v.global)});const w=720,h=230,pad=34,step=buckets.length>1?(w-pad*2)/(buckets.length-1):1,y=v=>h-pad-(v/max)*(h-pad*2),x=i=>pad+i*step,colors={weekday:'#B81C22',weekend:'#B67800',holiday:'#2B5B83'};let svg='<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none"><line class="chart-axis" x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad)+'" y2="'+(h-pad)+'"></line><line class="chart-axis" x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(h-pad)+'"></line>';for(let i=0;i<=4;i++){const yy=pad+i*(h-pad*2)/4;svg+='<line class="chart-grid" x1="'+pad+'" y1="'+yy+'" x2="'+(w-pad)+'" y2="'+yy+'"></line>'}buckets.forEach((b,i)=>{svg+='<text class="chart-label" x="'+x(i)+'" y="'+(h-8)+'" text-anchor="middle">'+esc(b)+'</text>'});types.forEach(t=>{const actual=buckets.map((b,i)=>x(i)+','+y((by[t+'|'+b]||{}).actual||0)).join(' '),global=buckets.map((b,i)=>x(i)+','+y((by[t+'|'+b]||{}).global||0)).join(' '),c=colors[t]||'#555';svg+='<polyline points="'+actual+'" fill="none" stroke="'+c+'" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline><polyline points="'+global+'" fill="none" stroke="'+c+'" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round" stroke-linejoin="round" opacity=".72"></polyline>'});svg+='</svg>';const legend=types.map(t=>'<span class="legend-line">'+esc(queueTypeName(t))+' 实际</span><span class="legend-line global">'+esc(queueTypeName(t))+' 全局</span>').join('');box.innerHTML=svg+'<div class="chart-legend">'+legend+'</div>'}
+function queueTypeName(t){return t==='weekday'?'工作日':t==='weekend'?'周末':t==='holiday'?'节假日':t}
+function renderQueueTable(series){const c=el('qtTable');if(!series.length){c.innerHTML='';return}const rows=series.map(x=>'<tr><td>'+esc(x.bucket)+'</td><td>'+esc(x.date_type_name||x.date_type)+'</td><td>'+esc(x.store_name||x.store_id)+'</td><td>'+esc(x.actual_passed||0)+'<br><span class="mu">'+esc(x.actual_samples||0)+' 样本</span></td><td>'+esc(x.global_passed||0)+'<br><span class="mu">'+esc(x.global_samples||0)+' 快照段</span></td><td>'+(x.wait_p50_minutes==null?'-':Math.round(x.wait_p50_minutes)+' 分')+'</td><td>'+Math.round((x.missed_rate||0)*100)+'%</td><td>'+esc(confText(x.confidence))+'</td></tr>').join('');c.innerHTML='<table class="tbl"><thead><tr><th>时间桶</th><th>类型</th><th>门店</th><th>实际过号</th><th>全局过号</th><th>P50等待</th><th>过号率</th><th>可信度</th></tr></thead><tbody>'+rows+'</tbody></table>'}
+function confText(v){return v==='high'?'高':v==='medium'?'中':v==='low'?'低':'无'}
+
 async function lSm(){await ensureStores();await loadSampling()}
-async function loadSampling(){try{const d=await(await fetch('/api/sampling')).json();spCfg=d.config||{};spState=d.state||{};fillSamplingForm();renderSamplingStores();renderSamplingState();uSamplingSummary()}catch(e){el('sampleState').innerHTML='<div class="ci bad">采样状态加载失败</div>'}}
+async function loadSampling(){try{const d=await(await fetch('/api/sampling')).json();spCfg=d.config||{};spState=d.state||{};spAutoStart=d.autostart||{};spQueueState=d.queue_state||{};fillSamplingForm();renderSamplingStores();renderSamplingState();uSamplingSummary()}catch(e){el('sampleState').innerHTML='<div class="ci bad">采样状态加载失败</div>'}}
 function fillSamplingForm(){el('spEnabled').checked=!!spCfg.enabled;el('spAuto').checked=!!spCfg.auto_start;el('spInterval').value=spCfg.interval_seconds||300;el('spStart').value=timeInputValue(spCfg.active_start||'100000');el('spEnd').value=timeInputValue(spCfg.active_end||'220000')}
 function renderSamplingStores(){const c=el('samplingStores'),h=el('sampleStoreHint');if(!c)return;if(!stores.length){c.innerHTML='<span class="mu">先完成认证获取</span>';if(h)h.textContent='';return}const chosen=(spCfg.store_ids||[]).map(String);c.innerHTML=stores.map(s=>'<button class="chip '+(chosen.includes(String(s.id))?'on':'')+'" data-store="'+escA(String(s.id))+'">'+esc(s.nickname||s.name||s.id)+'</button>').join('');c.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{b.classList.toggle('on');renderSamplingStoreHint()});renderSamplingStoreHint()}
 function renderSamplingStoreHint(){const h=el('sampleStoreHint');if(!h)return;const chosen=Array.from(document.querySelectorAll('#samplingStores .chip.on')).map(x=>x.dataset.store);if(chosen.length){h.textContent='当前采样 '+chosen.length+' 家指定门店。';return}const pref=(pr.selected_stores||[]).map(storeName).filter(Boolean);h.textContent=pref.length?'当前跟随抢号门店：'+pref.join('、'):'当前跟随认证里保存的门店。'}
 function samplingPayload(){const ids=Array.from(document.querySelectorAll('#samplingStores .chip.on')).map(x=>x.dataset.store);return{enabled:el('spEnabled').checked,auto_start:el('spAuto').checked,interval_seconds:+el('spInterval').value||300,active_start:compactTime(el('spStart').value||'10:00'),active_end:compactTime(el('spEnd').value||'22:00'),store_ids:ids,use_preference_stores:ids.length===0}}
-function renderSamplingState(){const s=spState||{},next=s.next_run_at?new Date(s.next_run_at).toLocaleString():'-',last=s.last_run_at?new Date(s.last_run_at).toLocaleString():'-',msg=s.last_error||s.message||'无',bad=s.last_error&&!/跳过|时间窗|暂无|正在运行/.test(s.last_error);el('sampleState').innerHTML=chip('状态',s.running?'运行中':(s.enabled?'已启用':'未启动'),s.running?'ok':s.enabled?'warn':'')+chip('下次',next,'ok')+chip('上次',last,'ok')+chip('样本',s.snapshots||0,'ok')+chip('门店失败',s.store_errors||0,(s.store_errors||0)?'warn':'ok')+chip('最近结果',msg,bad?'bad':'ok')}
+function renderSamplingState(){const s=spState||{},a=spAutoStart||{},q=spQueueState||{},next=s.next_run_at?new Date(s.next_run_at).toLocaleString():'-',last=s.last_run_at?new Date(s.last_run_at).toLocaleString():'-',msg=s.last_error||s.message||q.message||'无',bad=(s.last_error||q.needs_auth)&&!/跳过|时间窗|暂无|正在运行/.test(s.last_error||'');el('sampleState').innerHTML=chip('状态',s.running?'运行中':(s.enabled?'已启用':'未启动'),s.running?'ok':s.enabled?'warn':'')+chip('开机自启动',a.enabled?'已配置':a.supported?'未配置':'不支持',a.enabled?'ok':'warn')+chip('下次',next,'ok')+chip('上次',last,'ok')+chip('样本',s.snapshots||0,'ok')+chip('门店失败',s.store_errors||0,(s.store_errors||0)?'warn':'ok')+chip('认证',q.auth_ok?'可用':'需更新',q.auth_ok?'ok':'bad')+chip('最近结果',msg,bad?'bad':'ok')}
 async function saveSampling(quiet){spCfg=samplingPayload();try{const d=await(await fetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spCfg)})).json();if(d.error){if(!quiet)alert(d.error);return false}spCfg=d.config||spCfg;spState=d.state||spState;renderSamplingStores();renderSamplingState();uSamplingSummary();if(!quiet)alert(spState.running?'采样配置已保存，后台采样已按新配置重启':'采样配置已保存');return true}catch(e){if(!quiet)alert('保存失败');return false}}
 async function startSampling(){if(!await saveSampling(true))return;try{const d=await(await fetch('/api/sampling/start',{method:'POST'})).json();if(d.error){alert(d.error);return}spState=d.state||spState;await loadSampling();uSamplingSummary()}catch(e){alert('启动失败')}}
 async function stopSampling(){try{const d=await(await fetch('/api/sampling/stop',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();uSamplingSummary()}catch(e){alert('停止失败')}}
 async function runSampleOnce(){if(!await saveSampling(true))return;const box=el('sampleResult');box.classList.remove('hid');box.textContent='采样中';try{const d=await(await fetch('/api/sampling/once',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();uSamplingSummary();const r=d.result||{};box.innerHTML=r.skipped?'本轮跳过：'+esc(r.skip_reason):'<b>采样完成</b><br>'+esc((r.stores||[]).map(x=>(x.store_name||x.store_id)+': '+(x.error||x.slots+' 条')).join('\\n')).replaceAll('\\n','<br>')}catch(e){box.innerHTML='采样失败'}}
 function usePrefSamplingStores(){document.querySelectorAll('#samplingStores .chip').forEach(x=>x.classList.remove('on'));renderSamplingStoreHint()}
-
-async function lCo(){await loadContribution()}
-async function loadContribution(){const box=el('ctPreview');box.innerHTML='<div class="empty">生成预览中</div>';try{const d=await(await fetch('/api/contribution/preview')).json();ctCfg=d.config||{};el('ctEnabled').checked=!!ctCfg.enabled;el('ctURL').value=ctCfg.collector_url||'';el('ctMin').value=ctCfg.min_samples_per_bucket||5;renderContributionPreview(d)}catch(e){box.innerHTML='<div class="empty">贡献预览加载失败</div>'}}
-function contributionPayload(){return{enabled:el('ctEnabled').checked,collector_url:el('ctURL').value.trim(),anonymous_install_id:ctCfg.anonymous_install_id||'',min_samples_per_bucket:+el('ctMin').value||5,last_upload_at:ctCfg.last_upload_at||''}}
-function renderContributionPreview(d){const box=el('ctPreview'),l=d.local||{},p=d.payload||{},priv=d.privacy||{},stats=p.stats||[],warn=priv.warnings||[];const metrics='<div class="metric">'+chip('原始取号记录',l.session_records||0,'ok')+chip('可用样本',l.usable_sessions||0,(l.usable_sessions||0)?'ok':'warn')+chip('将上传聚合桶',stats.length,stats.length?'ok':'warn')+chip('上传状态',d.ready?'可上传':'未就绪',d.ready?'ok':'warn')+'</div>';const privacy='<div class="errbox"><b>上传安全预览</b><br>会上传：'+esc((priv.included_fields||[]).join('、')||'-')+'<br>不会上传：'+esc((priv.excluded_fields||[]).join('、')||'-')+(warn.length?'<br><span class="line">'+esc(warn.join('；'))+'</span>':'')+'<br><span class="line">注意：collector 只接收聚合数据；如果未来接入公开贡献，服务端也会拒绝敏感字段。</span></div>';const rows=stats.slice(0,20).map(s=>'<tr><td>'+esc(storeName(s.store_id))+'<br><span class="mu">'+esc(s.store_id)+'</span></td><td>周'+esc(W[s.weekday%7]||s.weekday)+'</td><td>'+esc(s.time_bucket)+'</td><td>'+esc(s.table_type)+' / '+esc(s.party_size_bucket)+'</td><td>'+esc(s.samples)+'</td><td>'+(s.wait_p50_minutes==null?'-':Math.round(s.wait_p50_minutes)+' 分')+'</td><td>'+(s.wait_p80_minutes==null?'-':Math.round(s.wait_p80_minutes)+' 分')+'</td><td>'+Math.round((s.missed_rate||0)*100)+'%</td></tr>').join('');box.innerHTML=metrics+privacy+(rows?'<table class="tbl mt16"><thead><tr><th>门店</th><th>星期</th><th>时段桶</th><th>类型</th><th>样本</th><th>P50 等待</th><th>P80 等待</th><th>过号率</th></tr></thead><tbody>'+rows+'</tbody></table><p class="mu mt8">最多预览前 20 条聚合桶。</p>':'<div class="empty">没有可上传的聚合数据。</div>')}
-async function saveContribution(){ctCfg=contributionPayload();try{const d=await(await fetch('/api/contribution',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ctCfg)})).json();if(d.error){alert(d.error);return false}ctCfg=d.config||ctCfg;alert('贡献配置已保存');await loadContribution();return true}catch(e){alert('保存失败');return false}}
-async function uploadContribution(){if(!await saveContribution())return;if(!confirm('确认上传脱敏聚合统计？不会上传认证参数、手机号、微信 ID、原始票号和单次轨迹。'))return;try{const d=await(await fetch('/api/contribution/upload',{method:'POST'})).json();if(d.error){alert(d.error);return}alert('上传完成');await loadContribution()}catch(e){alert('上传失败')}}
+async function setBootSampling(enabled){try{const d=await(await fetch('/api/sampling/autostart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})})).json();if(d.error){alert(d.error);return}spAutoStart=d.autostart||{};if(cp==='sm')await loadSampling();if(cp==='qt')await loadQueueTrends();alert(enabled?'已配置开机自启动':'已取消开机自启动')}catch(e){alert('操作失败')}}
 
 async function lSn(){await ensureStores();if(!el('snRows').children.length)addSn();await loadSnPlan()}
 async function ensureStores(){if(stores.length)return;try{stores=await(await fetch('/api/stores')).json();selStores=stores.map(s=>String(s.id));}catch(e){}}
 function storeOpts(v){return stores.map(s=>'<option value="'+escA(String(s.id))+'" '+(String(s.id)===String(v)?'selected':'')+'>'+esc(s.nickname||s.name||s.id)+'</option>').join('')}
+function localDateInput(d){const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
 function dateInputValue(v){v=String(v||'');return /^\d{8}$/.test(v)?v.slice(0,4)+'-'+v.slice(4,6)+'-'+v.slice(6,8):v}
 function timeInputValue(v){v=String(v||'');return /^\d{6}$/.test(v)?v.slice(0,2)+':'+v.slice(2,4):/^\d{4}$/.test(v)?v.slice(0,2)+':'+v.slice(2,4):v}
 function compactDate(v){v=String(v||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(v)?v.replaceAll('-',''):v}

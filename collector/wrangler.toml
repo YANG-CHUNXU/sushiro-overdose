@@ -1,8 +1,0 @@
-name = "sushiro-queue-collector"
-main = "src/index.js"
-compatibility_date = "2026-05-01"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "sushiro-queue-collector"
-database_id = "replace-with-cloudflare-d1-database-id"

@@ -40,8 +40,10 @@ func cmdSample(args []string) {
 		cmdSampleStart()
 	case "stop", "exit":
 		cmdSampleStop()
+	case "autostart", "login":
+		cmdSampleAutoStart(args[1:])
 	default:
-		fmt.Println("Usage: sushiro-overdose sample [status|once|run|start|stop]")
+		fmt.Println("Usage: sushiro-overdose sample [status|once|run|start|stop|autostart]")
 	}
 }
 
@@ -142,6 +144,51 @@ func cmdSampleStop() {
 		return
 	}
 	fmt.Println("sampling stopped")
+}
+
+func cmdSampleAutoStart(args []string) {
+	action := "status"
+	if len(args) > 0 {
+		action = strings.ToLower(strings.TrimSpace(args[0]))
+	}
+	switch action {
+	case "status", "":
+		status := SamplingAutoStartStatus()
+		fmt.Println("系统开机自启动:", autoStartSummary(status))
+		if status.Path != "" {
+			fmt.Println("位置:", status.Path)
+		}
+	case "on", "enable", "start":
+		if err := InstallSamplingAutoStart(); err != nil {
+			fmt.Println("启用失败:", err)
+			return
+		}
+		fmt.Println("系统开机自启动已启用")
+	case "off", "disable", "stop":
+		if err := RemoveSamplingAutoStart(); err != nil {
+			fmt.Println("取消失败:", err)
+			return
+		}
+		fmt.Println("系统开机自启动已取消")
+	default:
+		fmt.Println("Usage: sushiro-overdose sample autostart [status|on|off]")
+	}
+}
+
+func autoStartSummary(status AutoStartStatus) string {
+	if !status.Supported {
+		if status.Message != "" {
+			return "不支持 (" + status.Message + ")"
+		}
+		return "不支持"
+	}
+	if status.Enabled {
+		return "已启用"
+	}
+	if status.Error != "" {
+		return "状态异常: " + status.Error
+	}
+	return "未启用"
 }
 
 func cmdSamplerDaemon() {

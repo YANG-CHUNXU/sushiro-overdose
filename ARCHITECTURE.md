@@ -9,9 +9,9 @@
 - **领域与策略**：`slot.go`、`preferences.go`、`sniper_plan.go`、`insights.go`
 - **外部服务**：`api.go`、`proxy.go`、`cert.go`
 - **平台适配**：`platform.go`、`platform_darwin.go`、`platform_windows.go`、`platform_linux.go`
-- **Web 层**：`web.go`、`web_handlers.go`、`web_calendar.go`、`web_engine.go`、`web_preferences.go`、`web_sniper.go`、`web_events.go`、`web_static.go`
+- **Web 层**：`web.go`、`web_handlers.go`、`web_calendar.go`、`web_engine.go`、`web_preferences.go`、`web_sniper.go`、`web_sampling.go`、`web_queue_trends.go`、`web_events.go`、`web_static.go`
 - **通知与维护**：`notifier*.go`、`diagnostics.go`、`maintenance.go`、`watchdog.go`
-- **数据辅助**：`history.go`、`recommend.go`、`state.go`、`store.go`
+- **数据辅助**：`history.go`、`recommend.go`、`queue_trends.go`、`state.go`、`store.go`
 
 ## 约定
 
