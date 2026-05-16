@@ -19,6 +19,7 @@ import (
 const proxyPort = 8080
 const proxyPortSearchLimit = 100
 const sushiroHost = "crm-cn-prd.sushiro.com.cn"
+const proxyErrorBodyLogLimit = 4096
 
 func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte) {
 	t.mu.Lock()
@@ -123,16 +124,13 @@ func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 	}
 
 	ps := &proxyServer{
-		listener: listener,
-		port:     port,
-		done:     make(chan struct{}),
-		caCert:   caCert,
-		caKey:    caKey,
-		tokens:   tokens,
-		transport: &http.Transport{
-			TLSClientConfig: &tls.Config{},
-			Proxy:           func(*http.Request) (*url.URL, error) { return nil, nil },
-		},
+		listener:  listener,
+		port:      port,
+		done:      make(chan struct{}),
+		caCert:    caCert,
+		caKey:     caKey,
+		tokens:    tokens,
+		transport: newProxyUpstreamTransport(),
 	}
 
 	go ps.serve()
@@ -285,11 +283,11 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		req.URL.Scheme = "https"
 		req.URL.Host = hostPort
 		req.RequestURI = ""
+		if req.Host == "" {
+			req.Host = hostWithoutPort(hostPort)
+		}
 		removeHopByHopHeaders(req.Header)
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-		req.ContentLength = int64(len(bodyBytes))
-		req.TransferEncoding = nil
-		req.Close = false
+		setForwardRequestBody(req, bodyBytes)
 
 		// Forward
 		resp, err := ps.transport.RoundTrip(req)
@@ -300,8 +298,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		}
 
 		// Relay response
-		resp.Write(tlsClient)
-		resp.Body.Close()
+		ps.relayResponse(tlsClient, resp, req.Method, req.URL)
 	}
 }
 
@@ -329,11 +326,11 @@ func (ps *proxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 			req.URL.Host = req.Host
 		}
 		req.RequestURI = ""
+		if req.Host == "" {
+			req.Host = req.URL.Host
+		}
 		removeHopByHopHeaders(req.Header)
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-		req.ContentLength = int64(len(bodyBytes))
-		req.TransferEncoding = nil
-		req.Close = false
+		setForwardRequestBody(req, bodyBytes)
 
 		resp, err := ps.transport.RoundTrip(req)
 		if err != nil {
@@ -341,11 +338,9 @@ func (ps *proxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
-		if err := resp.Write(clientConn); err != nil {
-			resp.Body.Close()
+		if err := ps.relayResponse(clientConn, resp, req.Method, req.URL); err != nil {
 			return
 		}
-		resp.Body.Close()
 
 		if closeAfterResponse {
 			return
@@ -375,6 +370,83 @@ func removeHopByHopHeaders(header http.Header) {
 		header.Del(name)
 	}
 	header.Del("Content-Length")
+}
+
+func newProxyUpstreamTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = func(*http.Request) (*url.URL, error) { return nil, nil }
+	transport.ForceAttemptHTTP2 = true
+	transport.TLSClientConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		NextProtos: []string{"h2", "http/1.1"},
+	}
+	return transport
+}
+
+func setForwardRequestBody(req *http.Request, bodyBytes []byte) {
+	if len(bodyBytes) == 0 {
+		req.Body = http.NoBody
+		req.ContentLength = 0
+		req.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
+	} else {
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		req.ContentLength = int64(len(bodyBytes))
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+		}
+	}
+	req.TransferEncoding = nil
+	req.Close = false
+}
+
+func hostWithoutPort(hostPort string) string {
+	if host, _, err := net.SplitHostPort(hostPort); err == nil {
+		return host
+	}
+	return hostPort
+}
+
+func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
+	defer resp.Body.Close()
+	bodySample := ""
+	if resp.StatusCode >= 400 && resp.ContentLength >= 0 && resp.ContentLength <= proxyErrorBodyLogLimit {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err == nil {
+			bodySample = sanitizeDiagnosticLine(strings.TrimSpace(string(bodyBytes)))
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			resp.ContentLength = int64(len(bodyBytes))
+		}
+	}
+	if resp.StatusCode >= 400 {
+		msg := fmt.Sprintf("MITM upstream response: %s %s HTTP %d", method, sanitizedProxyURL(target), resp.StatusCode)
+		if bodySample != "" {
+			msg += ": " + bodySample
+		}
+		logMessage(time.Now(), msg)
+	}
+	if err := resp.Write(w); err != nil {
+		logMessage(time.Now(), fmt.Sprintf("proxy relay response failed: %s %s: %v", method, sanitizedProxyURL(target), err))
+		return err
+	}
+	return nil
+}
+
+func sanitizedProxyURL(u *url.URL) string {
+	if u == nil {
+		return "-"
+	}
+	out := *u
+	if out.RawQuery != "" {
+		values := out.Query()
+		for key := range values {
+			lower := strings.ToLower(key)
+			if strings.Contains(lower, "token") || strings.Contains(lower, "auth") || strings.Contains(lower, "phone") || strings.Contains(lower, "wechat") {
+				values.Set(key, "***")
+			}
+		}
+		out.RawQuery = values.Encode()
+	}
+	return out.String()
 }
 
 // ---- Capture wait loop ----

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -91,4 +92,51 @@ func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
 		t.Fatalf("body = %q, want pong", string(body))
 	}
 	<-done
+}
+
+func TestProxyUpstreamTransportEnablesHTTP2(t *testing.T) {
+	tr := newProxyUpstreamTransport()
+	if !tr.ForceAttemptHTTP2 {
+		t.Fatalf("ForceAttemptHTTP2 = false")
+	}
+	if tr.TLSClientConfig == nil {
+		t.Fatalf("TLSClientConfig is nil")
+	}
+	got := strings.Join(tr.TLSClientConfig.NextProtos, ",")
+	if !strings.Contains(got, "h2") || !strings.Contains(got, "http/1.1") {
+		t.Fatalf("NextProtos = %q, want h2 and http/1.1", got)
+	}
+}
+
+func TestSetForwardRequestBodyUsesNoBodyForEmptyPayload(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://example.test/ping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setForwardRequestBody(req, nil)
+	if req.Body != http.NoBody {
+		t.Fatalf("empty body = %#v, want http.NoBody", req.Body)
+	}
+	if req.ContentLength != 0 {
+		t.Fatalf("ContentLength = %d, want 0", req.ContentLength)
+	}
+}
+
+func TestSetForwardRequestBodyPreservesPayload(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "https://example.test/ping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{"ok":true}`)
+	setForwardRequestBody(req, payload)
+	if req.ContentLength != int64(len(payload)) {
+		t.Fatalf("ContentLength = %d, want %d", req.ContentLength, len(payload))
+	}
+	got, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("body = %q, want %q", got, payload)
+	}
 }
