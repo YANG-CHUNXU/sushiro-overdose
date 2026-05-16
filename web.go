@@ -40,6 +40,9 @@ func cmdWeb() {
 	mux.HandleFunc("/api/insights", handleInsights)
 	mux.HandleFunc("/api/update", handleUpdateCheck)
 	mux.HandleFunc("/api/stores", handleStores)
+	mux.HandleFunc("/api/contribution", handleContribution)
+	mux.HandleFunc("/api/contribution/preview", handleContributionPreview)
+	mux.HandleFunc("/api/contribution/upload", handleContributionUpload)
 
 	// Calendar & reservations
 	mux.HandleFunc("/api/calendar", handleCalendar)

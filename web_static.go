@@ -175,6 +175,7 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
       <a href="#" onclick="go('ca',this)">日历</a>
       <a href="#" onclick="go('in',this)">洞察</a>
       <a href="#" onclick="go('sm',this)">采样</a>
+      <a href="#" onclick="go('co',this)">贡献</a>
       <a href="#" onclick="go('sn',this)">狙击</a>
       <a href="#" onclick="go('re',this)">预约</a>
       <a href="#" onclick="go('se',this)">设置</a>
@@ -272,6 +273,19 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
     </div>
   </section>
 
+  <section id="p-co" class="hid">
+    <div class="cd">
+      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">匿名数据贡献</div><p class="mu mt8">默认关闭。开启后只上传本地聚合统计，不上传认证参数、手机号、微信 ID、原始票号和单次轨迹。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="loadContribution()">刷新预览</button><button class="bt bt-r bt-s" onclick="uploadContribution()">上传聚合数据</button></div></div>
+      <div class="sample-grid">
+        <label class="check"><input type="checkbox" id="ctEnabled">启用匿名贡献</label>
+        <div class="fg"><label>每桶最小样本</label><input type="number" id="ctMin" min="3" max="100" value="5"></div>
+        <div class="fg" style="grid-column:1/-1"><label>收集地址</label><input type="text" id="ctURL" value="https://queue.sushiro-overdose.com/v1/submit"></div>
+      </div>
+      <div class="fl g8 fw"><button class="bt bt-r" onclick="saveContribution()">保存贡献配置</button><button class="bt bt-w" onclick="loadContribution()">重新生成预览</button></div>
+      <div id="ctPreview" class="mt16"><div class="empty">加载中</div></div>
+    </div>
+  </section>
+
   <section id="p-sn" class="hid">
     <div class="cd">
       <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">Web 狙击计划器</div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="addSn()">添加目标</button><button class="bt bt-r bt-s" onclick="saveSn()">保存计划</button><button class="bt bt-y bt-s" onclick="startSn()">启动狙击</button></div></div>
@@ -333,7 +347,7 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
 <footer class="ft">由 <a href="https://github.com/Ryujoxys/sushiro-overdose">sushiro-overdose</a> 驱动 · 非官方工具，仅供学习</footer>
 
 <script>
-let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'};
+let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},ctCfg={};
 const W=['日','一','二','三','四','五','六'];
 const need=['x_app_code','query_auth','reservation_auth','user_agent','referer','wechat_id','phone_number','store_ids'];
 const csrfToken=document.querySelector('meta[name="sushiro-csrf"]')?.content||'';
@@ -357,7 +371,7 @@ window.fetch=(input,init)=>{
 function el(id){return document.getElementById(id)}
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
 function escA(s){return esc(s).replaceAll('"','&quot;')}
-function go(n,e){document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));el('p-'+n).classList.remove('hid');document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));if(e)e.classList.add('on');cp=n;({ca:lC,in:lI,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
+function go(n,e){document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));el('p-'+n).classList.remove('hid');document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));if(e)e.classList.add('on');cp=n;({ca:lC,in:lI,sm:lSm,co:lCo,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
 async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;uE();uSamplingSummary();uD();}catch(e){el('ver').textContent='offline';}}
 async function init(){await loadStatus();await lP();checkUpdate();sse();}
 function isRun(){return ['capturing','booking','sniping'].includes(es.status)}
@@ -437,6 +451,13 @@ async function startSampling(){if(!await saveSampling(true))return;try{const d=a
 async function stopSampling(){try{const d=await(await fetch('/api/sampling/stop',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();uSamplingSummary()}catch(e){alert('停止失败')}}
 async function runSampleOnce(){if(!await saveSampling(true))return;const box=el('sampleResult');box.classList.remove('hid');box.textContent='采样中';try{const d=await(await fetch('/api/sampling/once',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();uSamplingSummary();const r=d.result||{};box.innerHTML=r.skipped?'本轮跳过：'+esc(r.skip_reason):'<b>采样完成</b><br>'+esc((r.stores||[]).map(x=>(x.store_name||x.store_id)+': '+(x.error||x.slots+' 条')).join('\\n')).replaceAll('\\n','<br>')}catch(e){box.innerHTML='采样失败'}}
 function usePrefSamplingStores(){document.querySelectorAll('#samplingStores .chip').forEach(x=>x.classList.remove('on'));renderSamplingStoreHint()}
+
+async function lCo(){await loadContribution()}
+async function loadContribution(){const box=el('ctPreview');box.innerHTML='<div class="empty">生成预览中</div>';try{const d=await(await fetch('/api/contribution/preview')).json();ctCfg=d.config||{};el('ctEnabled').checked=!!ctCfg.enabled;el('ctURL').value=ctCfg.collector_url||'';el('ctMin').value=ctCfg.min_samples_per_bucket||5;renderContributionPreview(d)}catch(e){box.innerHTML='<div class="empty">贡献预览加载失败</div>'}}
+function contributionPayload(){return{enabled:el('ctEnabled').checked,collector_url:el('ctURL').value.trim(),anonymous_install_id:ctCfg.anonymous_install_id||'',min_samples_per_bucket:+el('ctMin').value||5,last_upload_at:ctCfg.last_upload_at||''}}
+function renderContributionPreview(d){const box=el('ctPreview'),l=d.local||{},p=d.payload||{},priv=d.privacy||{},stats=p.stats||[],warn=priv.warnings||[];const metrics='<div class="metric">'+chip('原始取号记录',l.session_records||0,'ok')+chip('可用样本',l.usable_sessions||0,(l.usable_sessions||0)?'ok':'warn')+chip('将上传聚合桶',stats.length,stats.length?'ok':'warn')+chip('上传状态',d.ready?'可上传':'未就绪',d.ready?'ok':'warn')+'</div>';const privacy='<div class="errbox"><b>上传安全预览</b><br>会上传：'+esc((priv.included_fields||[]).join('、')||'-')+'<br>不会上传：'+esc((priv.excluded_fields||[]).join('、')||'-')+(warn.length?'<br><span class="line">'+esc(warn.join('；'))+'</span>':'')+'<br><span class="line">注意：collector 只接收聚合数据；如果未来接入公开贡献，服务端也会拒绝敏感字段。</span></div>';const rows=stats.slice(0,20).map(s=>'<tr><td>'+esc(storeName(s.store_id))+'<br><span class="mu">'+esc(s.store_id)+'</span></td><td>周'+esc(W[s.weekday%7]||s.weekday)+'</td><td>'+esc(s.time_bucket)+'</td><td>'+esc(s.table_type)+' / '+esc(s.party_size_bucket)+'</td><td>'+esc(s.samples)+'</td><td>'+(s.wait_p50_minutes==null?'-':Math.round(s.wait_p50_minutes)+' 分')+'</td><td>'+(s.wait_p80_minutes==null?'-':Math.round(s.wait_p80_minutes)+' 分')+'</td><td>'+Math.round((s.missed_rate||0)*100)+'%</td></tr>').join('');box.innerHTML=metrics+privacy+(rows?'<table class="tbl mt16"><thead><tr><th>门店</th><th>星期</th><th>时段桶</th><th>类型</th><th>样本</th><th>P50 等待</th><th>P80 等待</th><th>过号率</th></tr></thead><tbody>'+rows+'</tbody></table><p class="mu mt8">最多预览前 20 条聚合桶。</p>':'<div class="empty">没有可上传的聚合数据。</div>')}
+async function saveContribution(){ctCfg=contributionPayload();try{const d=await(await fetch('/api/contribution',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ctCfg)})).json();if(d.error){alert(d.error);return false}ctCfg=d.config||ctCfg;alert('贡献配置已保存');await loadContribution();return true}catch(e){alert('保存失败');return false}}
+async function uploadContribution(){if(!await saveContribution())return;if(!confirm('确认上传脱敏聚合统计？不会上传认证参数、手机号、微信 ID、原始票号和单次轨迹。'))return;try{const d=await(await fetch('/api/contribution/upload',{method:'POST'})).json();if(d.error){alert(d.error);return}alert('上传完成');await loadContribution()}catch(e){alert('上传失败')}}
 
 async function lSn(){await ensureStores();if(!el('snRows').children.length)addSn();await loadSnPlan()}
 async function ensureStores(){if(stores.length)return;try{stores=await(await fetch('/api/stores')).json();selStores=stores.map(s=>String(s.id));}catch(e){}}

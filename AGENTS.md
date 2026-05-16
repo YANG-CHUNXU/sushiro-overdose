@@ -65,6 +65,7 @@ main.go (默认启动 Web UI)
 | `web_preferences.go` | 偏好、通知、repair/uninstall API |
 | `web_sniper.go` | Web 狙击计划 API |
 | `web_sampling.go` | Web 后台采样 API |
+| `web_contribution.go` | 匿名排队统计贡献配置、预览、上传 API |
 | `web_events.go` | SSE 事件总线 |
 | `web_static.go` | `sushiroLogoSVG` Logo SVG 常量 + `indexHTML` 完整单页（Sushiro 品牌配色 + 官网同款布局） |
 
@@ -117,6 +118,7 @@ main.go (默认启动 Web UI)
 | `recommend.go` | `cmdRecommend` 基于历史数据的时段推荐 |
 | `insights.go` | Web/CLI 可复用的历史洞察：按门店/星期/时段统计开放概率、售罄速度与推荐 |
 | `activity.go` | 主流程活动标记与采样跨进程锁，确保采样避让抢号/捕获/狙击 |
+| `queue_contribution.go` | 今日排队训练数据结构、本地聚合、隐私预览与 collector 上传 |
 | `sampling.go` | 后台采样配置、运行状态、定时采样 runner，仅记录历史不抢号 |
 | `sampling_cli.go` | `sample` CLI：单次采样、前台采样、后台静默采样 start/stop/status |
 | `update_check.go` | GitHub Latest Release 检查与版本比较 |
@@ -126,6 +128,12 @@ main.go (默认启动 Web UI)
 | `diagnostics.go` | doctor 只读诊断、通知测试、本机网络/证书/端口/代理检查 |
 | `maintenance.go` | repair-proxy / uninstall 的代理恢复和本地敏感数据清理 |
 | `sniper_plan.go` | Web 狙击计划持久化、倒计时、尝试次数与状态摘要 |
+
+### Collector
+
+| 路径 | 职责 |
+|------|------|
+| `collector/` | Cloudflare Workers + D1 的匿名排队统计 collector 示例，接收聚合数据，不接收原始 session |
 
 ### 资源与脚本
 
@@ -157,7 +165,11 @@ main.go (默认启动 Web UI)
 ├── notify.json          通知渠道配置
 ├── stores.json          门店昵称
 ├── sampling.json        后台采样配置
+├── contribution.json    匿名贡献配置与默认 collector 地址
 ├── history.jsonl        历史时段数据（JSONL 格式）
+├── queue_observations.jsonl 今日排队公开叫号采样
+├── queue_sessions.jsonl 真实取号等待 session（本地私有）
+├── queue_stats.json     本地聚合排队统计缓存
 ├── sushiro.log          后台模式日志
 ├── sampling.log         后台采样日志
 ├── sushiro.pid          后台进程 PID
@@ -190,6 +202,9 @@ main.go (默认启动 Web UI)
 | GET/POST | `/api/config` | 读取/保存通知配置 |
 | GET | `/api/diagnostics` | 只读、脱敏的本机诊断信息 |
 | GET | `/api/update` | 检查 GitHub 最新 Release |
+| GET/POST | `/api/contribution` | 读取/保存匿名贡献配置 |
+| GET | `/api/contribution/preview` | 本地聚合与隐私预览 |
+| POST | `/api/contribution/upload` | 上传脱敏聚合统计到 collector |
 | POST | `/api/notifications/test` | 发送通知渠道测试 |
 | POST | `/api/repair-proxy` | 恢复系统代理并清理代理 marker |
 | POST | `/api/uninstall` | 清理本地敏感数据和证书 |
