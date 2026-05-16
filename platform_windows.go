@@ -11,6 +11,26 @@ import (
 	"syscall"
 )
 
+func powershellCommand(script string, args ...string) *exec.Cmd {
+	return powershellCommandWithOptions(false, script, args...)
+}
+
+func hiddenPowerShellCommand(script string, args ...string) *exec.Cmd {
+	return powershellCommandWithOptions(true, script, args...)
+}
+
+func powershellCommandWithOptions(windowHidden bool, script string, args ...string) *exec.Cmd {
+	psArgs := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"}
+	if windowHidden {
+		psArgs = append(psArgs, "-WindowStyle", "Hidden")
+	}
+	psArgs = append(psArgs, "-Command", "& {\n"+script+"\n}")
+	psArgs = append(psArgs, args...)
+	cmd := exec.Command("powershell", psArgs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd
+}
+
 func desktopNotification(title, message string) {
 	script := `
 Add-Type -AssemblyName System.Windows.Forms
@@ -21,8 +41,7 @@ $n.ShowBalloonTip(5000, $args[0], $args[1], 'Info')
 Start-Sleep -Seconds 6
 $n.Dispose()
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script, title, message)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := hiddenPowerShellCommand(script, title, message)
 	_ = cmd.Start()
 }
 
@@ -32,8 +51,7 @@ func setSystemProxy(port int) error {
 Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 1
 Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -Value $args[0]
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", script, p)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := powershellCommand(script, p)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("设置系统代理失败: %w", err)
 	}
@@ -44,8 +62,7 @@ Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet
 
 func clearSystemProxy() error {
 	script := `Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 0`
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := powershellCommand(script)
 	err := cmd.Run()
 	refreshProxySettings()
 	return err
@@ -71,8 +88,7 @@ public class WinINet {
 "@
 [WinINet]::Refresh()
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := powershellCommand(script)
 	_ = cmd.Run()
 }
 
@@ -90,8 +106,7 @@ $thumb = $args[0].ToUpperInvariant()
 $cert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
 if ($null -ne $cert) { Write-Output "trusted" }
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, thumbprint)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := powershellCommand(script, thumbprint)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("检查证书信任失败: %w: %s", err, strings.TrimSpace(string(out)))
@@ -124,8 +139,7 @@ if ($null -eq $existing) {
 $cert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
 if ($null -eq $cert) { throw "certificate was not found in CurrentUser Root after import" }
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, certPath, thumbprint)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := powershellCommand(script, certPath, thumbprint)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		fallback := exec.Command("certutil", "-f", "-user", "-addstore", "Root", certPath)
@@ -154,8 +168,7 @@ Get-ChildItem -Path Cert:\CurrentUser\Root |
   Where-Object { $_.Thumbprint -eq $thumb -or $_.Subject -like '*CN=Sushiro Proxy CA*' } |
   Remove-Item -ErrorAction SilentlyContinue
 `
-		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, thumbprint)
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		cmd := powershellCommand(script, thumbprint)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("删除证书失败: %w: %s", err, strings.TrimSpace(string(out)))
@@ -220,8 +233,7 @@ foreach ($p in $matches) {
   } | ConvertTo-Json -Compress
 }
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, fmt.Sprintf("%d", excludePID))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := powershellCommand(script, fmt.Sprintf("%d", excludePID))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return []MaintenanceResult{{
