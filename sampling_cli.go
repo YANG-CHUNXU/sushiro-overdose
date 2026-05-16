@@ -49,12 +49,12 @@ func cmdSample(args []string) {
 
 func cmdSampleStatus() {
 	cfg := LoadSamplingConfig()
-	fmt.Println("后台采样:", samplingSummary(cfg))
+	fmt.Println("信息收集:", samplingSummary(cfg))
 	pid := readSamplingPID()
 	if pid != "" && IsProcessAlive(atoi(pid)) {
 		fmt.Println("状态: 运行中 (PID " + pid + ")")
 	} else if holder, ok := processLockHolder(samplingLockFileName); ok {
-		fmt.Printf("状态: 运行中 (PID %d，应用内/前台采样)\n", holder)
+		fmt.Printf("状态: 运行中 (PID %d，应用内/前台信息收集)\n", holder)
 	} else {
 		fmt.Println("状态: 未运行")
 	}
@@ -73,15 +73,15 @@ func cmdSampleRun() {
 	cfg := LoadSamplingConfig()
 	cfg.Enabled = true
 	if err := SaveSamplingConfig(cfg); err != nil {
-		fmt.Println("保存采样配置失败:", err)
+		fmt.Println("保存信息收集配置失败:", err)
 		return
 	}
-	fmt.Println("后台采样前台运行:", samplingSummary(cfg))
+	fmt.Println("信息收集前台运行:", samplingSummary(cfg))
 	fmt.Println("按 Ctrl+C 退出")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := sampler.startWithConfig(ctx, cfg); err != nil {
-		fmt.Println("启动采样失败:", err)
+		fmt.Println("启动信息收集失败:", err)
 		return
 	}
 	<-ctx.Done()
@@ -281,7 +281,7 @@ func printSamplingResult(result SamplingRunResult) {
 		fmt.Println("本轮跳过:", result.SkipReason)
 		return
 	}
-	fmt.Printf("采样完成: %d 家门店, %d 条时段, %d 个错误\n", len(result.Stores), result.Snapshots, result.StoreErrors)
+	fmt.Printf("信息收集完成: %d 家门店, %d 条时段, %d 个错误\n", len(result.Stores), result.Snapshots, result.StoreErrors)
 	for _, store := range result.Stores {
 		if store.Error != "" {
 			fmt.Printf("  %s %s: %s\n", store.StoreID, store.StoreName, store.Error)

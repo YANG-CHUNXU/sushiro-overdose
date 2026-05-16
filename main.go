@@ -69,7 +69,7 @@ func printUsage() {
 	fmt.Println("  cancel <id>  Cancel a reservation by ticket ID")
 	fmt.Println("  trends       Analyze slot availability trends")
 	fmt.Println("  recommend    Smart time slot recommendations")
-	fmt.Println("  sample       Background sampling for history insights")
+	fmt.Println("  sample       Collect local signals for visit predictions")
 	fmt.Println("  doctor       Print readonly diagnostics")
 	fmt.Println("  repair-proxy Restore system proxy settings")
 	fmt.Println("  uninstall    Remove local sensitive data and certificate")

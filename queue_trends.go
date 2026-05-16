@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -53,14 +54,15 @@ type QueueTrendQuery struct {
 }
 
 type QueueTrendResponse struct {
-	GeneratedAt string              `json:"generated_at"`
-	Filters     QueueTrendQuery     `json:"filters"`
-	Summary     QueueTrendSummary   `json:"summary"`
-	Series      []QueueTrendPoint   `json:"series"`
-	Stores      []QueueTrendStore   `json:"stores"`
-	Sampling    QueueSamplingStatus `json:"sampling"`
-	Scope       QueueTrendScope     `json:"scope"`
-	Warnings    []string            `json:"warnings,omitempty"`
+	GeneratedAt     string                     `json:"generated_at"`
+	Filters         QueueTrendQuery            `json:"filters"`
+	Summary         QueueTrendSummary          `json:"summary"`
+	Series          []QueueTrendPoint          `json:"series"`
+	Recommendations []QueueTrendRecommendation `json:"recommendations"`
+	Stores          []QueueTrendStore          `json:"stores"`
+	Sampling        QueueSamplingStatus        `json:"sampling"`
+	Scope           QueueTrendScope            `json:"scope"`
+	Warnings        []string                   `json:"warnings,omitempty"`
 }
 
 type QueueTrendSummary struct {
@@ -90,6 +92,22 @@ type QueueTrendPoint struct {
 	MissedRate        float64  `json:"missed_rate"`
 	Confidence        string   `json:"confidence"`
 	LastObservationAt string   `json:"last_observation_at,omitempty"`
+}
+
+type QueueTrendRecommendation struct {
+	StoreID              string   `json:"store_id"`
+	StoreName            string   `json:"store_name"`
+	DateType             string   `json:"date_type"`
+	DateTypeName         string   `json:"date_type_name"`
+	Bucket               string   `json:"bucket"`
+	Score                float64  `json:"score"`
+	Confidence           string   `json:"confidence"`
+	PredictedWaitMinutes *float64 `json:"predicted_wait_minutes,omitempty"`
+	ActualPassed         int      `json:"actual_passed"`
+	GlobalPassed         int      `json:"global_passed"`
+	Samples              int      `json:"samples"`
+	ActionLabel          string   `json:"action_label"`
+	Reason               string   `json:"reason"`
 }
 
 type QueueTrendStore struct {
@@ -266,17 +284,18 @@ func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
 	scope := QueueTrendScope{
 		Mode:       "local",
 		StoreCount: len(stores),
-		Message:    "当前只分析本机已捕获、已选择或本地文件里出现过的门店。没有稳定门店 ID 列表时，不能保证一个人自动覆盖全国或某个城市的全部门店。",
+		Message:    "选择你关心的门店持续收集，预测会按门店分别生成。",
 	}
 	return QueueTrendResponse{
-		GeneratedAt: now.Format(time.RFC3339),
-		Filters:     query,
-		Summary:     summary,
-		Series:      points,
-		Stores:      stores,
-		Sampling:    buildQueueSamplingStatus(now, summary),
-		Scope:       scope,
-		Warnings:    warnings,
+		GeneratedAt:     now.Format(time.RFC3339),
+		Filters:         query,
+		Summary:         summary,
+		Series:          points,
+		Recommendations: BuildQueueTrendRecommendations(points, 5),
+		Stores:          stores,
+		Sampling:        buildQueueSamplingStatus(now, summary),
+		Scope:           scope,
+		Warnings:        warnings,
 	}
 }
 
@@ -485,22 +504,134 @@ func queueTrendConfidence(point QueueTrendPoint) string {
 	}
 }
 
+func BuildQueueTrendRecommendations(points []QueueTrendPoint, limit int) []QueueTrendRecommendation {
+	if limit <= 0 {
+		limit = 5
+	}
+	recommendations := make([]QueueTrendRecommendation, 0, len(points))
+	for _, point := range points {
+		samples := point.ActualSamples + point.GlobalSamples
+		if samples == 0 {
+			continue
+		}
+		score := queueRecommendationConfidenceScore(point.Confidence)
+		score += math.Min(float64(samples)*2, 20)
+		if point.ActualSamples > 0 {
+			score += 8
+		}
+		if point.GlobalSamples > 0 {
+			score += 4
+		}
+		if point.WaitP50Minutes != nil {
+			score += math.Max(0, 45-math.Min(*point.WaitP50Minutes, 90)) * 0.8
+		} else if point.GlobalPassed > 0 {
+			score += math.Max(0, 25-math.Abs(float64(point.GlobalPassed)-30)/2)
+		}
+		score -= point.MissedRate * 30
+		recommendations = append(recommendations, QueueTrendRecommendation{
+			StoreID:              point.StoreID,
+			StoreName:            point.StoreName,
+			DateType:             point.DateType,
+			DateTypeName:         point.DateTypeName,
+			Bucket:               point.Bucket,
+			Score:                math.Round(score*10) / 10,
+			Confidence:           point.Confidence,
+			PredictedWaitMinutes: cloneFloatPtr(point.WaitP50Minutes),
+			ActualPassed:         point.ActualPassed,
+			GlobalPassed:         point.GlobalPassed,
+			Samples:              samples,
+			ActionLabel:          queueRecommendationAction(point),
+			Reason:               queueRecommendationReason(point),
+		})
+	}
+	sort.Slice(recommendations, func(i, j int) bool {
+		a, b := recommendations[i], recommendations[j]
+		if a.Score != b.Score {
+			return a.Score > b.Score
+		}
+		if a.StoreName != b.StoreName {
+			return a.StoreName < b.StoreName
+		}
+		if a.DateType != b.DateType {
+			return queueTrendDateTypeRank(a.DateType) < queueTrendDateTypeRank(b.DateType)
+		}
+		return a.Bucket < b.Bucket
+	})
+	if len(recommendations) > limit {
+		recommendations = recommendations[:limit]
+	}
+	return recommendations
+}
+
+func queueRecommendationConfidenceScore(confidence string) float64 {
+	switch confidence {
+	case "high":
+		return 40
+	case "medium":
+		return 25
+	case "low":
+		return 10
+	default:
+		return 0
+	}
+}
+
+func queueRecommendationAction(point QueueTrendPoint) string {
+	if point.Confidence == "high" || point.Confidence == "medium" {
+		if point.WaitP50Minutes != nil && *point.WaitP50Minutes <= 45 && point.MissedRate < 0.25 {
+			return "优先考虑"
+		}
+		return "候选时段"
+	}
+	return "继续观察"
+}
+
+func queueRecommendationReason(point QueueTrendPoint) string {
+	parts := []string{}
+	if point.WaitP50Minutes != nil {
+		parts = append(parts, fmt.Sprintf("P50 等待约 %d 分钟", int(math.Round(*point.WaitP50Minutes))))
+	} else if point.GlobalSamples > 0 {
+		parts = append(parts, fmt.Sprintf("已有 %d 段公开叫号推进记录", point.GlobalSamples))
+	}
+	if point.ActualSamples > 0 {
+		parts = append(parts, fmt.Sprintf("%d 次真实取号样本", point.ActualSamples))
+	}
+	if point.GlobalPassed > 0 {
+		parts = append(parts, fmt.Sprintf("公开叫号推进 %d 号", point.GlobalPassed))
+	}
+	if point.MissedRate >= 0.25 {
+		parts = append(parts, "过号风险偏高，注意签到时间")
+	}
+	if len(parts) == 0 {
+		return "样本刚开始积累，先作为观察时段。"
+	}
+	return strings.Join(parts, "；") + "。"
+}
+
+func cloneFloatPtr(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	copy := *v
+	return &copy
+}
+
 func queueTrendWarnings(query QueueTrendQuery, holidayConfigured bool, summary QueueTrendSummary) []string {
 	warnings := []string{}
 	if !holidayConfigured {
-		warnings = append(warnings, "未配置本地节假日表，当前只能按自然工作日/周末归类；节假日筛选会没有独立数据。")
+		warnings = append(warnings, "节假日表未配置，节假日会先按工作日/周末处理。")
 	}
 	if query.DateType == "holiday" && !holidayConfigured {
-		warnings = append(warnings, "要启用节假日趋势，可在 ~/.sushiro/holidays.json 写入 holidays/workdays 日期列表。")
+		warnings = append(warnings, "要单独看节假日，可在 ~/.sushiro/holidays.json 写入 holidays/workdays 日期列表。")
 	}
 	if summary.ObservationRecords == 0 && summary.SessionRecords == 0 {
-		warnings = append(warnings, "暂无本地排队数据。需要保持采样运行，或在实际取号后记录真实叫号。")
+		warnings = append(warnings, "还没有足够数据，先开启信息收集并选择关心的门店。")
 	}
 	if summary.GlobalSamples == 0 {
-		warnings = append(warnings, "暂无连续公开叫号快照，因此全局过号数暂时为空。")
+		warnings = append(warnings, "公开叫号推进还不够，保持信息收集会补齐折线。")
 	}
 	if summary.ActualSamples == 0 {
-		warnings = append(warnings, "暂无确认叫到自己的取号记录，因此实际过号数暂时为空。")
+		warnings = append(warnings, "真实取号样本还不够，到店取号后记录叫到号会让预测更准。")
 	}
 	return warnings
 }
@@ -546,25 +677,25 @@ func buildQueueSamplingStatus(now time.Time, summary QueueTrendSummary) QueueSam
 	switch {
 	case status.NeedsAuth:
 		status.PermissionStatus = "needs_auth"
-		status.Message = "认证参数不可用或已过期，请重新获取认证后再采样。"
+		status.Message = "认证参数需要更新，重新获取后才能继续信息收集。"
 	case status.NeedsBackground:
 		status.PermissionStatus = "needs_background"
-		status.Message = "未启用常驻采样。排队趋势依赖本机持续记录，建议启用系统开机自启动。"
+		status.Message = "还没有持续信息收集。开启后会按门店积累预测数据。"
 	case status.NeedsDataRefresh:
 		status.PermissionStatus = "needs_update"
 		if status.LastDataAt == "" {
-			status.Message = "还没有本地排队数据，请启动采样或完成一次真实取号记录。"
+			status.Message = "还没有本地排队数据，请先启动信息收集或记录一次真实取号。"
 		} else {
-			status.Message = "本地排队数据较旧，建议重新采样。"
+			status.Message = "本地数据较旧，建议立即收集一次。"
 		}
 	default:
 		status.PermissionStatus = "ok"
-		status.Message = "本地采样状态正常。"
+		status.Message = "信息收集状态正常。"
 	}
 	if state.LastError != "" && strings.Contains(strings.ToLower(state.LastError), "认证") {
 		status.PermissionStatus = "needs_auth"
 		status.NeedsAuth = true
-		status.Message = "最近采样提示认证异常，请重新获取认证。"
+		status.Message = "最近信息收集提示认证异常，请重新获取认证。"
 	}
 	return status
 }

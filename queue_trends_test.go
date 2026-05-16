@@ -119,3 +119,57 @@ func TestQueueTrendGlobalPassedUsesForwardObservationDelta(t *testing.T) {
 		t.Fatalf("global passed = point %d summary %d, want 11", points[0].GlobalPassed, summary.GlobalPassedTotal)
 	}
 }
+
+func TestBuildQueueTrendRecommendationsPrioritizesUsableStoreTime(t *testing.T) {
+	waitFast := 25.0
+	waitSlow := 70.0
+	points := []QueueTrendPoint{
+		{
+			StoreID:        "slow",
+			StoreName:      "慢店",
+			DateType:       "weekend",
+			DateTypeName:   "周末",
+			Bucket:         "18:30",
+			ActualSamples:  8,
+			GlobalSamples:  6,
+			WaitP50Minutes: &waitSlow,
+			Confidence:     "high",
+			MissedRate:     0.1,
+		},
+		{
+			StoreID:        "fast",
+			StoreName:      "快店",
+			DateType:       "weekend",
+			DateTypeName:   "周末",
+			Bucket:         "17:30",
+			ActualSamples:  4,
+			GlobalSamples:  5,
+			WaitP50Minutes: &waitFast,
+			Confidence:     "medium",
+			MissedRate:     0.0,
+		},
+	}
+
+	recommendations := BuildQueueTrendRecommendations(points, 2)
+	if len(recommendations) != 2 {
+		t.Fatalf("recommendations len = %d, want 2", len(recommendations))
+	}
+	if recommendations[0].StoreID != "fast" {
+		t.Fatalf("top store = %s, want fast: %+v", recommendations[0].StoreID, recommendations)
+	}
+	if recommendations[0].ActionLabel != "优先考虑" {
+		t.Fatalf("action = %s, want 优先考虑", recommendations[0].ActionLabel)
+	}
+	if !strings.Contains(recommendations[0].Reason, "P50") {
+		t.Fatalf("reason should mention P50 wait: %s", recommendations[0].Reason)
+	}
+}
+
+func TestBuildQueueTrendRecommendationsSkipsEmptyPoints(t *testing.T) {
+	recommendations := BuildQueueTrendRecommendations([]QueueTrendPoint{
+		{StoreID: "empty", StoreName: "空", DateType: "weekday", Bucket: "12:00"},
+	}, 5)
+	if len(recommendations) != 0 {
+		t.Fatalf("recommendations len = %d, want 0", len(recommendations))
+	}
+}
