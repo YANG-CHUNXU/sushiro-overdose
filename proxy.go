@@ -105,6 +105,15 @@ type proxyServer struct {
 	transport *http.Transport
 }
 
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) {
+	return c.reader.Read(p)
+}
+
 func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens) (*proxyServer, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", proxyPort))
 	if err != nil {
@@ -194,20 +203,20 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 
 	isSushiro := isSushiroTargetHost(hostPort)
 
-	// Dial the real server
-	serverConn, err := net.DialTimeout("tcp", hostPort, 10*time.Second)
-	if err != nil {
-		fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-		return
-	}
-	defer serverConn.Close()
-
-	// Tell client the tunnel is ready
-	fmt.Fprintf(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n")
-
 	if !isSushiro {
-		// Flush any buffered data from br that read ahead past the CONNECT headers
-		// Only needed for plain tunnel; MITM path does its own TLS handshake
+		// Dial the real server for pass-through tunnels.
+		serverConn, err := net.DialTimeout("tcp", hostPort, 10*time.Second)
+		if err != nil {
+			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
+			return
+		}
+		defer serverConn.Close()
+
+		// Tell client the tunnel is ready.
+		fmt.Fprintf(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+
+		// Flush any buffered data from br that read ahead past the CONNECT headers.
+		// The MITM path instead wraps br in bufferedConn before the TLS handshake.
 		if br.Buffered() > 0 {
 			buf := make([]byte, br.Buffered())
 			n, _ := br.Read(buf)
@@ -226,20 +235,13 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 
 	// ---- MITM for sushiro ----
 
-	// TLS handshake with real server
+	// Tell client the tunnel is ready. The real upstream connection is opened by
+	// the HTTP transport when forwarding each captured request.
+	fmt.Fprintf(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+
 	serverName := hostPort
 	if idx := strings.LastIndex(hostPort, ":"); idx != -1 {
 		serverName = hostPort[:idx]
-	}
-
-	tlsServer := tls.Client(serverConn, &tls.Config{
-		ServerName: serverName,
-		MinVersion: tls.VersionTLS12,
-	})
-	defer tlsServer.Close()
-	if err := tlsServer.Handshake(); err != nil {
-		logMessage(time.Now(), fmt.Sprintf("TLS handshake to %s failed: %v", serverName, err))
-		return
 	}
 
 	// TLS handshake with client (using forged cert)
@@ -247,7 +249,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	if err != nil {
 		return
 	}
-	tlsClient := tls.Server(clientConn, &tls.Config{
+	tlsClient := tls.Server(&bufferedConn{Conn: clientConn, reader: br}, &tls.Config{
 		Certificates: []tls.Certificate{hostCert},
 		MinVersion:   tls.VersionTLS12,
 	})

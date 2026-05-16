@@ -77,32 +77,92 @@ public class WinINet {
 }
 
 func isCertTrusted() (bool, error) {
-	dir := certDirPath()
-	certPath := filepath.Join(dir, "ca.crt")
-	if _, err := os.Stat(certPath); err != nil {
-		return false, nil
+	thumbprint, err := localCACertSHA1Thumbprint()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
 	}
 
-	cmd := exec.Command("certutil", "-store", "-user", "Root", "Sushiro Proxy CA")
+	script := `
+$thumb = $args[0].ToUpperInvariant()
+$cert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -ne $cert) { Write-Output "trusted" }
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, thumbprint)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("检查证书信任失败: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	return len(out) > 0 && !strings.Contains(string(out), "ERROR"), nil
+	return strings.Contains(string(out), "trusted"), nil
 }
 
 func installCert() error {
 	dir := certDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
+	thumbprint, err := localCACertSHA1Thumbprint()
+	if err != nil {
+		return fmt.Errorf("读取本地 CA 证书失败: %w", err)
+	}
+	if trusted, _ := isCertTrusted(); trusted {
+		return nil
+	}
 
-	cmd := exec.Command("certutil", "-addstore", "-user", "Root", certPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	script := `
+$path = $args[0]
+$thumb = $args[1].ToUpperInvariant()
+Get-ChildItem -Path Cert:\CurrentUser\Root |
+  Where-Object { $_.Subject -like '*CN=Sushiro Proxy CA*' -and $_.Thumbprint -ne $thumb } |
+  Remove-Item -ErrorAction SilentlyContinue
+$existing = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -eq $existing) {
+  $imported = Import-Certificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\Root
+  if ($null -eq $imported) { throw "Import-Certificate returned no certificate" }
+}
+$cert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -eq $cert) { throw "certificate was not found in CurrentUser Root after import" }
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, certPath, thumbprint)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fallback := exec.Command("certutil", "-f", "-user", "-addstore", "Root", certPath)
+		fallback.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		fallbackOut, fallbackErr := fallback.CombinedOutput()
+		if fallbackErr != nil {
+			return fmt.Errorf("导入证书失败: powershell=%w: %s; certutil=%w: %s", err, strings.TrimSpace(string(out)), fallbackErr, strings.TrimSpace(string(fallbackOut)))
+		}
+	}
+	trusted, trustErr := isCertTrusted()
+	if trustErr != nil {
+		return trustErr
+	}
+	if !trusted {
+		return fmt.Errorf("证书已导入，但当前用户 Root 中没有找到匹配指纹 %s", thumbprint)
+	}
+	return nil
 }
 
 func uninstallCert() error {
+	thumbprint, thumbErr := localCACertSHA1Thumbprint()
+	if thumbErr == nil {
+		script := `
+$thumb = $args[0].ToUpperInvariant()
+Get-ChildItem -Path Cert:\CurrentUser\Root |
+  Where-Object { $_.Thumbprint -eq $thumb -or $_.Subject -like '*CN=Sushiro Proxy CA*' } |
+  Remove-Item -ErrorAction SilentlyContinue
+`
+		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script, thumbprint)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("删除证书失败: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+
 	cmd := exec.Command("certutil", "-delstore", "-user", "Root", "Sushiro Proxy CA")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.CombinedOutput()

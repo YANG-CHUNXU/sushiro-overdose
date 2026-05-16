@@ -3,15 +3,18 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -90,6 +93,36 @@ func loadOrGenerateCA() (tls.Certificate, *rsa.PrivateKey, error) {
 
 	fmt.Println("CA证书已生成:", certPath)
 	return cert, key, nil
+}
+
+func loadLocalCACertificate() (*x509.Certificate, error) {
+	certPath := filepath.Join(certDirPath(), "ca.crt")
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("decode CA certificate PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return cert, nil
+}
+
+func localCACertSHA1Thumbprint() (string, error) {
+	cert, err := loadLocalCACertificate()
+	if err != nil {
+		return "", err
+	}
+	return certSHA1Thumbprint(cert), nil
+}
+
+func certSHA1Thumbprint(cert *x509.Certificate) string {
+	sum := sha1.Sum(cert.Raw)
+	return strings.ToUpper(hex.EncodeToString(sum[:]))
 }
 
 func generateHostCert(caTLSCert tls.Certificate, caKey *rsa.PrivateKey, host string) (tls.Certificate, error) {
