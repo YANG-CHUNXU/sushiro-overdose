@@ -181,8 +181,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	firstLine = strings.TrimSpace(firstLine)
 
 	if !strings.HasPrefix(firstLine, "CONNECT ") {
-		// Not a CONNECT — respond with error and move on
-		fmt.Fprintf(clientConn, "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
+		ps.handlePlainHTTPProxy(clientConn, firstLine, br)
 		return
 	}
 
@@ -286,15 +285,17 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		req.URL.Scheme = "https"
 		req.URL.Host = hostPort
 		req.RequestURI = ""
-		req.Header.Del("Proxy-Connection")
-		req.Header.Del("Proxy-Authenticate")
-		req.Header.Del("Proxy-Authorization")
+		removeHopByHopHeaders(req.Header)
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		req.ContentLength = int64(len(bodyBytes))
+		req.TransferEncoding = nil
+		req.Close = false
 
 		// Forward
 		resp, err := ps.transport.RoundTrip(req)
 		if err != nil {
+			logMessage(time.Now(), fmt.Sprintf("MITM upstream request failed: %s %s: %v", req.Method, req.URL.String(), err))
+			fmt.Fprintf(tlsClient, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
 
@@ -302,6 +303,78 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		resp.Write(tlsClient)
 		resp.Body.Close()
 	}
+}
+
+func (ps *proxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine string, br *bufio.Reader) {
+	reader := bufio.NewReader(io.MultiReader(strings.NewReader(firstLine+"\r\n"), br))
+	for {
+		req, err := http.ReadRequest(reader)
+		if err != nil {
+			return
+		}
+		closeAfterResponse := req.Close
+
+		var bodyBytes []byte
+		if req.Body != nil {
+			bodyBytes, _ = io.ReadAll(req.Body)
+			req.Body.Close()
+		}
+
+		if !req.URL.IsAbs() {
+			if req.Host == "" {
+				fmt.Fprintf(clientConn, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+				return
+			}
+			req.URL.Scheme = "http"
+			req.URL.Host = req.Host
+		}
+		req.RequestURI = ""
+		removeHopByHopHeaders(req.Header)
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		req.ContentLength = int64(len(bodyBytes))
+		req.TransferEncoding = nil
+		req.Close = false
+
+		resp, err := ps.transport.RoundTrip(req)
+		if err != nil {
+			logMessage(time.Now(), fmt.Sprintf("HTTP proxy request failed: %s %s: %v", req.Method, req.URL.String(), err))
+			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+			return
+		}
+		if err := resp.Write(clientConn); err != nil {
+			resp.Body.Close()
+			return
+		}
+		resp.Body.Close()
+
+		if closeAfterResponse {
+			return
+		}
+	}
+}
+
+func removeHopByHopHeaders(header http.Header) {
+	for _, value := range header.Values("Connection") {
+		for _, name := range strings.Split(value, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				header.Del(name)
+			}
+		}
+	}
+	for _, name := range []string{
+		"Proxy-Connection",
+		"Proxy-Authenticate",
+		"Proxy-Authorization",
+		"Connection",
+		"Keep-Alive",
+		"TE",
+		"Trailer",
+		"Transfer-Encoding",
+		"Upgrade",
+	} {
+		header.Del(name)
+	}
+	header.Del("Content-Length")
 }
 
 // ---- Capture wait loop ----
