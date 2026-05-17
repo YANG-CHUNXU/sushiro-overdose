@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -22,6 +21,7 @@ const proxyPort = 8080
 const proxyPortSearchLimit = 100
 const sushiroHost = "crm-cn-prd.sushiro.com.cn"
 const proxyErrorBodyLogLimit = 4096
+const proxyTunnelDialTimeout = 3 * time.Second
 
 func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte) {
 	t.mu.Lock()
@@ -244,7 +244,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 
 	if !isSushiro {
 		// Dial the real server for pass-through tunnels.
-		serverConn, err := net.DialTimeout("tcp", hostPort, 10*time.Second)
+		serverConn, err := net.DialTimeout("tcp", hostPort, proxyTunnelDialTimeout)
 		if err != nil {
 			ps.addLog(fmt.Sprintf("Proxy tunnel dial failed: %s: %v", sanitizeProxyHost(hostPort), err))
 			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
@@ -524,19 +524,11 @@ func requestTraceHost(hostPort string) string {
 }
 
 func sanitizeProxyHost(hostPort string) string {
-	host := hostPort
-	if h, _, err := net.SplitHostPort(hostPort); err == nil {
-		host = h
-	}
-	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	host := requestTraceHost(hostPort)
 	if host == "" {
 		return "-"
 	}
-	if strings.Contains(host, "sushiro") || strings.Contains(host, "weixin") || strings.Contains(host, "wechat") || strings.Contains(host, "qq.com") || strings.Contains(host, "tencent") {
-		return host
-	}
-	sum := sha256.Sum256([]byte(host))
-	return fmt.Sprintf("host#%x", sum[:4])
+	return host
 }
 
 func tlsVersionName(version uint16) string {
