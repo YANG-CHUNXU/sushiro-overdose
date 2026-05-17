@@ -47,14 +47,16 @@ $n.Dispose()
 
 func setSystemProxy(port int) error {
 	proxyServer := fmt.Sprintf("http=127.0.0.1:%d;https=127.0.0.1:%d", port, port)
-	script := `
-Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 1
-Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyServer -Value $args[0]
-Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyOverride -Value '<local>;localhost;127.*;::1;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*'
-`
-	cmd := powershellCommand(script, proxyServer)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("设置系统代理失败: %w", err)
+	proxyOverride := "<local>;localhost;127.*;::1;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*"
+	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
+		return fmt.Errorf("写入 ProxyEnable 失败: %w", err)
+	}
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyServer", "/t", "REG_SZ", "/d", proxyServer, "/f"); err != nil {
+		return fmt.Errorf("写入 ProxyServer 失败: %w", err)
+	}
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", proxyOverride, "/f"); err != nil {
+		return fmt.Errorf("写入 ProxyOverride 失败: %w", err)
 	}
 
 	refreshProxySettings()
@@ -62,11 +64,23 @@ Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet
 }
 
 func clearSystemProxy() error {
-	script := `Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyEnable -Value 0`
-	cmd := powershellCommand(script)
-	err := cmd.Run()
+	err := runHiddenWindowsCommand("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
 	refreshProxySettings()
 	return err
+}
+
+func runHiddenWindowsCommand(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			return err
+		}
+		return fmt.Errorf("%w: %s", err, msg)
+	}
+	return nil
 }
 
 // refreshProxySettings notifies the system that proxy settings have changed
