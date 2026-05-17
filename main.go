@@ -71,6 +71,7 @@ func printUsage() {
 	fmt.Println("  recommend    Smart time slot recommendations")
 	fmt.Println("  sample       Collect local signals for visit predictions")
 	fmt.Println("  doctor       Print readonly diagnostics")
+	fmt.Println("  auth-probe   Test saved auth against basic official APIs")
 	fmt.Println("  repair-proxy Restore system proxy settings")
 	fmt.Println("  uninstall    Remove local sensitive data and certificate")
 	fmt.Println("  stop-processes Stop related app processes before deleting the app")
@@ -111,6 +112,8 @@ func main() {
 		cmdTrends()
 	} else if len(args) == 1 && (args[0] == "recommend" || args[0] == "rec") {
 		cmdRecommend()
+	} else if len(args) == 1 && (args[0] == "auth-probe" || args[0] == "probe-auth") {
+		cmdAuthProbe()
 	} else if len(args) == 1 && args[0] == "--daemon-child" {
 		cmdDaemon()
 	} else if len(args) == 1 && args[0] == "--sampler-daemon-child" {

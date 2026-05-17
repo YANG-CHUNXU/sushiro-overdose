@@ -37,6 +37,7 @@ func cmdWeb() {
 	// Status & info
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/diagnostics", handleDiagnostics)
+	mux.HandleFunc("/api/auth/probe", handleAuthProbe)
 	mux.HandleFunc("/api/insights", handleInsights)
 	mux.HandleFunc("/api/queue/trends", handleQueueTrends)
 	mux.HandleFunc("/api/update", handleUpdateCheck)
