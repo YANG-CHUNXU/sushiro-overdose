@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -108,6 +109,8 @@ type proxyServer struct {
 	tokens    *CapturedTokens
 	transport *http.Transport
 	logf      func(string)
+	traceMu   sync.Mutex
+	seenHosts map[string]struct{}
 }
 
 type bufferedConn struct {
@@ -138,6 +141,7 @@ func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 		tokens:    tokens,
 		transport: newProxyUpstreamTransport(),
 		logf:      logf,
+		seenHosts: map[string]struct{}{},
 	}
 
 	go ps.serve()
@@ -150,6 +154,25 @@ func (ps *proxyServer) addLog(msg string) {
 		return
 	}
 	logMessage(time.Now(), msg)
+}
+
+func (ps *proxyServer) traceConnect(hostPort string, mitm bool) {
+	host := requestTraceHost(hostPort)
+	if host == "" {
+		return
+	}
+	ps.traceMu.Lock()
+	if _, ok := ps.seenHosts[host]; ok {
+		ps.traceMu.Unlock()
+		return
+	}
+	ps.seenHosts[host] = struct{}{}
+	ps.traceMu.Unlock()
+	mode := "passthrough"
+	if mitm {
+		mode = "mitm"
+	}
+	ps.addLog(fmt.Sprintf("Request address: CONNECT %s (%s)", host, mode))
 }
 
 func (ps *proxyServer) close() {
@@ -217,6 +240,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	}
 
 	isSushiro := isSushiroTargetHost(hostPort)
+	ps.traceConnect(hostPort, isSushiro)
 
 	if !isSushiro {
 		// Dial the real server for pass-through tunnels.
@@ -299,6 +323,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 
 		// Capture tokens
 		ps.tokens.captureFromRequest(req, bodyBytes)
+		ps.addLog(fmt.Sprintf("Request address: %s %s", req.Method, sanitizedProxyURL(requestURLForTrace(req, "https", hostPort))))
 
 		// Rebuild request for forwarding
 		req.URL.Scheme = "https"
@@ -352,6 +377,7 @@ func (ps *proxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 		}
 		removeHopByHopHeaders(req.Header)
 		setForwardRequestBody(req, bodyBytes)
+		ps.addLog(fmt.Sprintf("Request address: %s %s", req.Method, sanitizedProxyURL(req.URL)))
 
 		resp, err := ps.transport.RoundTrip(req)
 		if err != nil {
@@ -474,6 +500,27 @@ func sanitizedProxyURL(u *url.URL) string {
 		out.RawQuery = values.Encode()
 	}
 	return out.String()
+}
+
+func requestURLForTrace(req *http.Request, scheme, hostPort string) *url.URL {
+	if req == nil {
+		return nil
+	}
+	out := *req.URL
+	out.Scheme = scheme
+	out.Host = hostPort
+	if out.Host == "" {
+		out.Host = req.Host
+	}
+	return &out
+}
+
+func requestTraceHost(hostPort string) string {
+	host := strings.TrimSpace(hostPort)
+	if h, _, err := net.SplitHostPort(hostPort); err == nil {
+		host = h
+	}
+	return strings.TrimSuffix(strings.ToLower(host), ".")
 }
 
 func sanitizeProxyHost(hostPort string) string {
