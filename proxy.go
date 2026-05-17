@@ -458,8 +458,8 @@ func sanitizedProxyURL(u *url.URL) string {
 
 func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan struct{}) error {
 	fmt.Println("等待捕获认证参数...")
-	fmt.Println("请在 PC 微信中打开寿司郎小程序")
-	fmt.Println("⚠️ 需要在目标门店进行一次排队取号/预约，才能捕获全部参数")
+	fmt.Println("请完全退出并重新打开 PC 微信，再打开寿司郎小程序")
+	fmt.Println("需要在目标门店进行一次排队取号/预约，才能捕获全部参数")
 	fmt.Println("按回车跳过等待（手动模式）...")
 	fmt.Println()
 

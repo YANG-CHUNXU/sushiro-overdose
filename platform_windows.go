@@ -109,11 +109,9 @@ $blocked = @('Cert:\CurrentUser\Disallowed','Cert:\LocalMachine\Disallowed') |
   Where-Object { $_.Thumbprint -eq $thumb } |
   Select-Object -First 1
 if ($null -ne $blocked) { throw "certificate is present in Windows Disallowed store" }
-$cert = @('Cert:\CurrentUser\Root','Cert:\LocalMachine\Root') |
-  ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue } |
-  Where-Object { $_.Thumbprint -eq $thumb } |
-  Select-Object -First 1
-if ($null -ne $cert) { Write-Output "trusted" }
+$currentUser = Get-ChildItem -Path Cert:\CurrentUser\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+$localMachine = Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
+if ($null -ne $currentUser -and $null -ne $localMachine) { Write-Output "trusted" }
 `
 	cmd := powershellCommand(script, thumbprint)
 	out, err := cmd.CombinedOutput()
@@ -172,7 +170,7 @@ if ($null -eq $cert) { throw "certificate was not found in CurrentUser Root afte
 		return trustErr
 	}
 	if !trusted {
-		return fmt.Errorf("证书已导入，但当前用户 Root 中没有找到匹配指纹 %s", thumbprint)
+		return fmt.Errorf("证书已导入，但 Windows CurrentUser/LocalMachine Root 中没有同时找到匹配指纹 %s", thumbprint)
 	}
 	return nil
 }
@@ -198,7 +196,8 @@ $path = $args[0]
 $thumb = $args[1].ToUpperInvariant()
 $existing = Get-ChildItem -Path Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
 if ($null -eq $existing) {
-  $p = Start-Process -FilePath certutil.exe -ArgumentList @('-f','-addstore','Root',$path) -Verb RunAs -Wait -PassThru
+  $quotedPath = '"' + ($path -replace '"','\"') + '"'
+  $p = Start-Process -FilePath certutil.exe -ArgumentList @('-f','-addstore','Root',$quotedPath) -Verb RunAs -Wait -PassThru
   if ($null -eq $p) { throw 'elevated certutil did not start' }
   if ($p.ExitCode -ne 0) { throw "elevated certutil failed with exit code $($p.ExitCode)" }
 }

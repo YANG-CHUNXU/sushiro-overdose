@@ -201,8 +201,8 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	}
 	markProxyActive(actualPort, os.Getpid())
 
-	e.setState(EngineCapturing, "等待捕获认证参数，请在 PC 微信中打开寿司郎小程序...")
-	e.addLog(fmt.Sprintf("系统代理已设置 (127.0.0.1:%d)，请在 PC 微信中打开寿司郎小程序并操作一次排队/预约", actualPort))
+	e.setState(EngineCapturing, "等待捕获认证参数，请完全退出并重新打开 PC 微信后再打开寿司郎小程序...")
+	e.addLog(fmt.Sprintf("系统代理已设置 (127.0.0.1:%d)，请完全退出并重新打开 PC 微信，再打开寿司郎小程序并操作一次排队/预约", actualPort))
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
