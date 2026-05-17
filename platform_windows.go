@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func powershellCommand(script string, args ...string) *exec.Cmd {
@@ -58,6 +59,9 @@ func setSystemProxy(port int) error {
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", proxyOverride, "/f"); err != nil {
 		return fmt.Errorf("写入 ProxyOverride 失败: %w", err)
 	}
+	if err := setWinHTTPProxy(proxyServer, proxyOverride); err != nil {
+		logMessage(time.Now(), "WinHTTP 代理设置跳过: "+err.Error())
+	}
 
 	refreshProxySettings()
 	return nil
@@ -65,8 +69,19 @@ func setSystemProxy(port int) error {
 
 func clearSystemProxy() error {
 	err := runHiddenWindowsCommand("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
+	if resetErr := clearWinHTTPProxy(); resetErr != nil {
+		logMessage(time.Now(), "WinHTTP 代理清理跳过: "+resetErr.Error())
+	}
 	refreshProxySettings()
 	return err
+}
+
+func setWinHTTPProxy(proxyServer, proxyOverride string) error {
+	return runHiddenWindowsCommand("netsh", "winhttp", "set", "proxy", "proxy-server="+proxyServer, "bypass-list="+proxyOverride)
+}
+
+func clearWinHTTPProxy() error {
+	return runHiddenWindowsCommand("netsh", "winhttp", "reset", "proxy")
 }
 
 func runHiddenWindowsCommand(name string, args ...string) error {

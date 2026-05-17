@@ -182,7 +182,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	e.tokens = tokens
 	e.mu.Unlock()
 
-	proxy, err := startProxy(caCert, caKey, tokens)
+	proxy, err := startProxy(caCert, caKey, tokens, e.addLog)
 	if err != nil {
 		e.setState(EngineError, "启动代理失败: "+err.Error())
 		e.addLogLevel("启动代理失败: "+err.Error(), "error")

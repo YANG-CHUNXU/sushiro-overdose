@@ -95,20 +95,17 @@ func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
 	<-done
 }
 
-func TestProxyUpstreamTransportUsesHTTP1(t *testing.T) {
+func TestProxyUpstreamTransportAllowsHTTP2Upstream(t *testing.T) {
 	tr := newProxyUpstreamTransport()
-	if tr.ForceAttemptHTTP2 {
-		t.Fatalf("ForceAttemptHTTP2 = true")
-	}
-	if tr.TLSNextProto == nil {
-		t.Fatalf("TLSNextProto is nil; HTTP/2 should be disabled")
+	if !tr.ForceAttemptHTTP2 {
+		t.Fatalf("ForceAttemptHTTP2 = false")
 	}
 	if tr.TLSClientConfig == nil {
 		t.Fatalf("TLSClientConfig is nil")
 	}
 	got := strings.Join(tr.TLSClientConfig.NextProtos, ",")
-	if got != "http/1.1" {
-		t.Fatalf("NextProtos = %q, want http/1.1", got)
+	if !strings.Contains(got, "h2") || !strings.Contains(got, "http/1.1") {
+		t.Fatalf("NextProtos = %q, want h2 and http/1.1", got)
 	}
 }
 

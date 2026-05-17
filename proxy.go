@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -106,6 +107,7 @@ type proxyServer struct {
 	caKey     *rsa.PrivateKey
 	tokens    *CapturedTokens
 	transport *http.Transport
+	logf      func(string)
 }
 
 type bufferedConn struct {
@@ -117,10 +119,14 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 	return c.reader.Read(p)
 }
 
-func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens) (*proxyServer, error) {
+func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, logger ...func(string)) (*proxyServer, error) {
 	listener, port, err := listenOnAvailableLocalPort(proxyPort, proxyPortSearchLimit)
 	if err != nil {
 		return nil, fmt.Errorf("listen on %d-%d: %w", proxyPort, proxyPort+proxyPortSearchLimit-1, err)
+	}
+	var logf func(string)
+	if len(logger) > 0 {
+		logf = logger[0]
 	}
 
 	ps := &proxyServer{
@@ -131,10 +137,19 @@ func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 		caKey:     caKey,
 		tokens:    tokens,
 		transport: newProxyUpstreamTransport(),
+		logf:      logf,
 	}
 
 	go ps.serve()
 	return ps, nil
+}
+
+func (ps *proxyServer) addLog(msg string) {
+	if ps.logf != nil {
+		ps.logf(msg)
+		return
+	}
+	logMessage(time.Now(), msg)
 }
 
 func (ps *proxyServer) close() {
@@ -207,6 +222,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		// Dial the real server for pass-through tunnels.
 		serverConn, err := net.DialTimeout("tcp", hostPort, 10*time.Second)
 		if err != nil {
+			ps.addLog(fmt.Sprintf("Proxy tunnel dial failed: %s: %v", sanitizeProxyHost(hostPort), err))
 			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
 			return
 		}
@@ -256,17 +272,21 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	})
 	defer tlsClient.Close()
 	if err := tlsClient.Handshake(); err != nil {
-		logMessage(time.Now(), fmt.Sprintf("TLS handshake from client failed: %v", err))
+		ps.addLog(fmt.Sprintf("TLS handshake from client failed: %v", err))
 		return
 	}
 
-	logMessage(time.Now(), fmt.Sprintf("MITM established for %s", serverName))
+	state := tlsClient.ConnectionState()
+	ps.addLog(fmt.Sprintf("MITM established for %s (client_tls=%s alpn=%s)", serverName, tlsVersionName(state.Version), defaultString(state.NegotiatedProtocol, "http/1.1")))
 
 	// Read-Forward-Relay loop
 	clientReader := bufio.NewReader(tlsClient)
 	for {
 		req, err := http.ReadRequest(clientReader)
 		if err != nil {
+			if err != io.EOF {
+				ps.addLog(fmt.Sprintf("MITM read request failed for %s: %v", serverName, err))
+			}
 			return // client closed connection
 		}
 
@@ -293,7 +313,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		// Forward
 		resp, err := ps.transport.RoundTrip(req)
 		if err != nil {
-			logMessage(time.Now(), fmt.Sprintf("MITM upstream request failed: %s %s: %v", req.Method, req.URL.String(), err))
+			ps.addLog(fmt.Sprintf("MITM upstream request failed: %s %s: %v", req.Method, sanitizedProxyURL(req.URL), err))
 			fmt.Fprintf(tlsClient, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
@@ -376,11 +396,10 @@ func removeHopByHopHeaders(header http.Header) {
 func newProxyUpstreamTransport() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = func(*http.Request) (*url.URL, error) { return nil, nil }
-	transport.ForceAttemptHTTP2 = false
-	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	transport.ForceAttemptHTTP2 = true
 	transport.TLSClientConfig = &tls.Config{
 		MinVersion: tls.VersionTLS12,
-		NextProtos: []string{"http/1.1"},
+		NextProtos: []string{"h2", "http/1.1"},
 	}
 	return transport
 }
@@ -410,6 +429,7 @@ func hostWithoutPort(hostPort string) string {
 
 func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
 	defer resp.Body.Close()
+	upstreamProto := resp.Proto
 	resp.Proto = "HTTP/1.1"
 	resp.ProtoMajor = 1
 	resp.ProtoMinor = 1
@@ -427,10 +447,12 @@ func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method st
 		if bodySample != "" {
 			msg += ": " + bodySample
 		}
-		logMessage(time.Now(), msg)
+		ps.addLog(msg)
+	} else if target != nil && isSushiroTargetHost(target.Host) {
+		ps.addLog(fmt.Sprintf("MITM upstream response: %s %s HTTP %d upstream=%s", method, sanitizedProxyURL(target), resp.StatusCode, upstreamProto))
 	}
 	if err := resp.Write(w); err != nil {
-		logMessage(time.Now(), fmt.Sprintf("proxy relay response failed: %s %s: %v", method, sanitizedProxyURL(target), err))
+		ps.addLog(fmt.Sprintf("proxy relay response failed: %s %s: %v", method, sanitizedProxyURL(target), err))
 		return err
 	}
 	return nil
@@ -452,6 +474,37 @@ func sanitizedProxyURL(u *url.URL) string {
 		out.RawQuery = values.Encode()
 	}
 	return out.String()
+}
+
+func sanitizeProxyHost(hostPort string) string {
+	host := hostPort
+	if h, _, err := net.SplitHostPort(hostPort); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" {
+		return "-"
+	}
+	if strings.Contains(host, "sushiro") || strings.Contains(host, "weixin") || strings.Contains(host, "wechat") || strings.Contains(host, "qq.com") || strings.Contains(host, "tencent") {
+		return host
+	}
+	sum := sha256.Sum256([]byte(host))
+	return fmt.Sprintf("host#%x", sum[:4])
+}
+
+func tlsVersionName(version uint16) string {
+	switch version {
+	case tls.VersionTLS13:
+		return "TLS1.3"
+	case tls.VersionTLS12:
+		return "TLS1.2"
+	case tls.VersionTLS11:
+		return "TLS1.1"
+	case tls.VersionTLS10:
+		return "TLS1.0"
+	default:
+		return fmt.Sprintf("0x%x", version)
+	}
 }
 
 // ---- Capture wait loop ----

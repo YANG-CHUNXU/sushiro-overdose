@@ -162,7 +162,7 @@ func generateHostCert(caTLSCert tls.Certificate, caKey *rsa.PrivateKey, host str
 	}
 
 	return tls.Certificate{
-		Certificate: [][]byte{certDER},
+		Certificate: [][]byte{certDER, caCert.Raw},
 		PrivateKey:  leafKey,
 	}, nil
 }
