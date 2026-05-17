@@ -22,6 +22,12 @@ func TestSystemProxyMentionsPort(t *testing.T) {
 			want:    true,
 		},
 		{
+			name:    "windows pac auto config",
+			summary: []string{"AutoConfigURL=http://127.0.0.1:8081/proxy.pac?proxy=8085"},
+			port:    8085,
+			want:    true,
+		},
+		{
 			name:    "different port",
 			summary: []string{"ProxyServer=127.0.0.1:7897"},
 			port:    8080,

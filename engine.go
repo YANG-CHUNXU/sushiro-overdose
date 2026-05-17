@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -202,7 +203,11 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	markProxyActive(actualPort, os.Getpid())
 
 	e.setState(EngineCapturing, "等待捕获认证参数，请完全退出并重新打开 PC 微信后再打开寿司郎小程序...")
-	e.addLog(fmt.Sprintf("系统代理已设置 (127.0.0.1:%d)，请完全退出并重新打开 PC 微信，再打开寿司郎小程序并操作一次排队/预约", actualPort))
+	proxyHint := fmt.Sprintf("捕获代理已设置 (127.0.0.1:%d)", actualPort)
+	if runtime.GOOS == "windows" && getActiveWebPort() > 0 {
+		proxyHint += "；Windows 已使用 PAC 仅代理寿司郎域名"
+	}
+	e.addLog(proxyHint + "，请完全退出并重新打开 PC 微信，再打开寿司郎小程序并操作一次排队/预约")
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()

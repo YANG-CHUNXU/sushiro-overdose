@@ -726,6 +726,11 @@ Write-Output ("AutoDetect={0}" -f $autoDetect)
 			summary = append(summary, "WinHTTP "+line)
 		}
 	}
+	if netshOut, netshErr := exec.Command("netsh", "winhttp", "show", "advproxy").CombinedOutput(); netshErr == nil {
+		for _, line := range splitNonEmptyLines(string(netshOut)) {
+			summary = append(summary, "WinHTTP advproxy "+line)
+		}
+	}
 	return DiagnosticSystemProxy{Available: true, Summary: summary}
 }
 

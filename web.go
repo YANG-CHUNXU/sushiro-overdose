@@ -33,6 +33,7 @@ func cmdWeb() {
 
 	// Static
 	mux.HandleFunc("/", handleIndex)
+	mux.HandleFunc("/proxy.pac", handleProxyPAC)
 
 	// Status & info
 	mux.HandleFunc("/api/status", handleStatus)

@@ -47,9 +47,39 @@ $n.Dispose()
 }
 
 func setSystemProxy(port int) error {
+	if webPort := getActiveWebPort(); webPort > 0 {
+		return setWindowsPACProxy(port, webPort)
+	}
+	return setWindowsManualProxy(port)
+}
+
+func setWindowsPACProxy(proxyPort, webPort int) error {
+	pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, proxyPort)
+	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "ProxyServer", "/f")
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f"); err != nil {
+		return fmt.Errorf("写入 ProxyEnable 失败: %w", err)
+	}
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "AutoConfigURL", "/t", "REG_SZ", "/d", pacURL, "/f"); err != nil {
+		return fmt.Errorf("写入 AutoConfigURL 失败: %w", err)
+	}
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "AutoDetect", "/t", "REG_DWORD", "/d", "0", "/f"); err != nil {
+		return fmt.Errorf("写入 AutoDetect 失败: %w", err)
+	}
+	if err := setWinHTTPAutoProxy(pacURL); err != nil {
+		logMessage(time.Now(), "WinHTTP PAC 代理设置跳过: "+err.Error())
+	}
+
+	refreshProxySettings()
+	logMessage(time.Now(), fmt.Sprintf("Windows PAC 代理已设置: 仅 %s 走 127.0.0.1:%d，其它域名直连", sushiroHost, proxyPort))
+	return nil
+}
+
+func setWindowsManualProxy(port int) error {
 	proxyServer := fmt.Sprintf("http=127.0.0.1:%d;https=127.0.0.1:%d", port, port)
 	proxyOverride := "<local>;localhost;127.*;::1;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*"
 	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "AutoConfigURL", "/f")
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
 		return fmt.Errorf("写入 ProxyEnable 失败: %w", err)
 	}
@@ -68,7 +98,9 @@ func setSystemProxy(port int) error {
 }
 
 func clearSystemProxy() error {
-	err := runHiddenWindowsCommand("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
+	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+	err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
+	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "AutoConfigURL", "/f")
 	if resetErr := clearWinHTTPProxy(); resetErr != nil {
 		logMessage(time.Now(), "WinHTTP 代理清理跳过: "+resetErr.Error())
 	}
@@ -78,6 +110,16 @@ func clearSystemProxy() error {
 
 func setWinHTTPProxy(proxyServer, proxyOverride string) error {
 	return runHiddenWindowsCommand("netsh", "winhttp", "set", "proxy", "proxy-server="+proxyServer, "bypass-list="+proxyOverride)
+}
+
+func setWinHTTPAutoProxy(pacURL string) error {
+	settings := fmt.Sprintf(`{"Proxy":"","ProxyBypass":"","AutoconfigUrl":%q,"AutoDetect":false}`, pacURL)
+	if err := runHiddenWindowsCommand("netsh", "winhttp", "set", "advproxy", "setting-scope=user", "settings="+settings); err == nil {
+		return nil
+	} else if importErr := runHiddenWindowsCommand("netsh", "winhttp", "import", "proxy", "source=ie"); importErr != nil {
+		return fmt.Errorf("advproxy=%w; import=%w", err, importErr)
+	}
+	return nil
 }
 
 func clearWinHTTPProxy() error {
@@ -110,7 +152,9 @@ public class WinINet {
     public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int lpdwBufferLength);
     public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
     public const int INTERNET_OPTION_REFRESH = 37;
+    public const int INTERNET_OPTION_PROXY_SETTINGS_CHANGED = 95;
     public static void Refresh() {
+        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_PROXY_SETTINGS_CHANGED, IntPtr.Zero, 0);
         InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
         InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
     }
