@@ -550,8 +550,11 @@ func tlsVersionName(version uint16) string {
 
 func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan struct{}) error {
 	fmt.Println("等待捕获认证参数...")
-	fmt.Println("请完全退出并重新打开 PC 微信，再打开寿司郎小程序")
-	fmt.Println("需要在目标门店进行一次排队取号/预约，才能捕获全部参数")
+	fmt.Println("请按以下步骤捕获认证参数：")
+	fmt.Println("  1) 在任务管理器里彻底关闭 PC 微信（包括 WeChat.exe / WeChatAppEx.exe）")
+	fmt.Println("  2) 重新打开 PC 微信，进入寿司郎小程序")
+	fmt.Println("  3) 选择任意一家门店，点击「排队取号」或「立即预约」一次（不必真的提交/支付）")
+	fmt.Println("  这样可以同时捕获查询和预约两种认证参数")
 	fmt.Println("按回车跳过等待（手动模式）...")
 	fmt.Println()
 

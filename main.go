@@ -467,7 +467,7 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 		return nil, fmt.Errorf("设置系统代理失败: %w", err)
 	}
 	fmt.Printf("系统代理已设置 (127.0.0.1:%d)\n", actualPort)
-	fmt.Println("请完全退出并重新打开 PC 微信，再打开寿司郎小程序并操作一次排队/预约")
+	fmt.Println("请彻底关闭 PC 微信后重新打开，在寿司郎小程序里选任意门店点一次「排队」或「预约」（不必真的提交）")
 	markProxyActive(actualPort, os.Getpid())
 
 	// Ensure proxy is cleared on exit

@@ -202,12 +202,12 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	}
 	markProxyActive(actualPort, os.Getpid())
 
-	e.setState(EngineCapturing, "等待捕获认证参数，请完全退出并重新打开 PC 微信后再打开寿司郎小程序...")
+	e.setState(EngineCapturing, "等待捕获认证参数，请彻底关闭 PC 微信后重新打开，并在寿司郎小程序里点一次排队或预约...")
 	proxyHint := fmt.Sprintf("捕获代理已设置 (127.0.0.1:%d)", actualPort)
 	if runtime.GOOS == "windows" && getActiveWebPort() > 0 {
 		proxyHint += "；Windows 已使用 PAC 仅代理寿司郎域名"
 	}
-	e.addLog(proxyHint + "，请完全退出并重新打开 PC 微信，再打开寿司郎小程序并操作一次排队/预约")
+	e.addLog(proxyHint + "。请彻底关闭 PC 微信后重新打开，进入寿司郎小程序，选任意门店点一次「排队」或「预约」（不用真的提交）")
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
