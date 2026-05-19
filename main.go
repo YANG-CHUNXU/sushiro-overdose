@@ -71,6 +71,7 @@ func printUsage() {
 	fmt.Println("  recommend    Smart time slot recommendations")
 	fmt.Println("  sample       Collect local signals for visit predictions")
 	fmt.Println("  doctor       Print readonly diagnostics")
+	fmt.Println("  diag-bundle  Export a zipped evidence pack for debugging")
 	fmt.Println("  auth-probe   Test saved auth against basic official APIs")
 	fmt.Println("  repair-proxy Restore system proxy settings")
 	fmt.Println("  uninstall    Remove local sensitive data and certificate")
@@ -84,6 +85,10 @@ func main() {
 	args := os.Args[1:]
 	if len(args) == 1 && (args[0] == "doctor" || args[0] == "diagnostics") {
 		cmdDoctor()
+		return
+	}
+	if len(args) == 1 && (args[0] == "diag-bundle" || args[0] == "bundle") {
+		cmdDiagBundle()
 		return
 	}
 
