@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +119,240 @@ func TestQueueTrendGlobalPassedUsesForwardObservationDelta(t *testing.T) {
 	}
 	if points[0].GlobalPassed != 11 || summary.GlobalPassedTotal != 11 {
 		t.Fatalf("global passed = point %d summary %d, want 11", points[0].GlobalPassed, summary.GlobalPassedTotal)
+	}
+}
+
+func TestQueueObservationFromStoreInfoCapturesPublicWait(t *testing.T) {
+	now := time.Date(2026, 5, 26, 10, 30, 0, 0, time.FixedZone("CST", 8*3600))
+	observation, ok := queueObservationFromStoreInfo("3015", StoreInfo{
+		Wait:              20,
+		StoreStatus:       "OPEN",
+		NetTicketStatus:   "ONLINE_OPEN",
+		GroupQueuesCount:  19,
+		RemoteTicketing:   "ON",
+		ReservationStatus: "ON",
+	}, now)
+	if !ok {
+		t.Fatal("observation should be captured")
+	}
+	if observation.StoreID != "3015" || observation.WaitMinutes != 20 || !observation.OnlineOpen || observation.GroupQueuesCount != 19 {
+		t.Fatalf("unexpected observation: %+v", observation)
+	}
+}
+
+func TestAppendQueueObservationTightensPrivateObservationFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose owner-only POSIX file modes")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+		t.Fatalf("mkdir app dir: %v", err)
+	}
+	path := queueObservationPath()
+	if err := os.WriteFile(path, []byte(`{"store_id":"old","display_called_no":1}`+"\n"), 0o644); err != nil {
+		t.Fatalf("write existing observation file: %v", err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatalf("chmod existing observation file: %v", err)
+	}
+
+	err := appendQueueObservation(QueueObservation{
+		Timestamp:       "2026-05-26T10:30:00+08:00",
+		StoreID:         "3015",
+		DisplayCalledNo: 3,
+	})
+	if err != nil {
+		t.Fatalf("append queue observation: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat observation file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("observation file mode = %o, want 0600", got)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read observation file: %v", err)
+	}
+	if got := strings.Count(string(data), "\n"); got != 2 {
+		t.Fatalf("observation lines = %d, want 2: %s", got, data)
+	}
+	if !strings.Contains(string(data), `"store_id":"3015"`) {
+		t.Fatalf("appended observation missing: %s", data)
+	}
+}
+
+func TestQueueObservationFromStoreInfoCapturesGroupQueues(t *testing.T) {
+	now := time.Date(2026, 5, 26, 10, 30, 0, 0, time.FixedZone("CST", 8*3600))
+	var store StoreInfo
+	if err := json.Unmarshal([]byte(`{
+		"wait": 30,
+		"groupQueuesCount": 33,
+		"groupQueues": {
+			"mixedQueue": ["001", "002", "003"],
+			"reservationQueue": ["101"],
+			"counterQueue": [],
+			"boothQueue": ["001", "002", "003"]
+		}
+	}`), &store); err != nil {
+		t.Fatal(err)
+	}
+	observation, ok := queueObservationFromStoreInfo("3015", store, now)
+	if !ok {
+		t.Fatal("observation should be captured")
+	}
+	if observation.DisplayCalledNo != 1 {
+		t.Fatalf("display called no = %d, want 1", observation.DisplayCalledNo)
+	}
+	if strings.Join(observation.GroupQueues.MixedQueue, ",") != "001,002,003" {
+		t.Fatalf("mixed queue = %#v, want 001/002/003", observation.GroupQueues.MixedQueue)
+	}
+	if strings.Join(observation.GroupQueues.ReservationQueue, ",") != "101" {
+		t.Fatalf("reservation queue = %#v, want 101", observation.GroupQueues.ReservationQueue)
+	}
+}
+
+func TestStoreInfoGroupQueuesAcceptsMixedArraysAndSingleValues(t *testing.T) {
+	var store StoreInfo
+	if err := json.Unmarshal([]byte(`{
+		"groupQueues": {
+			"mixedQueue": [" 001 ", 2, true, null, "", "   "],
+			"reservationQueue": " 101 ",
+			"counterQueue": 202,
+			"boothQueue": false,
+			"unknownQueue": ["999"]
+		}
+	}`), &store); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(store.GroupQueues.MixedQueue, ","); got != "001,2,true" {
+		t.Fatalf("mixed queue = %q, want 001,2,true", got)
+	}
+	if got := strings.Join(store.GroupQueues.ReservationQueue, ","); got != "101" {
+		t.Fatalf("reservation queue = %q, want 101", got)
+	}
+	if got := strings.Join(store.GroupQueues.CounterQueue, ","); got != "202" {
+		t.Fatalf("counter queue = %q, want 202", got)
+	}
+	if got := strings.Join(store.GroupQueues.BoothQueue, ","); got != "false" {
+		t.Fatalf("booth queue = %q, want false", got)
+	}
+}
+
+func TestStoreInfoGroupQueuesNullAndNonObjectParseAsEmpty(t *testing.T) {
+	cases := []struct {
+		name        string
+		groupQueues string
+	}{
+		{name: "null", groupQueues: `null`},
+		{name: "empty object", groupQueues: `{}`},
+		{name: "number", groupQueues: `123`},
+		{name: "string", groupQueues: `"unexpected"`},
+		{name: "array", groupQueues: `["001"]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var store StoreInfo
+			data := []byte(`{"id":3015,"groupQueues":` + tc.groupQueues + `}`)
+			if err := json.Unmarshal(data, &store); err != nil {
+				t.Fatalf("StoreInfo unmarshal failed: %v", err)
+			}
+			if queueGroupQueuesHasAny(store.GroupQueues) {
+				t.Fatalf("group queues = %#v, want empty", store.GroupQueues)
+			}
+		})
+	}
+}
+
+func TestQueueTrendUsesMixedQueueWhenDisplayCalledNoMissing(t *testing.T) {
+	query := normalizeQueueTrendQuery(QueueTrendQuery{
+		StoreIDs:      []string{"001"},
+		DateType:      "weekday",
+		From:          "2026-05-26",
+		To:            "2026-05-26",
+		Start:         "10:00",
+		End:           "12:00",
+		BucketMinutes: 30,
+	}, time.Date(2026, 5, 26, 12, 0, 0, 0, time.FixedZone("CST", 8*3600)))
+	series := map[string]*queueTrendAccumulator{}
+	summary := addQueueObservationsToTrend(series, QueueTrendSummary{}, query, []QueueObservation{
+		{StoreID: "001", Timestamp: "2026-05-26T10:05:00+08:00", GroupQueues: QueueGroupQueues{MixedQueue: []string{"001", "002", "003"}}},
+		{StoreID: "001", Timestamp: "2026-05-26T10:25:00+08:00", GroupQueues: QueueGroupQueues{MixedQueue: []string{"004", "005", "006"}}},
+	}, map[string]string{"001": "门店"}, map[string]bool{}, map[string]bool{}, map[string]bool{})
+	points := finalizeQueueTrendPoints(series)
+	if len(points) != 1 {
+		t.Fatalf("points len = %d, want 1", len(points))
+	}
+	if points[0].GlobalPassed != 3 || summary.GlobalPassedTotal != 3 {
+		t.Fatalf("global passed = point %d summary %d, want 3", points[0].GlobalPassed, summary.GlobalPassedTotal)
+	}
+}
+
+func TestQueueTrendWaitOnlyObservationDoesNotResetCalledNumberBaseline(t *testing.T) {
+	query := normalizeQueueTrendQuery(QueueTrendQuery{
+		StoreIDs:      []string{"001"},
+		DateType:      "weekday",
+		From:          "2026-05-26",
+		To:            "2026-05-26",
+		Start:         "10:00",
+		End:           "12:00",
+		BucketMinutes: 30,
+	}, time.Date(2026, 5, 26, 12, 0, 0, 0, time.FixedZone("CST", 8*3600)))
+	series := map[string]*queueTrendAccumulator{}
+	summary := addQueueObservationsToTrend(series, QueueTrendSummary{}, query, []QueueObservation{
+		{StoreID: "001", Timestamp: "2026-05-26T10:00:00+08:00", DisplayCalledNo: 100},
+		{StoreID: "001", Timestamp: "2026-05-26T10:10:00+08:00", WaitMinutes: 25},
+		{StoreID: "001", Timestamp: "2026-05-26T10:20:00+08:00", DisplayCalledNo: 110},
+	}, map[string]string{"001": "门店"}, map[string]bool{}, map[string]bool{}, map[string]bool{})
+
+	points := finalizeQueueTrendPoints(series)
+	if len(points) != 1 {
+		t.Fatalf("points len = %d, want 1", len(points))
+	}
+	if points[0].GlobalPassed != 10 || summary.GlobalPassedTotal != 10 {
+		t.Fatalf("global passed = point %d summary %d, want 10", points[0].GlobalPassed, summary.GlobalPassedTotal)
+	}
+	if points[0].GlobalSamples != 1 || summary.GlobalSamples != 1 {
+		t.Fatalf("global samples = point %d summary %d, want 1", points[0].GlobalSamples, summary.GlobalSamples)
+	}
+	if points[0].ObservationSamples != 1 {
+		t.Fatalf("observation samples = %d, want 1", points[0].ObservationSamples)
+	}
+	if points[0].WaitP50Minutes == nil || *points[0].WaitP50Minutes != 25 {
+		t.Fatalf("wait p50 = %v, want 25", points[0].WaitP50Minutes)
+	}
+}
+
+func TestQueueTrendUsesWaitMinutesFromPublicObservations(t *testing.T) {
+	query := normalizeQueueTrendQuery(QueueTrendQuery{
+		StoreIDs:      []string{"001"},
+		DateType:      "weekday",
+		From:          "2026-05-26",
+		To:            "2026-05-26",
+		Start:         "10:00",
+		End:           "12:00",
+		BucketMinutes: 30,
+	}, time.Date(2026, 5, 26, 12, 0, 0, 0, time.FixedZone("CST", 8*3600)))
+	series := map[string]*queueTrendAccumulator{}
+	observations := []QueueObservation{
+		{StoreID: "001", Timestamp: "2026-05-26T10:05:00+08:00", WaitMinutes: 20},
+		{StoreID: "001", Timestamp: "2026-05-26T10:25:00+08:00", WaitMinutes: 40},
+	}
+	addQueueObservationsToTrend(series, QueueTrendSummary{}, query, observations, map[string]string{"001": "门店"}, map[string]bool{}, map[string]bool{}, map[string]bool{})
+	points := finalizeQueueTrendPoints(series)
+	if len(points) != 1 {
+		t.Fatalf("points len = %d, want 1", len(points))
+	}
+	if points[0].ObservationSamples != 2 {
+		t.Fatalf("observation samples = %d, want 2", points[0].ObservationSamples)
+	}
+	if points[0].WaitP50Minutes == nil || *points[0].WaitP50Minutes != 30 {
+		t.Fatalf("wait p50 = %v, want 30", points[0].WaitP50Minutes)
 	}
 }
 

@@ -415,6 +415,15 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 			continue
 		}
 		appendHistory(slots, storeID)
+		if storeInfo, err := client.GetStoreInfo(ctx, storeID); err != nil {
+			logMessage(time.Now(), fmt.Sprintf("采样排队快照获取失败，门店 %s: %v", storeID, err))
+		} else {
+			if observation, ok := queueObservationFromStoreInfo(storeID, storeInfo, time.Now()); ok {
+				if err := appendQueueObservation(observation); err != nil {
+					logMessage(time.Now(), fmt.Sprintf("采样排队快照保存失败，门店 %s: %v", storeID, err))
+				}
+			}
+		}
 		storeResult.Slots = len(slots)
 		result.Snapshots += len(slots)
 		result.Stores = append(result.Stores, storeResult)

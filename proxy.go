@@ -22,6 +22,7 @@ const proxyPortSearchLimit = 100
 const sushiroHost = "crm-cn-prd.sushiro.com.cn"
 const proxyErrorBodyLogLimit = 4096
 const proxyTunnelDialTimeout = 3 * time.Second
+const maxSushiroBufferedResponseBytes = 8 << 20
 
 func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte) {
 	t.mu.Lock()
@@ -96,6 +97,14 @@ func isSushiroTargetHost(host string) bool {
 	}
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	return host == sushiroHost
+}
+
+func shouldBufferSushiroAPIResponse(target *url.URL) bool {
+	if target == nil || !isSushiroTargetHost(target.Host) {
+		return false
+	}
+	return strings.HasPrefix(target.Path, "/wechat/api/") ||
+		strings.HasPrefix(target.Path, "/wechat/api_auth/")
 }
 
 // ---- MITM Proxy Server ----
@@ -344,7 +353,9 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		}
 
 		// Relay response
-		ps.relayResponse(tlsClient, resp, req.Method, req.URL)
+		if err := ps.relayResponse(tlsClient, resp, req.Method, req.URL); err != nil {
+			return
+		}
 	}
 }
 
@@ -456,6 +467,24 @@ func hostWithoutPort(hostPort string) string {
 func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
 	defer resp.Body.Close()
 	upstreamProto := resp.Proto
+	if shouldBufferSushiroAPIResponse(target) {
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxSushiroBufferedResponseBytes)+1))
+		if err != nil {
+			err = fmt.Errorf("读取寿司郎 API 响应失败: %w", err)
+			ps.addLog(fmt.Sprintf("proxy buffer response failed: %s %s: %v", method, sanitizedProxyURL(target), err))
+			return err
+		}
+		if len(bodyBytes) > maxSushiroBufferedResponseBytes {
+			err := fmt.Errorf("寿司郎 API 响应超过缓冲上限 %d bytes", maxSushiroBufferedResponseBytes)
+			ps.addLog(fmt.Sprintf("proxy buffer response failed: %s %s: %v", method, sanitizedProxyURL(target), err))
+			return err
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		resp.ContentLength = int64(len(bodyBytes))
+		resp.TransferEncoding = nil
+		resp.Header.Del("Transfer-Encoding")
+		resp.Header.Del("Content-Length")
+	}
 	resp.Proto = "HTTP/1.1"
 	resp.ProtoMajor = 1
 	resp.ProtoMinor = 1

@@ -22,10 +22,15 @@ const (
 )
 
 type QueueObservation struct {
-	Timestamp       string `json:"ts"`
-	StoreID         string `json:"store_id"`
-	DisplayCalledNo int    `json:"display_called_no"`
-	OnlineOpen      bool   `json:"online_open,omitempty"`
+	Timestamp        string           `json:"ts"`
+	StoreID          string           `json:"store_id"`
+	DisplayCalledNo  int              `json:"display_called_no"`
+	OnlineOpen       bool             `json:"online_open,omitempty"`
+	WaitMinutes      int              `json:"wait_minutes,omitempty"`
+	StoreStatus      string           `json:"store_status,omitempty"`
+	NetTicketStatus  string           `json:"net_ticket_status,omitempty"`
+	GroupQueuesCount int              `json:"group_queues_count,omitempty"`
+	GroupQueues      QueueGroupQueues `json:"group_queues,omitempty"`
 }
 
 type QueueSession struct {
@@ -77,21 +82,22 @@ type QueueTrendSummary struct {
 }
 
 type QueueTrendPoint struct {
-	StoreID           string   `json:"store_id"`
-	StoreName         string   `json:"store_name"`
-	DateType          string   `json:"date_type"`
-	DateTypeName      string   `json:"date_type_name"`
-	Bucket            string   `json:"bucket"`
-	ActualPassed      int      `json:"actual_passed"`
-	GlobalPassed      int      `json:"global_passed"`
-	ActualSamples     int      `json:"actual_samples"`
-	GlobalSamples     int      `json:"global_samples"`
-	SessionSamples    int      `json:"session_samples"`
-	WaitP50Minutes    *float64 `json:"wait_p50_minutes,omitempty"`
-	WaitP80Minutes    *float64 `json:"wait_p80_minutes,omitempty"`
-	MissedRate        float64  `json:"missed_rate"`
-	Confidence        string   `json:"confidence"`
-	LastObservationAt string   `json:"last_observation_at,omitempty"`
+	StoreID            string   `json:"store_id"`
+	StoreName          string   `json:"store_name"`
+	DateType           string   `json:"date_type"`
+	DateTypeName       string   `json:"date_type_name"`
+	Bucket             string   `json:"bucket"`
+	ActualPassed       int      `json:"actual_passed"`
+	GlobalPassed       int      `json:"global_passed"`
+	ActualSamples      int      `json:"actual_samples"`
+	GlobalSamples      int      `json:"global_samples"`
+	ObservationSamples int      `json:"observation_samples"`
+	SessionSamples     int      `json:"session_samples"`
+	WaitP50Minutes     *float64 `json:"wait_p50_minutes,omitempty"`
+	WaitP80Minutes     *float64 `json:"wait_p80_minutes,omitempty"`
+	MissedRate         float64  `json:"missed_rate"`
+	Confidence         string   `json:"confidence"`
+	LastObservationAt  string   `json:"last_observation_at,omitempty"`
 }
 
 type QueueTrendRecommendation struct {
@@ -195,6 +201,127 @@ func queueHolidayPath() string {
 	return filepath.Join(appDirPath(), queueHolidayFile)
 }
 
+func appendQueueObservation(observation QueueObservation) error {
+	if strings.TrimSpace(observation.StoreID) == "" {
+		return nil
+	}
+	if strings.TrimSpace(observation.Timestamp) == "" {
+		observation.Timestamp = time.Now().Format(time.RFC3339)
+	}
+	observation.GroupQueues = normalizeQueueGroupQueues(observation.GroupQueues)
+	if observation.DisplayCalledNo <= 0 {
+		observation.DisplayCalledNo = queueObservationCalledNo(observation)
+	}
+	if observation.DisplayCalledNo <= 0 && observation.WaitMinutes <= 0 && observation.GroupQueuesCount <= 0 && !queueGroupQueuesHasAny(observation.GroupQueues) {
+		return nil
+	}
+	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(queueObservationPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	// Best-effort: keep local sampling traces owner-only when the filesystem supports it.
+	_ = f.Chmod(0o600)
+	data, err := json.Marshal(observation)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return err
+	}
+	return nil
+}
+
+func queueObservationFromStoreInfo(storeID string, store StoreInfo, now time.Time) (QueueObservation, bool) {
+	storeID = strings.TrimSpace(storeID)
+	if storeID == "" {
+		return QueueObservation{}, false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	wait := store.Wait
+	if wait < 0 {
+		wait = 0
+	}
+	observation := QueueObservation{
+		Timestamp:        now.Format(time.RFC3339),
+		StoreID:          storeID,
+		WaitMinutes:      wait,
+		StoreStatus:      strings.TrimSpace(store.StoreStatus),
+		NetTicketStatus:  strings.TrimSpace(store.NetTicketStatus),
+		GroupQueuesCount: store.GroupQueuesCount,
+		GroupQueues:      normalizeQueueGroupQueues(store.GroupQueues),
+		OnlineOpen:       isQueueOnlineOpen(store),
+	}
+	observation.DisplayCalledNo = queueObservationCalledNo(observation)
+	return observation, wait > 0 || store.GroupQueuesCount > 0 || observation.OnlineOpen || queueGroupQueuesHasAny(observation.GroupQueues)
+}
+
+func normalizeQueueGroupQueues(queues QueueGroupQueues) QueueGroupQueues {
+	return QueueGroupQueues{
+		ReservationQueue: cleanQueueNumbers(queues.ReservationQueue),
+		CounterQueue:     cleanQueueNumbers(queues.CounterQueue),
+		BoothQueue:       cleanQueueNumbers(queues.BoothQueue),
+		MixedQueue:       cleanQueueNumbers(queues.MixedQueue),
+	}
+}
+
+func cleanQueueNumbers(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func queueGroupQueuesHasAny(queues QueueGroupQueues) bool {
+	return len(queues.MixedQueue) > 0 ||
+		len(queues.ReservationQueue) > 0 ||
+		len(queues.CounterQueue) > 0 ||
+		len(queues.BoothQueue) > 0
+}
+
+func queueObservationCalledNo(observation QueueObservation) int {
+	if observation.DisplayCalledNo > 0 {
+		return observation.DisplayCalledNo
+	}
+	return firstQueueNumber(observation.GroupQueues.MixedQueue)
+}
+
+func firstQueueNumber(values []string) int {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(value); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
+func isQueueOnlineOpen(store StoreInfo) bool {
+	values := []string{store.NetTicketStatus, store.RemoteTicketing, store.StoreStatus}
+	for _, value := range values {
+		value = strings.ToUpper(strings.TrimSpace(value))
+		if strings.Contains(value, "OPEN") || value == "ON" || value == "ONLINE" {
+			return true
+		}
+	}
+	return false
+}
+
 func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
 	if now.IsZero() {
 		now = time.Now()
@@ -235,48 +362,7 @@ func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
 		}
 	}
 
-	observationsByStore := map[string][]QueueObservation{}
-	for _, observation := range observations {
-		observationsByStore[strings.TrimSpace(observation.StoreID)] = append(observationsByStore[strings.TrimSpace(observation.StoreID)], observation)
-		if at, ok := parseRFC3339Local(observation.Timestamp); ok {
-			updateLatest(&summary.LastObservationAt, at)
-		}
-	}
-	for storeID, storeObservations := range observationsByStore {
-		sort.Slice(storeObservations, func(i, j int) bool {
-			left, lok := parseRFC3339Local(storeObservations[i].Timestamp)
-			right, rok := parseRFC3339Local(storeObservations[j].Timestamp)
-			if !lok || !rok {
-				return storeObservations[i].Timestamp < storeObservations[j].Timestamp
-			}
-			return left.Before(right)
-		})
-		for i := 1; i < len(storeObservations); i++ {
-			prev := storeObservations[i-1]
-			curr := storeObservations[i]
-			prevAt, prevOK := parseRFC3339Local(prev.Timestamp)
-			currAt, currOK := parseRFC3339Local(curr.Timestamp)
-			if !prevOK || !currOK || !sameLocalDate(prevAt, currAt) {
-				continue
-			}
-			if !queueTrendMatches(query, currAt, storeFilter, storeID, holidays, workdays) {
-				continue
-			}
-			diff := curr.DisplayCalledNo - prev.DisplayCalledNo
-			if diff <= 0 || diff > 500 {
-				continue
-			}
-			dateType := queueTrendDateType(currAt, holidays, workdays)
-			acc := queueTrendAcc(series, storeID, storeNames[storeID], dateType, queueTrendBucket(currAt, query.BucketMinutes))
-			acc.point.GlobalPassed += diff
-			acc.point.GlobalSamples++
-			if currAt.After(acc.lastObservedAt) {
-				acc.lastObservedAt = currAt
-			}
-			summary.GlobalPassedTotal += diff
-			summary.GlobalSamples++
-		}
-	}
+	summary = addQueueObservationsToTrend(series, summary, query, observations, storeNames, storeFilter, holidays, workdays)
 
 	points := finalizeQueueTrendPoints(series)
 	warnings := queueTrendWarnings(query, holidayConfigured, summary)
@@ -365,6 +451,75 @@ func BuildQueueLocalStats(sessions []QueueSession, minSamples int) ([]QueueLocal
 		return a.PartySizeBucket < b.PartySizeBucket
 	})
 	return stats, usable
+}
+
+func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summary QueueTrendSummary, query QueueTrendQuery, observations []QueueObservation, storeNames map[string]string, storeFilter map[string]bool, holidays, workdays map[string]bool) QueueTrendSummary {
+	observationsByStore := map[string][]QueueObservation{}
+	for _, observation := range observations {
+		storeID := strings.TrimSpace(observation.StoreID)
+		if storeID == "" {
+			continue
+		}
+		observation.GroupQueues = normalizeQueueGroupQueues(observation.GroupQueues)
+		observationsByStore[storeID] = append(observationsByStore[storeID], observation)
+		if at, ok := parseRFC3339Local(observation.Timestamp); ok {
+			updateLatest(&summary.LastObservationAt, at)
+		}
+	}
+	for storeID, storeObservations := range observationsByStore {
+		sort.Slice(storeObservations, func(i, j int) bool {
+			left, lok := parseRFC3339Local(storeObservations[i].Timestamp)
+			right, rok := parseRFC3339Local(storeObservations[j].Timestamp)
+			if !lok || !rok {
+				return storeObservations[i].Timestamp < storeObservations[j].Timestamp
+			}
+			return left.Before(right)
+		})
+		for _, observation := range storeObservations {
+			at, ok := parseRFC3339Local(observation.Timestamp)
+			if !ok || !queueTrendMatches(query, at, storeFilter, storeID, holidays, workdays) {
+				continue
+			}
+			if observation.WaitMinutes > 0 {
+				dateType := queueTrendDateType(at, holidays, workdays)
+				acc := queueTrendAcc(series, storeID, storeNames[storeID], dateType, queueTrendBucket(at, query.BucketMinutes))
+				acc.waits = append(acc.waits, float64(observation.WaitMinutes))
+				acc.point.ObservationSamples++
+				if at.After(acc.lastObservedAt) {
+					acc.lastObservedAt = at
+				}
+			}
+		}
+		lastCalledByDate := map[string]int{}
+		for _, observation := range storeObservations {
+			at, ok := parseRFC3339Local(observation.Timestamp)
+			if !ok {
+				continue
+			}
+			calledNo := queueObservationCalledNo(observation)
+			if calledNo <= 0 {
+				continue
+			}
+			dateKey := at.Format("2006-01-02")
+			prevCalledNo := lastCalledByDate[dateKey]
+			if prevCalledNo > 0 && queueTrendMatches(query, at, storeFilter, storeID, holidays, workdays) {
+				diff := calledNo - prevCalledNo
+				if diff > 0 && diff <= 500 {
+					dateType := queueTrendDateType(at, holidays, workdays)
+					acc := queueTrendAcc(series, storeID, storeNames[storeID], dateType, queueTrendBucket(at, query.BucketMinutes))
+					acc.point.GlobalPassed += diff
+					acc.point.GlobalSamples++
+					if at.After(acc.lastObservedAt) {
+						acc.lastObservedAt = at
+					}
+					summary.GlobalPassedTotal += diff
+					summary.GlobalSamples++
+				}
+			}
+			lastCalledByDate[dateKey] = calledNo
+		}
+	}
+	return summary
 }
 
 func normalizeQueueTrendQuery(query QueueTrendQuery, now time.Time) QueueTrendQuery {
@@ -491,7 +646,7 @@ func finalizeQueueTrendPoints(series map[string]*queueTrendAccumulator) []QueueT
 }
 
 func queueTrendConfidence(point QueueTrendPoint) string {
-	samples := point.ActualSamples + point.GlobalSamples
+	samples := point.ActualSamples + point.GlobalSamples + point.ObservationSamples
 	switch {
 	case samples >= 12:
 		return "high"
@@ -510,7 +665,7 @@ func BuildQueueTrendRecommendations(points []QueueTrendPoint, limit int) []Queue
 	}
 	recommendations := make([]QueueTrendRecommendation, 0, len(points))
 	for _, point := range points {
-		samples := point.ActualSamples + point.GlobalSamples
+		samples := point.ActualSamples + point.GlobalSamples + point.ObservationSamples
 		if samples == 0 {
 			continue
 		}
