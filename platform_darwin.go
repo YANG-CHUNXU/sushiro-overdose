@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,14 +32,7 @@ func setSystemProxy(port int) error {
 	if err != nil {
 		return err
 	}
-	p := fmt.Sprintf("%d", port)
-	for _, svc := range services {
-		runCmd("networksetup", "-setwebproxy", svc, "127.0.0.1", p)
-		runCmd("networksetup", "-setsecurewebproxy", svc, "127.0.0.1", p)
-		runCmd("networksetup", "-setwebproxystate", svc, "on")
-		runCmd("networksetup", "-setsecurewebproxystate", svc, "on")
-	}
-	return nil
+	return darwinRunSystemProxyCommands(darwinSetSystemProxyCommands(services, port, getActiveWebPort()), runCmd)
 }
 
 func clearSystemProxy() error {
@@ -46,11 +40,62 @@ func clearSystemProxy() error {
 	if err != nil {
 		return err
 	}
-	for _, svc := range services {
-		runCmd("networksetup", "-setwebproxystate", svc, "off")
-		runCmd("networksetup", "-setsecurewebproxystate", svc, "off")
+	return darwinRunSystemProxyCommands(darwinClearSystemProxyCommands(services), runCmd)
+}
+
+type darwinCommandRunner func(name string, args ...string) (string, error)
+
+func darwinRunSystemProxyCommands(commands [][]string, runner darwinCommandRunner) error {
+	var errs []error
+	for _, command := range commands {
+		if len(command) == 0 {
+			errs = append(errs, errors.New("empty networksetup command"))
+			continue
+		}
+		out, err := runner(command[0], command[1:]...)
+		if err == nil {
+			continue
+		}
+		errs = append(errs, fmt.Errorf("%s failed: %w (output: %q)", strings.Join(command, " "), err, strings.TrimSpace(out)))
 	}
-	return nil
+	return errors.Join(errs...)
+}
+
+func darwinSetSystemProxyCommands(services []string, proxyPort, webPort int) [][]string {
+	commands := make([][]string, 0, len(services)*5)
+	proxyPortString := fmt.Sprintf("%d", proxyPort)
+	for _, svc := range services {
+		if webPort > 0 {
+			pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, proxyPort)
+			commands = append(commands,
+				[]string{"networksetup", "-setautoproxyurl", svc, pacURL},
+				[]string{"networksetup", "-setautoproxystate", svc, "on"},
+				[]string{"networksetup", "-setwebproxystate", svc, "off"},
+				[]string{"networksetup", "-setsecurewebproxystate", svc, "off"},
+			)
+			continue
+		}
+		commands = append(commands,
+			[]string{"networksetup", "-setautoproxystate", svc, "off"},
+			[]string{"networksetup", "-setwebproxy", svc, "127.0.0.1", proxyPortString},
+			[]string{"networksetup", "-setsecurewebproxy", svc, "127.0.0.1", proxyPortString},
+			[]string{"networksetup", "-setwebproxystate", svc, "on"},
+			[]string{"networksetup", "-setsecurewebproxystate", svc, "on"},
+		)
+	}
+	return commands
+}
+
+func darwinClearSystemProxyCommands(services []string) [][]string {
+	commands := make([][]string, 0, len(services)*3)
+	for _, svc := range services {
+		commands = append(commands,
+			[]string{"networksetup", "-setautoproxystate", svc, "off"},
+			[]string{"networksetup", "-setwebproxystate", svc, "off"},
+			[]string{"networksetup", "-setsecurewebproxystate", svc, "off"},
+		)
+	}
+	return commands
 }
 
 func getNetworkServices() ([]string, error) {

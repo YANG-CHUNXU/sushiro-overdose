@@ -393,7 +393,6 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 	settings := tokens.toSettingsWithPrefs(prefs)
 	settings.StoreIDs = storeIDs
 	client := NewClient(settings)
-	queueClient := NewQueueLiveClient()
 	reg := GetStoreRegistry()
 
 	for _, storeID := range storeIDs {
@@ -414,22 +413,24 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 			result.FinishedAt = time.Now().Format(time.RFC3339)
 			return result
 		}
-		if store, err := queueClient.GetStore(ctx, storeID); err == nil {
-			observation := queueObservationFromLiveStore(store, time.Now())
+		// 排队快照：用认证态 getStoreById（含 groupQueues=当前叫号），写入观测并评估叫号提醒。
+		if storeInfo, err := client.GetStoreInfo(ctx, storeID); err != nil {
+			storeResult.QueueError = err.Error()
+			logMessage(time.Now(), fmt.Sprintf("采样排队快照获取失败，门店 %s: %v", storeID, err))
+		} else if observation, ok := queueObservationFromStoreInfo(storeID, storeInfo, time.Now()); ok {
 			if err := appendQueueObservation(observation); err != nil {
 				storeResult.QueueError = err.Error()
+				logMessage(time.Now(), fmt.Sprintf("采样排队快照保存失败，门店 %s: %v", storeID, err))
 			} else {
 				storeResult.QueueObserved = true
-				storeResult.QueueWaitGroups = store.GroupQueuesCount
-				storeResult.QueueStatus = store.StoreStatus
+				storeResult.QueueWaitGroups = storeInfo.GroupQueuesCount
+				storeResult.QueueStatus = storeInfo.StoreStatus
 				result.QueueSnapshots++
-				evaluateQueueAlerts(ctx, store)
-				if storeResult.StoreName == storeID && strings.TrimSpace(store.Name) != "" {
-					storeResult.StoreName = store.Name
+				if storeResult.StoreName == storeID && strings.TrimSpace(storeInfo.Name) != "" {
+					storeResult.StoreName = storeInfo.Name
 				}
+				evaluateQueueAlerts(ctx, observation, storeInfo.Name)
 			}
-		} else {
-			storeResult.QueueError = err.Error()
 		}
 		slots, err := client.GetTimeslots(ctx, storeID)
 		if err != nil {

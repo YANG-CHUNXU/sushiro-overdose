@@ -266,15 +266,13 @@ func queueObservationFromLiveStore(store QueueLiveStore, at time.Time) QueueObse
 		at = time.Now()
 	}
 	return QueueObservation{
-		Timestamp:       at.Format(time.RFC3339),
-		StoreID:         strconv.Itoa(store.ID),
-		StoreName:       store.Name,
-		DisplayCalledNo: store.GroupQueues.CurrentCalledNo(),
-		WaitGroups:      store.GroupQueuesCount,
-		WaitMinutes:     store.Wait,
-		WaitTimeCap:     store.WaitTimeCap,
-		StoreStatus:     store.StoreStatus,
-		NetTicketStatus: store.NetTicketStatus,
-		OnlineOpen:      strings.EqualFold(store.NetTicketStatus, "ONLINE"),
+		Timestamp:        at.Format(time.RFC3339),
+		StoreID:          strconv.Itoa(store.ID),
+		DisplayCalledNo:  store.GroupQueues.CurrentCalledNo(),
+		WaitMinutes:      store.Wait,
+		GroupQueuesCount: store.GroupQueuesCount,
+		StoreStatus:      store.StoreStatus,
+		NetTicketStatus:  store.NetTicketStatus,
+		OnlineOpen:       strings.EqualFold(store.NetTicketStatus, "ONLINE"),
 	}
 }

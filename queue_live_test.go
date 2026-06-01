@@ -74,10 +74,10 @@ func TestQueueObservationFromLiveStore(t *testing.T) {
 		NetTicketStatus: "ONLINE",
 	}, mustParseLocalTime(t, "2026-05-26T18:30:00+08:00"))
 
-	if observation.StoreID != "1012" || observation.StoreName == "" {
+	if observation.StoreID != "1012" {
 		t.Fatalf("observation = %#v", observation)
 	}
-	if !observation.OnlineOpen || observation.WaitTimeCap != 180 {
+	if !observation.OnlineOpen {
 		t.Fatalf("observation = %#v", observation)
 	}
 }
@@ -112,8 +112,8 @@ func TestQueueObservationCapturesCalledNo(t *testing.T) {
 	if o.DisplayCalledNo != 826 {
 		t.Fatalf("DisplayCalledNo = %d, want 826", o.DisplayCalledNo)
 	}
-	if o.WaitGroups != 54 {
-		t.Fatalf("WaitGroups = %d, want 54 (groupQueuesCount)", o.WaitGroups)
+	if o.GroupQueuesCount != 54 {
+		t.Fatalf("GroupQueuesCount = %d, want 54", o.GroupQueuesCount)
 	}
 	if o.WaitMinutes != 345 {
 		t.Fatalf("WaitMinutes = %d, want 345 (wait)", o.WaitMinutes)
