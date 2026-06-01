@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,10 +19,85 @@ type Slot struct {
 	Availability string `json:"availability"`
 }
 
+type QueueGroupQueues struct {
+	ReservationQueue []string `json:"reservationQueue,omitempty"`
+	CounterQueue     []string `json:"counterQueue,omitempty"`
+	BoothQueue       []string `json:"boothQueue,omitempty"`
+	MixedQueue       []string `json:"mixedQueue,omitempty"`
+}
+
+func (q *QueueGroupQueues) UnmarshalJSON(data []byte) error {
+	*q = QueueGroupQueues{}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	q.ReservationQueue = parseQueueGroupQueue(raw["reservationQueue"])
+	q.CounterQueue = parseQueueGroupQueue(raw["counterQueue"])
+	q.BoothQueue = parseQueueGroupQueue(raw["boothQueue"])
+	q.MixedQueue = parseQueueGroupQueue(raw["mixedQueue"])
+	return nil
+}
+
+func parseQueueGroupQueue(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err == nil {
+		values := make([]string, 0, len(items))
+		for _, item := range items {
+			if value, ok := parseQueueGroupQueueValue(item); ok {
+				values = append(values, value)
+			}
+		}
+		return values
+	}
+
+	if value, ok := parseQueueGroupQueueValue(raw); ok {
+		return []string{value}
+	}
+	return nil
+}
+
+func parseQueueGroupQueueValue(raw json.RawMessage) (string, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return "", false
+	}
+
+	switch typed := value.(type) {
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		return trimmed, trimmed != ""
+	case json.Number:
+		trimmed := strings.TrimSpace(typed.String())
+		return trimmed, trimmed != ""
+	case bool:
+		return strconv.FormatBool(typed), true
+	default:
+		return "", false
+	}
+}
+
 type StoreInfo struct {
-	ID      int    `json:"id"`
-	Name    string `json:"name"`
-	Address string `json:"address"`
+	ID                int              `json:"id"`
+	Name              string           `json:"name"`
+	Address           string           `json:"address"`
+	StoreStatus       string           `json:"storeStatus,omitempty"`
+	Wait              int              `json:"wait,omitempty"`
+	WaitTimeCounter   int              `json:"waitTimeCounter,omitempty"`
+	NetTicketStatus   string           `json:"netTicketStatus,omitempty"`
+	RemoteTicketing   string           `json:"remoteTicketingManualStatus,omitempty"`
+	ReservationStatus string           `json:"reservationStatus,omitempty"`
+	CheckinStatus     string           `json:"checkinStatus,omitempty"`
+	GroupQueuesCount  int              `json:"groupQueuesCount,omitempty"`
+	GroupQueues       QueueGroupQueues `json:"groupQueues,omitempty"`
 }
 
 type ReservationRecord struct {

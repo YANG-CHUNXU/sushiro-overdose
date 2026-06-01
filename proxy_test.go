@@ -134,6 +134,103 @@ func TestRelayResponseNormalizesHTTPVersion(t *testing.T) {
 	}
 }
 
+func TestRelayResponseBuffersSushiroResponseWithUnknownLength(t *testing.T) {
+	resp := &http.Response{
+		StatusCode:       http.StatusOK,
+		Status:           "200 OK",
+		Proto:            "HTTP/2.0",
+		ProtoMajor:       2,
+		ProtoMinor:       0,
+		Header:           make(http.Header),
+		Body:             io.NopCloser(strings.NewReader("stores")),
+		ContentLength:    -1,
+		TransferEncoding: []string{"chunked"},
+	}
+	target, err := url.Parse("https://crm-cn-prd.sushiro.com.cn/wechat/api/2.0/stores")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	ps := &proxyServer{}
+	if err := ps.relayResponse(&out, resp, http.MethodGet, target); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "Content-Length: 6\r\n") {
+		t.Fatalf("response missing content length:\n%s", text)
+	}
+	if strings.Contains(strings.ToLower(text), "transfer-encoding: chunked") {
+		t.Fatalf("response should not be chunked:\n%s", text)
+	}
+	if !strings.HasSuffix(text, "\r\n\r\nstores") {
+		t.Fatalf("response body mismatch:\n%s", text)
+	}
+}
+
+func TestRelayResponseStreamsNonAPISushiroResponseWithUnknownLength(t *testing.T) {
+	resp := &http.Response{
+		StatusCode:       http.StatusOK,
+		Status:           "200 OK",
+		Proto:            "HTTP/2.0",
+		ProtoMajor:       2,
+		ProtoMinor:       0,
+		Header:           make(http.Header),
+		Body:             io.NopCloser(strings.NewReader("asset")),
+		ContentLength:    -1,
+		TransferEncoding: []string{"chunked"},
+	}
+	target, err := url.Parse("https://crm-cn-prd.sushiro.com.cn/static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	ps := &proxyServer{}
+	if err := ps.relayResponse(&out, resp, http.MethodGet, target); err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ToLower(out.String())
+	if strings.Contains(text, "content-length: 5\r\n") {
+		t.Fatalf("non-API response should not be force-buffered:\n%s", out.String())
+	}
+	if !strings.Contains(text, "transfer-encoding: chunked\r\n") {
+		t.Fatalf("non-API response should keep streaming transfer encoding:\n%s", out.String())
+	}
+}
+
+func TestRelayResponseRejectsOversizedSushiroAPIResponse(t *testing.T) {
+	resp := &http.Response{
+		StatusCode:    http.StatusOK,
+		Status:        "200 OK",
+		Proto:         "HTTP/2.0",
+		ProtoMajor:    2,
+		ProtoMinor:    0,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(io.LimitReader(zeroReader{}, int64(maxSushiroBufferedResponseBytes)+1)),
+		ContentLength: -1,
+	}
+	target, err := url.Parse("https://crm-cn-prd.sushiro.com.cn/wechat/api_auth/2.0/reservations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := &proxyServer{}
+	err = ps.relayResponse(io.Discard, resp, http.MethodGet, target)
+	if err == nil {
+		t.Fatal("relayResponse returned nil error for oversized Sushiro API response")
+	}
+	if !strings.Contains(err.Error(), "超过缓冲上限") {
+		t.Fatalf("error = %q, want buffer limit message", err.Error())
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
+}
+
 func TestSetForwardRequestBodyUsesNoBodyForEmptyPayload(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "https://example.test/ping", nil)
 	if err != nil {

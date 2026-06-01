@@ -49,7 +49,7 @@ func buildQueueLivePanel(ctx context.Context, storeID string, now time.Time) (Qu
 		NetTicketStatus: store.NetTicketStatus,
 		OnlineOpen:      snapshot.OnlineOpen,
 		CalledNo:        snapshot.DisplayCalledNo,
-		WaitGroups:      snapshot.WaitGroups,
+		WaitGroups:      snapshot.GroupQueuesCount,
 		WaitTimeCap:     store.WaitTimeCap,
 		ServerWaitMin:   store.Wait,
 		ObservedAt:      now.Format(time.RFC3339),

@@ -91,15 +91,14 @@ func saveQueueAlertState(state map[string]queueAlertRuleState) {
 	}
 }
 
-// evaluateQueueAlerts 在每轮采样拿到门店实时数据后调用，评估该门店的提醒规则并推送。
-// store 来自 getStoreById，带有 groupQueues（当前叫号）。
-func evaluateQueueAlerts(ctx context.Context, store QueueLiveStore) {
+// evaluateQueueAlerts 在每轮采样写入一条排队观测后调用，评估该门店的提醒规则并推送。
+// obs 是 getStoreById 解析出的观测（含当前叫号/预估等待/在等组数）。
+func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName string) {
 	cfg := LoadQueueAlertConfig()
 	if len(cfg.Rules) == 0 {
 		return
 	}
-	storeID := queueLiveStoreIDString(store)
-	calledNo := store.GroupQueues.CurrentCalledNo()
+	storeID := strings.TrimSpace(obs.StoreID)
 
 	queueAlertMu.Lock()
 	defer queueAlertMu.Unlock()
@@ -110,14 +109,14 @@ func evaluateQueueAlerts(ctx context.Context, store QueueLiveStore) {
 		if !rule.Enabled || rule.StoreID != storeID {
 			continue
 		}
-		title, body, fire := queueAlertEvaluateRule(rule, store, calledNo, state)
+		title, body, fire := queueAlertEvaluateRule(rule, obs, state)
 		if !fire {
 			continue
 		}
 		changed = true
 		name := strings.TrimSpace(rule.StoreName)
 		if name == "" {
-			name = strings.TrimSpace(store.Name)
+			name = strings.TrimSpace(storeName)
 		}
 		if name == "" {
 			name = storeID
@@ -130,13 +129,13 @@ func evaluateQueueAlerts(ctx context.Context, store QueueLiveStore) {
 }
 
 // queueAlertEvaluateRule 评估单条规则，更新 state，返回是否需要推送及内容。
-func queueAlertEvaluateRule(rule QueueAlertRule, store QueueLiveStore, calledNo int, state map[string]queueAlertRuleState) (string, string, bool) {
+func queueAlertEvaluateRule(rule QueueAlertRule, obs QueueObservation, state map[string]queueAlertRuleState) (string, string, bool) {
 	key := rule.key()
 	st := state[key]
 
 	switch rule.Type {
 	case queueAlertWaitBelow:
-		wait := store.Wait
+		wait := obs.WaitMinutes
 		if wait > rule.WaitMinutes+queueAlertWaitHysteresis {
 			// 等待较高，武装规则，等它落下来再提醒。
 			if !st.Armed {
@@ -150,12 +149,13 @@ func queueAlertEvaluateRule(rule QueueAlertRule, store QueueLiveStore, calledNo 
 			st.FiredAt = time.Now().Format(time.RFC3339)
 			state[key] = st
 			return "🍣 可以去取号了",
-				fmt.Sprintf("预计等待已降到约 %d 分钟（阈值 %d），在等 %d 桌。", wait, rule.WaitMinutes, store.GroupQueuesCount),
+				fmt.Sprintf("预计等待已降到约 %d 分钟（阈值 %d），在等 %d 桌。", wait, rule.WaitMinutes, obs.GroupQueuesCount),
 				true
 		}
 		return "", "", false
 
 	case queueAlertCalledReach:
+		calledNo := obs.DisplayCalledNo
 		if st.FiredOnce || calledNo <= 0 {
 			return "", "", false
 		}
@@ -175,8 +175,4 @@ func queueAlertEvaluateRule(rule QueueAlertRule, store QueueLiveStore, calledNo 
 func sendQueueAlert(ctx context.Context, title, content string) {
 	logMessage(time.Now(), fmt.Sprintf("[排队提醒] %s — %s", title, content))
 	BuildNotifierFromConfig().Send(ctx, title, content)
-}
-
-func queueLiveStoreIDString(store QueueLiveStore) string {
-	return fmt.Sprintf("%d", store.ID)
 }

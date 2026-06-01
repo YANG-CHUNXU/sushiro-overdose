@@ -172,6 +172,10 @@ func probeReservations(ctx context.Context, client *http.Client, settings Settin
 	}
 	result, body := probeOfficialAPI(ctx, client, http.MethodPost, settings.BaseURL+path, path, NewClient(settings).baseHeaders(settings.ReservationAuth, "application/json"), payload)
 	result.Name = "认证接口：当前预约"
+	result = normalizeReservationsProbeResult(result)
+	if result.Skipped {
+		return result
+	}
 	if result.OK {
 		var reservations []ReservationRecord
 		if err := json.Unmarshal(body, &reservations); err == nil {
@@ -179,6 +183,15 @@ func probeReservations(ctx context.Context, client *http.Client, settings Settin
 		} else {
 			result.Detail = "返回 JSON 正常"
 		}
+	}
+	return result
+}
+
+func normalizeReservationsProbeResult(result AuthProbeResult) AuthProbeResult {
+	if result.Status == http.StatusNotFound && strings.Contains(result.Path, "/ticketing/getReservations") {
+		result.Skipped = true
+		result.OK = false
+		result.Detail = "当前预约查询接口不可用或已变更；门店/时段基础接口已单独验证，抢号提交不依赖此自检项。"
 	}
 	return result
 }
