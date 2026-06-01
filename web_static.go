@@ -32,6 +32,9 @@ button,input,select{font:inherit}
 .nav{margin-left:auto;display:flex;gap:4px;padding:5px;background:#F0EDEA;border:1px solid var(--line);border-radius:999px}
 .nav a{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:999px;color:var(--sub);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
 .nav a.on{background:var(--paper);color:var(--red);box-shadow:0 2px 10px rgba(32,25,18,.08)}
+.subnav{margin:0 0 18px;background:transparent;border:0;padding:0;gap:6px;flex-wrap:wrap;justify-content:flex-start}
+.subnav a{background:#F0EDEA;border:1px solid var(--line)}
+.subnav a.on{border-color:var(--red)}
 .ver{margin-left:6px;padding:7px 11px;border-radius:999px;background:var(--ink);color:#fff;font-size:11px;font-weight:700}
 .wrap{padding:30px 0 80px}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
@@ -150,6 +153,7 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
 .errbox{margin-bottom:12px;padding:12px;border:1px solid #F0B7B9;border-radius:10px;background:var(--red-soft);color:var(--red);font-size:13px;line-height:1.6}
 .diag-detail{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:#FBFAF8;color:var(--sub);font-size:12px;line-height:1.7}
 .diag-detail b{color:var(--ink)}
+.diag-detail.bad{border-color:var(--red);background:#FEF6F4}
 .diag-detail code{display:inline-block;max-width:100%;overflow:auto;padding:2px 5px;border-radius:6px;background:#EEE9E4;color:var(--ink)}
 .ft{padding:26px 0 46px;text-align:center;color:var(--mute);font-size:12px}.ft a{color:var(--red);text-decoration:none}
 .hid{display:none!important}.mu{color:var(--mute)}.tc{text-align:center}.tg{color:var(--green)}.tre{color:var(--red)}
@@ -179,22 +183,18 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
       <img src="data:image/png;base64,` + logoBase64 + `" alt="SUSHIRO">
       <div><strong>SUSHIRO Overdose</strong><span>reservation assistant</span></div>
     </div>
-    <nav class="nav">
-      <a href="#" class="on" onclick="go('da',this)">首页</a>
-      <a href="#" onclick="go('ca',this)">日历</a>
-      <a href="#" onclick="go('in',this)">洞察</a>
-      <a href="#" onclick="go('qt',this)">到店预测</a>
-      <a href="#" onclick="go('sm',this)">信息收集</a>
-      <a href="#" onclick="go('sn',this)">狙击</a>
-      <a href="#" onclick="go('re',this)">预约</a>
-      <a href="#" onclick="go('se',this)">设置</a>
-      <a href="#" onclick="go('lo',this)">日志</a>
+    <nav class="nav top">
+      <a href="#" class="on" data-group="home" onclick="goGroup('home');return false">首页</a>
+      <a href="#" data-group="book" onclick="goGroup('book');return false">抢预约</a>
+      <a href="#" data-group="queue" onclick="goGroup('queue');return false">排队</a>
+      <a href="#" data-group="settings" onclick="goGroup('settings');return false">设置</a>
     </nav>
     <span class="ver" id="ver">loading</span>
   </div>
 </header>
 
 <main class="shell wrap">
+  <nav class="nav subnav hid" id="subnav"></nav>
   <section id="p-da">
     <div class="grid">
       <div>
@@ -268,6 +268,7 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
   <section id="p-qt" class="hid">
     <div class="cd">
       <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">到店预测</div><p class="mu mt8">先收集你关心门店的排队和预约变化，用来判断更适合到店的时间；预测仅供参考。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新预测</button><button class="bt bt-r bt-s" onclick="setBootSampling(true)">启用开机收集</button></div></div>
+      <div id="qtCollect" class="mb16"></div>
       <div class="fg"><label>关注门店</label><div id="qtStores" class="chips"><span class="mu">从本地数据自动识别</span></div></div>
       <div id="qtLive" class="sample-state"><div class="ci">实时排队待加载</div></div>
       <div class="mt16" id="qtAlertCard">
@@ -418,9 +419,18 @@ function loadErrBoxHTML(err,retryAttr,label){
   return '<div class="empty"><b>'+esc(head)+'</b><br><code style="word-break:break-all;display:inline-block;margin-top:6px;color:var(--red)">'+esc(msg)+'</code>'+(retryAttr?'<div class="mt8"><button class="bt bt-w bt-s" onclick="'+retryAttr+'">重试</button></div>':'')+'</div>';
 }
 function escA(s){return esc(s).replaceAll('"','&quot;')}
-function go(n,e){document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));el('p-'+n).classList.remove('hid');document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));if(e)e.classList.add('on');cp=n;({ca:lC,in:lI,qt:lQT,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
+const NAV_GROUPS=[
+  {id:'home',label:'首页',pages:[['da','概览']]},
+  {id:'book',label:'抢预约',pages:[['ca','日历'],['in','洞察'],['sn','狙击'],['re','我的预约']]},
+  {id:'queue',label:'排队',pages:[['qt','实时排队 / 预测'],['sm','信息收集']]},
+  {id:'settings',label:'设置',pages:[['se','设置'],['lo','日志']]}
+];
+const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g.id));
+function renderSubnav(g,active){const sn=el('subnav');if(!sn)return;if(!g||g.pages.length<=1){sn.innerHTML='';sn.classList.add('hid');return}sn.classList.remove('hid');sn.innerHTML=g.pages.map(([p,label])=>'<a href="#" class="'+(p===active?'on':'')+'" onclick="go(\''+p+'\');return false">'+esc(label)+'</a>').join('')}
+function goGroup(gid){const g=NAV_GROUPS.find(x=>x.id===gid);if(g)go(g.pages[0][0]);return false}
+function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({ca:lC,in:lI,qt:lQT,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
 async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;uE();uSamplingSummary();uD();}catch(e){el('ver').textContent='offline';}}
-async function init(){await loadStatus();await lP();checkUpdate();sse();}
+async function init(){await loadStatus();await lP();checkUpdate();sse();const h=location.hash.slice(1);if(h&&PAGE_GROUP[h]&&h!=='da')go(h);}
 function isRun(){return ['capturing','booking','sniping'].includes(es.status)}
 function setStep(id,state){const x=el(id);x.classList.remove('active','done');if(state)x.classList.add(state)}
 function explainMsg(m){m=String(m||'');if(/证书|trust|certificate/i.test(m))return'证书问题：先到设置页刷新诊断，确认 CA 证书已信任；失败后可重新获取认证。';if(/代理|proxy/i.test(m))return'代理问题：先点击设置页的“修复代理”，再重新获取认证。';if(/401|403|认证|token|auth/i.test(m))return'认证过期：重新获取认证参数后再启动。';if(/network|timeout|超时|不可达|connection/i.test(m))return'网络问题：确认网络可访问寿司郎接口，稍后重试。';if(/门店|store/i.test(m))return'门店配置问题：检查设置页的抢号门店是否仍在可用列表中。';return'先查看设置页本机诊断和日志，处理红色项后重试。'}
@@ -458,7 +468,7 @@ function uD(){
       badge.textContent='第二步 · 选门店';title.textContent='认证已保存，请先选抢号门店';copy.textContent='点下方按钮打开「设置」页，在「抢号门店与优先级」里勾选并排序你想抢的门店；保存后就能开始抢号。';
       b.textContent='去设置门店';b.className='bt bt-y bt-l';b.onclick=()=>go('se',document.querySelector('[onclick*=se]'));
     }else{
-      badge.textContent='准备就绪';title.textContent='已选 '+(pr.selected_stores||[]).length+' 家门店，可以抢号';copy.textContent='当前认证已保存，也已选定抢号门店。可以直接开始抢号；或先去「预约日历」/「到店预测」看一眼再决定。';
+      badge.textContent='准备就绪';title.textContent='已选 '+(pr.selected_stores||[]).length+' 家门店，可以抢号';copy.textContent='当前认证已保存，也已选定抢号门店。可以直接开始抢号；或先去「日历」/「排队预测」看一眼再决定。';
       b.textContent='开始抢号';b.className='bt bt-r bt-l';b.onclick=sB;
     }
   }
@@ -511,10 +521,11 @@ function toggleQueueAlert(i,on){if(qtAlerts[i]){qtAlerts[i].enabled=on;saveQueue
 function removeQueueAlert(i){qtAlerts.splice(i,1);saveQueueAlerts()}
 async function saveQueueAlerts(){try{await fetch('/api/queue/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:qtAlerts})});renderQueueAlerts()}catch(e){alert('保存提醒失败')}}
 async function loadQueueLive(){const box=el('qtLive');if(!box)return;box.innerHTML='<div class="ci">实时排队加载中…</div>';if(qtSelected.length){try{const ids=qtSelected.slice(0,6);const panels=await Promise.all(ids.map(id=>safeFetch('/api/queue/live?store='+encodeURIComponent(id)).catch(()=>null)));renderQueueLivePanels(panels.filter(Boolean))}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}return}const p=new URLSearchParams();p.set('limit','8');try{const d=await safeFetch('/api/queue/stores?'+p.toString());renderQueueLive(d.stores||[])}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}}
-function renderQueueLivePanels(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">暂无实时排队数据</div>';return}box.innerHTML='<div class="sg">'+rows.map(s=>{const open=s.online_open||s.store_status==='OPEN',cls=open?'av':'full';const eta=(s.eta_minutes!=null)?(s.eta_minutes+' 分钟'):(s.server_wait_minutes?(s.server_wait_minutes+' 分钟*'):'—');const c15=(s.called_15m!=null)?('近15分钟叫号 '+s.called_15m+' 个'):'近15分钟 收集中';const rate=(s.rate_per_min!=null)?('均速 '+s.rate_per_min.toFixed(1)+' 桌/分'):'均速 收集中';return'<div class="sl '+cls+'"><div class="tm">叫号 '+(s.called_no||'—')+'</div><div class="ss">'+esc(s.store_name||s.store_id)+'</div><div class="mu mt8">在等 '+(s.wait_groups||0)+' 桌 · 预计等待 '+eta+'<br>'+esc(c15)+' · '+esc(rate)+'<br>'+esc(s.store_status||'-')+' · '+esc(s.net_ticket_status||'-')+'</div></div>'}).join('')+'</div><p class="mu mt8">叫号与在等桌数为实时；近15分钟与均速来自本机后台收集，开启“开机收集”后逐步补齐。带 * 为接口预估值。</p>'}
+function renderQueueLivePanels(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">暂无实时排队数据</div>';return}box.innerHTML='<div class="sg">'+rows.map(s=>{const open=s.online_open||s.store_status==='OPEN',cls=open?'av':'full';const eta=(s.eta_minutes!=null)?(s.eta_minutes+' 分钟'):(s.server_wait_minutes?(s.server_wait_minutes+' 分钟*'):'—');const c15=(s.called_15m!=null)?('近15分钟叫号 '+s.called_15m+' 个'):'近15分钟 待收集';const rate=(s.rate_per_min!=null)?('均速 '+s.rate_per_min.toFixed(1)+' 桌/分'):'均速 待收集';return'<div class="sl '+cls+'"><div class="tm">叫号 '+(s.called_no||'—')+'</div><div class="ss">'+esc(s.store_name||s.store_id)+'</div><div class="mu mt8">在等 '+(s.wait_groups||0)+' 桌 · 预计等待 '+eta+'<br>'+esc(c15)+' · '+esc(rate)+'<br>'+esc(s.store_status||'-')+' · '+esc(s.net_ticket_status||'-')+'</div></div>'}).join('')+'</div><p class="mu mt8">叫号与在等桌数为实时；近15分钟与均速来自本机后台收集，开启“开机收集”后逐步补齐。带 * 为接口预估值。</p>'}
 function renderQueueLive(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">暂无实时排队数据</div>';return}box.innerHTML='<div class="sg">'+rows.map(s=>{const wait=(s.wait==null?0:s.wait),groups=(s.groupQueuesCount==null?0:s.groupQueuesCount),status=s.storeStatus||'-',ticket=s.netTicketStatus||'-',cls=status==='OPEN'?'av':'full';return'<div class="sl '+cls+'"><div class="tm">预计 '+wait+' 分钟</div><div class="ss">'+esc(s.name||s.id)+' · '+esc(s.nameKana||s.area||'')+'</div><div class="mu mt8">在等 '+groups+' 桌 · '+esc(status)+' · '+esc(ticket)+(s.waitTimeCap?'<br>预估上限 '+esc(s.waitTimeCap)+' 分钟':'')+'</div></div>'}).join('')+'</div><p class="mu mt8">选中上方关注门店即可查看实时叫号、近15分钟叫号与均速。</p>'}
 function queueTrendParams(){const p=new URLSearchParams();if(qtSelected.length)p.set('stores',qtSelected.join(','));p.set('date_type',el('qtType').value||'all');p.set('from',el('qtFrom').value||'');p.set('to',el('qtTo').value||'');p.set('start',el('qtStart').value||'10:00');p.set('end',el('qtEnd').value||'22:00');p.set('bucket',el('qtBucket').value||'30');return p}
-async function loadQueueTrends(){const st=el('qtStatus'),chart=el('qtChart'),tbl=el('qtTable'),adv=el('qtAdvice');if(!st)return;st.innerHTML='<div class="ci">分析中…</div>';chart.innerHTML='<div class="empty">加载中…</div>';tbl.innerHTML='';if(adv)adv.innerHTML='';try{const d=await safeFetch('/api/queue/trends?'+queueTrendParams().toString());qtTrendStores=d.stores||qtTrendStores;if(!qtSelected.length&&!stores.length&&(d.stores||[]).length)qtSelected=d.stores.map(x=>String(x.store_id));renderQueueTrendStores();renderQueueTrend(d)}catch(e){const msg=String((e&&(e.message||e))||'(unknown)');st.innerHTML='<div class="ci bad">到店预测加载失败</div>';chart.innerHTML=loadErrBoxHTML(e,'loadQueueTrends()','到店预测')}}
+async function loadQueueTrends(){const st=el('qtStatus'),chart=el('qtChart'),tbl=el('qtTable'),adv=el('qtAdvice');if(!st)return;st.innerHTML='<div class="ci">分析中…</div>';chart.innerHTML='<div class="empty">加载中…</div>';tbl.innerHTML='';if(adv)adv.innerHTML='';try{const d=await safeFetch('/api/queue/trends?'+queueTrendParams().toString());qtTrendStores=d.stores||qtTrendStores;if(!qtSelected.length&&!stores.length&&(d.stores||[]).length)qtSelected=d.stores.map(x=>String(x.store_id));renderQueueTrendStores();renderQueueCollectBanner(d.sampling);renderQueueTrend(d)}catch(e){const msg=String((e&&(e.message||e))||'(unknown)');st.innerHTML='<div class="ci bad">到店预测加载失败</div>';chart.innerHTML=loadErrBoxHTML(e,'loadQueueTrends()','到店预测')}}
+function renderQueueCollectBanner(s){const box=el('qtCollect');if(!box)return;s=s||{};let t='';try{if(s.last_run_at)t='上次收集 '+new Date(s.last_run_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(_){}; if(s.running||s.enabled){box.innerHTML='<div class="diag-detail"><b>🟢 后台收集运行中</b> '+esc(t)+'<br><span class="mu">叫号均速、近15分钟叫号与到店预测会随收集持续补齐。</span></div>'}else{const auth=s.needs_auth,why=auth?'需先完成认证才能开始收集':'后台收集未开启 —— 叫号均速、近15分钟和到店预测都会是空的';box.innerHTML='<div class="diag-detail bad"><b>🔴 '+esc(why)+'</b><div class="fl g8 fw mt8">'+(auth?'<button class="bt bt-o bt-s" onclick="sC()">去获取认证</button>':'<button class="bt bt-r bt-s" onclick="setBootSampling(true)">一键开启收集</button>')+'<button class="bt bt-w bt-s" onclick="go(\'sm\')">信息收集设置</button></div></div>'}}
 function renderQueueTrend(d){const s=d.summary||{},q=d.sampling||{};el('qtStatus').innerHTML=chip('实际过号',s.actual_passed_total||0,(s.actual_samples||0)?'ok':'warn')+chip('全局过号',s.global_passed_total||0,(s.global_samples||0)?'ok':'warn')+chip('真实取号',s.session_records||0,(s.session_records||0)?'ok':'warn')+chip('公开快照',s.observation_records||0,(s.observation_records||0)?'ok':'warn')+chip('收集权限',queueStatusText(q),q.permission_status==='ok'?'ok':q.needs_auth?'bad':'warn')+chip('开机自启',q.system_auto_start?.enabled?'已配置':q.system_auto_start?.supported?'未配置':'不支持',q.system_auto_start?.enabled?'ok':'warn');renderQueueAdvice(d);renderQueueChart(d.series||[]);renderQueueTable(d.series||[])}
 function renderQueueAdvice(d){const box=el('qtAdvice');if(!box)return;const rec=d.recommendations||[],q=d.sampling||{},warn=d.warnings||[];let html='';if(rec.length){html+='<div class="sg">'+rec.map(r=>{const wait=r.predicted_wait_minutes==null?'等待待确认':'预计等待 '+Math.round(r.predicted_wait_minutes)+' 分钟',meta=esc(r.date_type_name||r.date_type)+' · '+esc(r.bucket)+' · '+esc(confText(r.confidence))+'可信度';return'<div class="sl av"><div class="tm">'+esc(r.action_label||'候选时段')+'</div><div class="ss">'+esc(r.store_name||r.store_id)+' · '+meta+'</div><div class="mu mt8">'+wait+'<br>'+esc(r.reason||'预测仅供参考。')+'</div></div>'}).join('')+'</div><p class="mu mt8">预测仅供参考；每家门店会按本机收集的数据单独计算。</p>'}else{const msg=q.needs_auth?'先重新获取认证，再选择门店开始信息收集。':'先收集 2-3 次午餐、晚餐和周末时段，页面会开始给出门店级预测。';html+='<div class="empty">'+msg+'<div class="mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取认证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去信息收集</button></div></div>'}const steps=[];if(q.message)steps.push(q.message);if(warn.length&&!rec.length)steps.push(warn[0]);if(steps.length)html+='<div class="diag-detail"><b>下一步</b><br>'+esc(steps.join(' '))+'<div class="fl g8 fw mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取认证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">调整信息收集</button></div></div>';box.innerHTML=html}
 function queueStatusText(q){if(!q)return'未知';if(q.needs_auth)return'认证需更新';if(q.needs_background)return'需开启';if(q.needs_data_refresh)return'需更新';return'正常'}
