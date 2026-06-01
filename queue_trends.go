@@ -24,7 +24,13 @@ const (
 type QueueObservation struct {
 	Timestamp       string `json:"ts"`
 	StoreID         string `json:"store_id"`
+	StoreName       string `json:"store_name,omitempty"`
 	DisplayCalledNo int    `json:"display_called_no"`
+	WaitGroups      int    `json:"wait_groups,omitempty"`
+	WaitMinutes     int    `json:"wait_minutes,omitempty"`
+	WaitTimeCap     int    `json:"wait_time_cap,omitempty"`
+	StoreStatus     string `json:"store_status,omitempty"`
+	NetTicketStatus string `json:"net_ticket_status,omitempty"`
 	OnlineOpen      bool   `json:"online_open,omitempty"`
 }
 
@@ -193,6 +199,25 @@ func queueStatsPath() string {
 
 func queueHolidayPath() string {
 	return filepath.Join(appDirPath(), queueHolidayFile)
+}
+
+func appendQueueObservation(observation QueueObservation) error {
+	observation.StoreID = strings.TrimSpace(observation.StoreID)
+	if observation.StoreID == "" {
+		return fmt.Errorf("store id is required")
+	}
+	if strings.TrimSpace(observation.Timestamp) == "" {
+		observation.Timestamp = time.Now().Format(time.RFC3339)
+	}
+	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(queueObservationPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return json.NewEncoder(f).Encode(observation)
 }
 
 func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
