@@ -63,6 +63,7 @@ func setSystemProxy(port int) error {
 
 func setWindowsPACProxy(ProxyPort, webPort int) error {
 	pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, ProxyPort)
+	proxyOverride := windowsProxyOverride()
 	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
 	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "ProxyServer", "/f")
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f"); err != nil {
@@ -74,7 +75,10 @@ func setWindowsPACProxy(ProxyPort, webPort int) error {
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "AutoDetect", "/t", "REG_DWORD", "/d", "0", "/f"); err != nil {
 		return fmt.Errorf("写入 AutoDetect 失败: %w", err)
 	}
-	if err := setWinHTTPAutoProxy(pacURL); err != nil {
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", proxyOverride, "/f"); err != nil {
+		return fmt.Errorf("写入 ProxyOverride 失败: %w", err)
+	}
+	if err := setWinHTTPAutoProxy(pacURL, proxyOverride); err != nil {
 		LogMessage(time.Now(), "WinHTTP PAC 代理设置跳过: "+err.Error())
 	}
 
@@ -86,7 +90,7 @@ func setWindowsPACProxy(ProxyPort, webPort int) error {
 
 func setWindowsManualProxy(port int) error {
 	ProxyServer := fmt.Sprintf("http=127.0.0.1:%d;https=127.0.0.1:%d", port, port)
-	proxyOverride := "<local>;localhost;127.*;::1;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*"
+	proxyOverride := windowsProxyOverride()
 	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
 	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "AutoConfigURL", "/f")
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
@@ -105,6 +109,47 @@ func setWindowsManualProxy(port int) error {
 	refreshProxySettings()
 	blockSushiroQUIC()
 	return nil
+}
+
+func windowsProxyOverride() string {
+	entries := []string{
+		"<local>",
+		"localhost",
+		"127.*",
+		"::1",
+		"10.*",
+		"192.168.*",
+		"172.16.*",
+		"172.17.*",
+		"172.18.*",
+		"172.19.*",
+		"172.20.*",
+		"172.21.*",
+		"172.22.*",
+		"172.23.*",
+		"172.24.*",
+		"172.25.*",
+		"172.26.*",
+		"172.27.*",
+		"172.28.*",
+		"172.29.*",
+		"172.30.*",
+		"172.31.*",
+		"*.qq.com",
+		"*.wechat.com",
+		"*.weixin.qq.com",
+		"*.servicewechat.com",
+		"*.gtimg.cn",
+		"*.qpic.cn",
+		"*.qlogo.cn",
+		"*.wx.qq.com",
+		"*.tenpay.com",
+		"*.google.com",
+		"*.googleapis.com",
+		"*.gstatic.com",
+		"*.googleusercontent.com",
+	}
+	return strings.Join(entries, ";")
 }
 
 func clearSystemProxy() error {
@@ -168,8 +213,8 @@ func setWinHTTPProxy(ProxyServer, proxyOverride string) error {
 	return runHiddenWindowsCommand("netsh", "winhttp", "set", "proxy", "proxy-server="+ProxyServer, "bypass-list="+proxyOverride)
 }
 
-func setWinHTTPAutoProxy(pacURL string) error {
-	settings := fmt.Sprintf(`{"Proxy":"","ProxyBypass":"","AutoconfigUrl":%q,"AutoDetect":false}`, pacURL)
+func setWinHTTPAutoProxy(pacURL, proxyOverride string) error {
+	settings := fmt.Sprintf(`{"Proxy":"","ProxyBypass":%q,"AutoconfigUrl":%q,"AutoDetect":false}`, proxyOverride, pacURL)
 	if err := runHiddenWindowsCommand("netsh", "winhttp", "set", "advproxy", "setting-scope=user", "settings="+settings); err == nil {
 		return nil
 	} else if importErr := runHiddenWindowsCommand("netsh", "winhttp", "import", "proxy", "source=ie"); importErr != nil {

@@ -20,6 +20,9 @@ func TestHandleProxyPACOnlyProxiesSushiroHost(t *testing.T) {
 	if !strings.Contains(body, `host === "crm-cn-prd.sushiro.com.cn"`) {
 		t.Fatalf("PAC does not match sushiro host: %s", body)
 	}
+	if !strings.Contains(body, `host = host.split(":")[0]`) {
+		t.Fatalf("PAC does not normalize hosts that include a port: %s", body)
+	}
 	if !strings.Contains(body, `PROXY 127.0.0.1:8082`) {
 		t.Fatalf("PAC does not point to proxy port: %s", body)
 	}
