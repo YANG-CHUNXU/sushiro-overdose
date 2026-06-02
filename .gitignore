@@ -7,3 +7,4 @@ sushiro-overdose-linux
 .sushiro_sniper.json
 .DS_Store
 dist/
+.claude/
