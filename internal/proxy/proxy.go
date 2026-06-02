@@ -266,6 +266,7 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 			bodyBytes, _ = io.ReadAll(req.Body)
 			req.Body.Close()
 		}
+		requestBodyKeys := APIDiscoveryPayloadKeys(bodyBytes)
 
 		// Capture tokens
 		ps.tokens.CaptureFromRequest(req, bodyBytes)
@@ -290,7 +291,7 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 		}
 
 		// Relay response
-		if err := ps.relayResponse(tlsClient, resp, req.Method, req.URL); err != nil {
+		if err := ps.relayResponse(tlsClient, resp, req.Method, req.URL, requestBodyKeys); err != nil {
 			return
 		}
 	}
@@ -310,6 +311,7 @@ func (ps *ProxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 			bodyBytes, _ = io.ReadAll(req.Body)
 			req.Body.Close()
 		}
+		requestBodyKeys := APIDiscoveryPayloadKeys(bodyBytes)
 
 		if !req.URL.IsAbs() {
 			if req.Host == "" {
@@ -333,7 +335,7 @@ func (ps *ProxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
-		if err := ps.relayResponse(clientConn, resp, req.Method, req.URL); err != nil {
+		if err := ps.relayResponse(clientConn, resp, req.Method, req.URL, requestBodyKeys); err != nil {
 			return
 		}
 
@@ -401,9 +403,10 @@ func hostWithoutPort(hostPort string) string {
 	return hostPort
 }
 
-func (ps *ProxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
+func (ps *ProxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL, requestBodyKeys []string) error {
 	defer resp.Body.Close()
 	upstreamProto := resp.Proto
+	var bufferedBody []byte
 	if shouldBufferSushiroAPIResponse(target) {
 		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxSushiroBufferedResponseBytes)+1))
 		if err != nil {
@@ -416,18 +419,26 @@ func (ps *ProxyServer) relayResponse(w io.Writer, resp *http.Response, method st
 			ps.addLog(fmt.Sprintf("proxy buffer response failed: %s %s: %v", method, sanitizedProxyURL(target), err))
 			return err
 		}
+		bufferedBody = bodyBytes
 		resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		resp.ContentLength = int64(len(bodyBytes))
 		resp.TransferEncoding = nil
 		resp.Header.Del("Transfer-Encoding")
 		resp.Header.Del("Content-Length")
+		if err := RecordAPIDiscovery(BuildAPIDiscoveryRecord(method, target, resp.StatusCode, upstreamProto, requestBodyKeys, bodyBytes)); err != nil {
+			ps.addLog(fmt.Sprintf("API discovery record failed: %s %s: %v", method, sanitizedProxyURL(target), err))
+		}
 	}
 	resp.Proto = "HTTP/1.1"
 	resp.ProtoMajor = 1
 	resp.ProtoMinor = 1
 	bodySample := ""
 	if resp.StatusCode >= 400 && resp.ContentLength >= 0 && resp.ContentLength <= proxyErrorBodyLogLimit {
-		bodyBytes, err := io.ReadAll(resp.Body)
+		bodyBytes := bufferedBody
+		var err error
+		if bodyBytes == nil {
+			bodyBytes, err = io.ReadAll(resp.Body)
+		}
 		if err == nil {
 			bodySample = SanitizeDiagnosticLine(strings.TrimSpace(string(bodyBytes)))
 			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))

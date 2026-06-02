@@ -71,6 +71,9 @@ func cmdWeb() {
 
 	// Notifications config
 	mux.HandleFunc("/api/config", handleNotifyConfig)
+	mux.HandleFunc("/api/discovery", handleDiscoveryConfig)
+	mux.HandleFunc("/api/discovery/records", handleDiscoveryRecords)
+	mux.HandleFunc("/api/discovery/clear", handleDiscoveryClear)
 	mux.HandleFunc("/api/notifications/test", handleNotificationTest)
 	mux.HandleFunc("/api/repair-proxy", handleRepairProxy)
 	mux.HandleFunc("/api/uninstall", handleUninstall)
