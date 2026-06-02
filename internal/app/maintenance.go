@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/platform"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -11,33 +13,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
-)
-
-const (
-	maintenanceStatusOK          = "ok"
-	maintenanceStatusMissing     = "missing"
-	maintenanceStatusError       = "error"
-	maintenanceStatusSkipped     = "skipped"
-	maintenanceStatusWouldRemove = "would_remove"
 )
 
 type MaintenanceReport struct {
 	Action  string              `json:"action"`
 	OK      bool                `json:"ok"`
 	Results []MaintenanceResult `json:"results"`
-}
-
-type MaintenanceResult struct {
-	Name   string `json:"name"`
-	Action string `json:"action"`
-	Path   string `json:"path,omitempty"`
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
 }
 
 type UninstallOptions struct {
@@ -67,14 +51,6 @@ type maintenanceTarget struct {
 	selected bool
 }
 
-type relatedProcessKillResult struct {
-	PID    int    `json:"pid"`
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Status string `json:"status"`
-	Error  string `json:"error"`
-}
-
 func RepairProxy() MaintenanceReport {
 	report := MaintenanceReport{Action: "repair_proxy"}
 
@@ -82,14 +58,14 @@ func RepairProxy() MaintenanceReport {
 		report.Results = append(report.Results, MaintenanceResult{
 			Name:   "system_proxy",
 			Action: "clear_system_proxy",
-			Status: maintenanceStatusError,
+			Status: MaintenanceStatusError,
 			Error:  err.Error(),
 		})
 	} else {
 		report.Results = append(report.Results, MaintenanceResult{
 			Name:   "system_proxy",
 			Action: "clear_system_proxy",
-			Status: maintenanceStatusOK,
+			Status: MaintenanceStatusOK,
 		})
 	}
 
@@ -99,13 +75,13 @@ func RepairProxy() MaintenanceReport {
 		Name:   "proxy_marker",
 		Action: "remove_file",
 		Path:   markerPath,
-		Status: maintenanceStatusOK,
+		Status: MaintenanceStatusOK,
 	}
 	if _, err := os.Stat(markerPath); err == nil {
-		markerResult.Status = maintenanceStatusError
+		markerResult.Status = MaintenanceStatusError
 		markerResult.Error = "proxy marker still exists after cleanup"
 	} else if !os.IsNotExist(err) {
-		markerResult.Status = maintenanceStatusError
+		markerResult.Status = MaintenanceStatusError
 		markerResult.Error = err.Error()
 	}
 	report.Results = append(report.Results, markerResult)
@@ -134,7 +110,7 @@ func UninstallLocalData(options UninstallOptions) MaintenanceReport {
 		report.Results = append(report.Results, MaintenanceResult{
 			Name:   "selection",
 			Action: "remove_file",
-			Status: maintenanceStatusSkipped,
+			Status: MaintenanceStatusSkipped,
 			Error:  "no local data item selected",
 		})
 	}
@@ -156,7 +132,7 @@ func StopAppProcesses(options StopProcessOptions) MaintenanceReport {
 		report.Results = append(report.Results, MaintenanceResult{
 			Name:   "current_runtime",
 			Action: "stop_runtime",
-			Status: maintenanceStatusWouldRemove,
+			Status: MaintenanceStatusWouldRemove,
 		})
 	} else {
 		engine.Stop()
@@ -164,7 +140,7 @@ func StopAppProcesses(options StopProcessOptions) MaintenanceReport {
 		report.Results = append(report.Results, MaintenanceResult{
 			Name:   "current_runtime",
 			Action: "stop_runtime",
-			Status: maintenanceStatusOK,
+			Status: MaintenanceStatusOK,
 		})
 	}
 
@@ -177,9 +153,9 @@ func StopAppProcesses(options StopProcessOptions) MaintenanceReport {
 		report.Results = append(report.Results, KillRelatedAppProcesses(os.Getpid())...)
 	}
 	if options.IncludeSelf {
-		status := maintenanceStatusOK
+		status := MaintenanceStatusOK
 		if options.DryRun {
-			status = maintenanceStatusWouldRemove
+			status = MaintenanceStatusWouldRemove
 		}
 		report.Results = append(report.Results, MaintenanceResult{
 			Name:   "current_process",
@@ -229,19 +205,19 @@ func stopProcessTarget(target processCleanupTarget, dryRun bool) MaintenanceResu
 	result := MaintenanceResult{
 		Name:   target.name,
 		Action: "kill_process",
-		Status: maintenanceStatusOK,
+		Status: MaintenanceStatusOK,
 		Error:  fmt.Sprintf("pid %d", target.pid),
 	}
 	if dryRun {
-		result.Status = maintenanceStatusWouldRemove
+		result.Status = MaintenanceStatusWouldRemove
 		return result
 	}
 	if !IsProcessAlive(target.pid) {
-		result.Status = maintenanceStatusMissing
+		result.Status = MaintenanceStatusMissing
 		return result
 	}
 	if err := KillProcess(target.pid); err != nil {
-		result.Status = maintenanceStatusError
+		result.Status = MaintenanceStatusError
 		result.Error = fmt.Sprintf("pid %d: %s", target.pid, err.Error())
 		return result
 	}
@@ -268,106 +244,21 @@ func cleanupProcessMarkers() {
 	markProxyInactive()
 }
 
-func parseRelatedProcessKillOutput(out string) []MaintenanceResult {
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	results := []MaintenanceResult{}
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var item relatedProcessKillResult
-		if err := json.Unmarshal([]byte(line), &item); err != nil {
-			results = append(results, MaintenanceResult{
-				Name:   "related_process",
-				Action: "kill_by_name",
-				Status: maintenanceStatusError,
-				Error:  err.Error() + ": " + line,
-			})
-			continue
-		}
-		status := maintenanceStatusOK
-		if item.Status == maintenanceStatusError || item.Status == "error" {
-			status = maintenanceStatusError
-		}
-		name := item.Name
-		if name == "" {
-			name = "related_process"
-		}
-		result := MaintenanceResult{
-			Name:   name,
-			Action: "kill_by_name",
-			Path:   item.Path,
-			Status: status,
-			Error:  fmt.Sprintf("pid %d", item.PID),
-		}
-		if item.Error != "" {
-			result.Error += ": " + item.Error
-		}
-		results = append(results, result)
-	}
-	if len(results) == 0 {
-		results = append(results, MaintenanceResult{
-			Name:   "related_processes",
-			Action: "kill_by_name",
-			Status: maintenanceStatusMissing,
-		})
-	}
-	return results
-}
-
-func killRelatedAppProcessesByPGrep(excludePID int) []MaintenanceResult {
-	out, err := exec.Command("pgrep", "-f", "sushiro-overdose|Sushiro-Overdose").Output()
-	if err != nil {
-		return []MaintenanceResult{{
-			Name:   "related_processes",
-			Action: "kill_by_name",
-			Status: maintenanceStatusMissing,
-		}}
-	}
-	results := []MaintenanceResult{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		pid, err := strconv.Atoi(strings.TrimSpace(line))
-		if err != nil || pid <= 0 || pid == excludePID {
-			continue
-		}
-		result := MaintenanceResult{
-			Name:   "related_process",
-			Action: "kill_by_name",
-			Status: maintenanceStatusOK,
-			Error:  fmt.Sprintf("pid %d", pid),
-		}
-		if err := KillProcess(pid); err != nil {
-			result.Status = maintenanceStatusError
-			result.Error = fmt.Sprintf("pid %d: %s", pid, err.Error())
-		}
-		results = append(results, result)
-	}
-	if len(results) == 0 {
-		results = append(results, MaintenanceResult{
-			Name:   "related_processes",
-			Action: "kill_by_name",
-			Status: maintenanceStatusMissing,
-		})
-	}
-	return results
-}
-
 func uninstallSystemCertificate(dryRun bool) MaintenanceResult {
 	result := MaintenanceResult{
 		Name:   "system_certificate",
 		Action: "uninstall_cert",
 	}
 	if dryRun {
-		result.Status = maintenanceStatusWouldRemove
+		result.Status = MaintenanceStatusWouldRemove
 		return result
 	}
 	if err := UninstallCert(); err != nil {
-		result.Status = maintenanceStatusError
+		result.Status = MaintenanceStatusError
 		result.Error = err.Error()
 		return result
 	}
-	result.Status = maintenanceStatusOK
+	result.Status = MaintenanceStatusOK
 	return result
 }
 
@@ -397,31 +288,31 @@ func removeMaintenanceFile(name, path string, dryRun bool) MaintenanceResult {
 
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			result.Status = maintenanceStatusMissing
+			result.Status = MaintenanceStatusMissing
 			return result
 		}
-		result.Status = maintenanceStatusError
+		result.Status = MaintenanceStatusError
 		result.Error = err.Error()
 		return result
 	}
 
 	if dryRun {
-		result.Status = maintenanceStatusWouldRemove
+		result.Status = MaintenanceStatusWouldRemove
 		return result
 	}
 
 	if err := os.Remove(path); err != nil {
-		result.Status = maintenanceStatusError
+		result.Status = MaintenanceStatusError
 		result.Error = err.Error()
 		return result
 	}
-	result.Status = maintenanceStatusOK
+	result.Status = MaintenanceStatusOK
 	return result
 }
 
 func maintenanceReportOK(results []MaintenanceResult) bool {
 	for _, result := range results {
-		if result.Status == maintenanceStatusError {
+		if result.Status == MaintenanceStatusError {
 			return false
 		}
 	}
@@ -525,7 +416,7 @@ func dryRunRepairProxyReport() MaintenanceReport {
 		Results: []MaintenanceResult{{
 			Name:   "system_proxy",
 			Action: "clear_system_proxy",
-			Status: maintenanceStatusWouldRemove,
+			Status: MaintenanceStatusWouldRemove,
 		}},
 	}
 }

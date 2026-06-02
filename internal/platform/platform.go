@@ -1,4 +1,6 @@
-package app
+package platform
+
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
 	"syscall"

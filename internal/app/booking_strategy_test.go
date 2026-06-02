@@ -1,10 +1,8 @@
 package app
 
-import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
-
-import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
-
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import (
 	"context"

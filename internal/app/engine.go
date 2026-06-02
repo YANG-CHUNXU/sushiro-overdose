@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/platform"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
@@ -212,7 +214,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 
 	e.setState(EngineCapturing, "等待捕获认证参数，请彻底关闭 PC 微信后重新打开，并在寿司郎小程序里点一次排队或预约...")
 	proxyHint := fmt.Sprintf("捕获代理已设置 (127.0.0.1:%d)", actualPort)
-	if getActiveWebPort() > 0 && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
+	if GetActiveWebPort() > 0 && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
 		proxyHint += "；已使用 PAC 仅代理寿司郎域名"
 	}
 	e.addLog(proxyHint + "。请彻底关闭 PC 微信后重新打开，进入寿司郎小程序，选任意门店点一次「排队」或「预约」（不用真的提交）")

@@ -1,12 +1,8 @@
 //go:build windows
 
-package app
+package platform
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
-
-import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
-
-import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
@@ -59,7 +55,7 @@ $n.Dispose()
 }
 
 func setSystemProxy(port int) error {
-	if webPort := getActiveWebPort(); webPort > 0 {
+	if webPort := GetActiveWebPort(); webPort > 0 {
 		return setWindowsPACProxy(port, webPort)
 	}
 	return setWindowsManualProxy(port)
@@ -438,7 +434,7 @@ foreach ($p in $matches) {
 		return []MaintenanceResult{{
 			Name:   "related_processes",
 			Action: "kill_by_name",
-			Status: maintenanceStatusError,
+			Status: MaintenanceStatusError,
 			Error:  fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(out))),
 		}}
 	}

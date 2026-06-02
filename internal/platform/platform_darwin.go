@@ -1,6 +1,6 @@
 //go:build darwin
 
-package app
+package platform
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
 
@@ -36,7 +36,7 @@ func setSystemProxy(port int) error {
 	if err != nil {
 		return err
 	}
-	return darwinRunSystemProxyCommands(darwinSetSystemProxyCommands(services, port, getActiveWebPort()), runCmd)
+	return darwinRunSystemProxyCommands(darwinSetSystemProxyCommands(services, port, GetActiveWebPort()), runCmd)
 }
 
 func clearSystemProxy() error {
@@ -281,8 +281,8 @@ func installSamplingAutoStart() error {
     <string>--sampler-daemon-child</string>
   </array>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>` + xmlEscape(samplingLogPath()) + `</string>
-  <key>StandardErrorPath</key><string>` + xmlEscape(samplingLogPath()) + `</string>
+  <key>StandardOutPath</key><string>` + xmlEscape(SamplingLogPath()) + `</string>
+  <key>StandardErrorPath</key><string>` + xmlEscape(SamplingLogPath()) + `</string>
 </dict>
 </plist>
 `

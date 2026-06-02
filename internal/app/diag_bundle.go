@@ -49,7 +49,7 @@ func buildDiagBundle() ([]byte, string, error) {
 
 	add("engine-log.txt", renderEngineLogs(engine.GetLogs()))
 	add("sushiro-log.txt", readSanitizedFile(LogPath(), diagBundleLogLines))
-	add("sampling-log.txt", readSanitizedFile(samplingLogPath(), diagBundleLogLines))
+	add("sampling-log.txt", readSanitizedFile(SamplingLogPath(), diagBundleLogLines))
 
 	add("pac-fetch.txt", probeLocalPAC())
 

@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/platform"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -316,7 +318,7 @@ func collectPortDiagnostics() []DiagnosticPort {
 		{Name: "MITM 代理", Host: "127.0.0.1", Port: ProxyPort},
 		{Name: "Web UI 默认端口", Host: "127.0.0.1", Port: defaultWebPort},
 	}
-	activeWebPort := getActiveWebPort()
+	activeWebPort := GetActiveWebPort()
 	for i := range ports {
 		addr := fmt.Sprintf("%s:%d", ports[i].Host, ports[i].Port)
 		ln, err := net.Listen("tcp", addr)

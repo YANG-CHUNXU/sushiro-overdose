@@ -57,8 +57,8 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 
 	statusByName := maintenanceStatusesByName(report)
 	for _, name := range []string{"config", "notify", "feishu", "preferences", "stores", "state", "history", "pid", "proxy_marker", "ca_cert", "ca_key"} {
-		if statusByName[name] != maintenanceStatusOK {
-			t.Fatalf("expected %s status %q, got %q", name, maintenanceStatusOK, statusByName[name])
+		if statusByName[name] != MaintenanceStatusOK {
+			t.Fatalf("expected %s status %q, got %q", name, MaintenanceStatusOK, statusByName[name])
 		}
 	}
 }
@@ -83,13 +83,13 @@ func TestUninstallLocalDataPartialSelectionKeepsUnselectedFiles(t *testing.T) {
 	assertMaintenancePathExists(t, notifyPath)
 
 	statusByName := maintenanceStatusesByName(report)
-	if statusByName["config"] != maintenanceStatusOK {
+	if statusByName["config"] != MaintenanceStatusOK {
 		t.Fatalf("expected config removed, got %q", statusByName["config"])
 	}
-	if statusByName["ca_cert"] != maintenanceStatusOK {
+	if statusByName["ca_cert"] != MaintenanceStatusOK {
 		t.Fatalf("expected ca_cert removed, got %q", statusByName["ca_cert"])
 	}
-	if statusByName["ca_key"] != maintenanceStatusMissing {
+	if statusByName["ca_key"] != MaintenanceStatusMissing {
 		t.Fatalf("expected missing ca_key result, got %q", statusByName["ca_key"])
 	}
 	if _, ok := statusByName["notify"]; ok {
@@ -110,8 +110,8 @@ func TestUninstallLocalDataDryRunKeepsFiles(t *testing.T) {
 	assertMaintenancePathExists(t, configPath)
 
 	statusByName := maintenanceStatusesByName(report)
-	if statusByName["config"] != maintenanceStatusWouldRemove {
-		t.Fatalf("expected dry-run status %q, got %q", maintenanceStatusWouldRemove, statusByName["config"])
+	if statusByName["config"] != MaintenanceStatusWouldRemove {
+		t.Fatalf("expected dry-run status %q, got %q", MaintenanceStatusWouldRemove, statusByName["config"])
 	}
 }
 
@@ -125,7 +125,7 @@ func TestUninstallLocalDataNoSelectionIsSkipped(t *testing.T) {
 	if len(report.Results) != 1 {
 		t.Fatalf("expected one skipped result, got %d", len(report.Results))
 	}
-	if report.Results[0].Status != maintenanceStatusSkipped {
+	if report.Results[0].Status != MaintenanceStatusSkipped {
 		t.Fatalf("expected skipped status, got %q", report.Results[0].Status)
 	}
 }

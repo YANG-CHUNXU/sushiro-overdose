@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/platform"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -805,7 +807,7 @@ func buildQueueSamplingStatus(now time.Time, summary QueueTrendSummary) QueueSam
 		SystemAutoStart:    systemAuto,
 		LastRunAt:          state.LastRunAt,
 		LastError:          state.LastError,
-		SamplingLogPath:    samplingLogPath(),
+		SamplingLogPath:    SamplingLogPath(),
 		SamplingConfigPath: samplingConfigPath(),
 	}
 	if holder, ok := processLockHolder(samplingLockFileName); ok && holder > 0 {

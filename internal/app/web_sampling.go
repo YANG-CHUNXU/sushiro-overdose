@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/platform"
+
 import (
 	"context"
 	"encoding/json"

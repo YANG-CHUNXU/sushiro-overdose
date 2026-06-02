@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/platform"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -16,14 +18,9 @@ import (
 )
 
 const samplingPidFile = "sampling.pid"
-const samplingLogFile = "sampling.log"
 
 func samplingPidFilePath() string {
 	return filepath.Join(AppDirPath(), samplingPidFile)
-}
-
-func samplingLogPath() string {
-	return filepath.Join(AppDirPath(), samplingLogFile)
 }
 
 func cmdSample(args []string) {
@@ -118,21 +115,21 @@ func cmdSampleStart() {
 	for time.Now().Before(deadline) {
 		if readSamplingPID() == fmt.Sprintf("%d", childPID) && IsProcessAlive(childPID) {
 			fmt.Printf("sampling started (PID %d)\n", childPID)
-			fmt.Println("日志: " + samplingLogPath())
+			fmt.Println("日志: " + SamplingLogPath())
 			return
 		}
 		if !IsProcessAlive(childPID) {
-			fmt.Println("启动失败，请查看日志: " + samplingLogPath())
+			fmt.Println("启动失败，请查看日志: " + SamplingLogPath())
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if IsProcessAlive(childPID) {
 		fmt.Printf("sampling starting (PID %d)\n", childPID)
-		fmt.Println("日志: " + samplingLogPath())
+		fmt.Println("日志: " + SamplingLogPath())
 		return
 	}
-	fmt.Println("启动失败，请查看日志: " + samplingLogPath())
+	fmt.Println("启动失败，请查看日志: " + SamplingLogPath())
 }
 
 func cmdSampleStop() {
@@ -197,7 +194,7 @@ func cmdSamplerDaemon() {
 	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		return
 	}
-	logFile, err := os.OpenFile(samplingLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := os.OpenFile(SamplingLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return
 	}

@@ -1,6 +1,6 @@
 //go:build linux
 
-package app
+package platform
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
 
