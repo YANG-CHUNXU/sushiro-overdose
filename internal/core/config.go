@@ -176,7 +176,7 @@ func LoadSettings(configPath string) (Settings, error) {
 		QueryAuthorization: strings.TrimSpace(raw.QueryAuthorization),
 		ReservationAuth:    strings.TrimSpace(raw.ReservationAuth),
 		XAppClient:         xAppClient,
-		UserAgent:          strings.TrimSpace(raw.UserAgent),
+		UserAgent:          EffectiveUserAgent(raw.UserAgent),
 		Referer:            strings.TrimSpace(raw.Referer),
 		FeishuWebhook:      strings.TrimSpace(raw.FeishuWebhook),
 		StateFile:          stateFile,

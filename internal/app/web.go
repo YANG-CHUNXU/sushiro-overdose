@@ -72,6 +72,9 @@ func cmdWeb() {
 
 	// Notifications config
 	mux.HandleFunc("/api/config", handleNotifyConfig)
+	mux.HandleFunc("/api/mobile-ua", handleMobileUA)
+	mux.HandleFunc("/api/mobile-ua/capture/start", handleMobileUACaptureStart)
+	mux.HandleFunc("/api/mobile-ua/capture/stop", handleMobileUACaptureStop)
 	mux.HandleFunc("/api/discovery", handleDiscoveryConfig)
 	mux.HandleFunc("/api/discovery/records", handleDiscoveryRecords)
 	mux.HandleFunc("/api/discovery/clear", handleDiscoveryClear)
@@ -126,6 +129,7 @@ func cmdWeb() {
 		<-ctx.Done()
 		engine.Stop()
 		sampler.Stop()
+		mobileUACapture.stop()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		server.Shutdown(shutdownCtx)

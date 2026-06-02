@@ -94,10 +94,14 @@ button,input,select{font:inherit}
 .fg{margin-bottom:16px}
 .fg label{display:block;margin-bottom:6px;color:var(--sub);font-size:12px;font-weight:800}
 .fr{display:flex;gap:12px;flex-wrap:wrap}
-input[type=number],input[type=text],input[type=time],input[type=date],select{width:100%;height:40px;padding:0 12px;background:#fff;border:1px solid var(--line-strong);border-radius:8px;color:var(--ink);font-size:14px}
+input[type=number],input[type=text],input[type=time],input[type=date],select,textarea{width:100%;height:40px;padding:0 12px;background:#fff;border:1px solid var(--line-strong);border-radius:8px;color:var(--ink);font-size:14px}
 input[type=number]{width:86px}
-input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px rgba(184,28,34,.08)}
+textarea{height:88px;padding:10px 12px;resize:vertical;line-height:1.5}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px rgba(184,28,34,.08)}
 .settings-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+.ua-box{display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:start;margin-top:12px}
+.ua-qr{width:180px;height:180px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px}
+.ua-urls{word-break:break-all}
 .tl{display:flex;flex-direction:column;gap:8px}
 .tr{display:flex;align-items:center;gap:8px}
 .tr input{width:82px;text-align:center}
@@ -398,6 +402,14 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
         <div class="fl g8 fw mt8"><button class="bt bt-r" onclick="sN()">保存通知</button><button class="bt bt-w" onclick="tN('all')">测试全部</button><button class="bt bt-w" onclick="tN('feishu')">飞书</button><button class="bt bt-w" onclick="tN('telegram')">Telegram</button><button class="bt bt-w" onclick="tN('bark')">Bark</button><button class="bt bt-w" onclick="tN('serverchan')">Server酱</button></div>
       </div>
       <div class="cd" style="grid-column:1/-1">
+        <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">移动端 UA</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="startMobileUACapture()">启动扫码采集</button><button class="bt bt-w bt-s" onclick="loadMobileUA()">刷新</button><button class="bt bt-o bt-s" onclick="stopMobileUACapture()">停止采集</button></div></div>
+        <div class="ps">手机微信扫码打开临时局域网页，程序只记录 User-Agent，并自动规范成移动端小程序 UA。这个 UA 会用于 Windows 捕获转发和直连官方接口。</div>
+        <div id="mobileUaState" class="diag-detail mt8">尚未加载</div>
+        <div id="mobileUaBox" class="ua-box hid"><div id="mobileUaQR"></div><div id="mobileUaURLs" class="ps ua-urls"></div></div>
+        <div class="fg mt16"><label>手动粘贴 UA</label><textarea id="mobileUaManual" placeholder="如果扫码打不开，可以把手机微信 WebView / 小程序 UA 粘贴到这里"></textarea></div>
+        <button class="bt bt-w bt-s" onclick="saveManualMobileUA()">保存手动 UA</button>
+      </div>
+      <div class="cd" style="grid-column:1/-1">
         <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">接口调试</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="saveDiscovery()">保存开关</button><button class="bt bt-w bt-s" onclick="loadDiscoveryRecords()">刷新记录</button><button class="bt bt-o bt-s" onclick="clearDiscoveryRecords()">清空记录</button></div></div>
         <label class="check"><input type="checkbox" id="discEnabled">启用接口发现调试</label>
         <div class="ps mt8">开启后，在“获取认证”捕获期间打开 PC 微信寿司郎小程序并点击“我的预约/预约详情/取消预约”等页面。后端只记录接口路径、状态码、query key、请求 body key 和响应 JSON 结构，不记录 token、手机号、微信 ID 或原始 body。</div>
@@ -661,9 +673,15 @@ function prefsPayload(){const st=bookingStoresFromUI();return{adult:+el('pa').va
 async function savePrefsPayload(b,quiet){try{const d=await(await fetch('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json();if(d.error){if(!quiet)alert(d.error);return false}pr=d.preferences||b;fF(pr);dP(pr);renderBookingStores();uD();if(!quiet)alert('已保存');return true}catch(e){if(!quiet)alert('保存失败');return false}}
 async function sP(){const b=prefsPayload();if(stores.length&&!b.selected_stores.length){alert('请至少选择一家抢号门店');return false}return savePrefsPayload(b,false)}
 async function saveCalendarStoresAsPrefs(){if(!selStores.length){alert('请先选择门店');return}await lP();const b={...pr,selected_stores:selStores.slice(),store_priority:selStores.slice()};if(await savePrefsPayload(b,true))alert('已保存为抢号门店优先级')}
-async function lS(){await lP();await ensureStores();renderBookingStores();try{const c=await(await fetch('/api/config')).json();el('nf').value=c.feishu?.webhook||'';el('ntt').value=c.telegram?.token||'';el('ntc').value=c.telegram?.chat_id||'';el('nbu').value=c.bark?.url||'';el('nbk').value=c.bark?.key||'';el('ns').value=c.server_chan?.key||''}catch(e){}await loadDiscovery();lD()}
+async function lS(){await lP();await ensureStores();renderBookingStores();try{const c=await(await fetch('/api/config')).json();el('nf').value=c.feishu?.webhook||'';el('ntt').value=c.telegram?.token||'';el('ntc').value=c.telegram?.chat_id||'';el('nbu').value=c.bark?.url||'';el('nbk').value=c.bark?.key||'';el('ns').value=c.server_chan?.key||''}catch(e){}await loadMobileUA();await loadDiscovery();lD()}
 async function sN(quiet){const b={feishu:{webhook:el('nf').value.trim()},telegram:{token:el('ntt').value.trim(),chat_id:el('ntc').value.trim()},bark:{url:el('nbu').value.trim(),key:el('nbk').value.trim()},server_chan:{key:el('ns').value.trim()}};try{const d=await(await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json();if(d.error){if(!quiet)alert(d.error);return false}if(!quiet)alert('已保存');return true}catch(e){if(!quiet)alert('保存失败');return false}}
 async function tN(ch){if(!await sN(true))return;try{const r=await fetch('/api/notifications/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:ch||'all'})}),d=await r.json();if(d.error){alert(d.error);return}const bad=(d.results||[]).filter(x=>!x.ok).map(x=>x.channel+': '+x.error);alert(bad.length?'已先保存当前表单，部分发送失败：\n'+bad.join('\n'):'已先保存当前表单，测试通知已发送')}catch(e){alert('发送失败')}}
+function mobileUaTime(t){try{return t?new Date(t).toLocaleString('zh-CN',{hour12:false}):'-'}catch(e){return t||'-'}}
+function renderMobileUA(d){const st=el('mobileUaState'),box=el('mobileUaBox'),qr=el('mobileUaQR'),urls=el('mobileUaURLs');if(!st)return;const c=d.config||{},ua=c.normalized_user_agent||'',raw=c.user_agent||'';const active=!!d.active;st.innerHTML='<b>'+esc(active?'采集中':'未采集')+'</b>'+(active?'<br>失效时间：'+esc(mobileUaTime(d.expires)):'')+'<br>配置文件：<code>'+esc(d.path||'')+'</code>'+(ua?'<br>已保存：<code style="word-break:break-all">'+esc(ua)+'</code><br>来源：'+esc(c.source||'-')+'；时间：'+esc(mobileUaTime(c.captured_at)):'<br><span class="bad">尚未保存移动端 UA，将使用内置安卓 UA 兜底。</span>');if(el('mobileUaManual')&&!el('mobileUaManual').value&&raw)el('mobileUaManual').value=raw;if(box){box.classList.toggle('hid',!active);qr.innerHTML=(active&&d.qr_svg)?d.qr_svg:'';const list=d.urls||[];urls.innerHTML=list.length?'<b>扫码或用手机微信打开：</b><br>'+list.map(u=>'<code>'+esc(u)+'</code>').join('<br>')+'<div class="mu mt8">如果手机打不开，确认手机和电脑在同一个 Wi-Fi，或检查系统防火墙是否拦截本应用。</div>':''}}
+async function loadMobileUA(){try{renderMobileUA(await safeFetch('/api/mobile-ua'))}catch(e){const st=el('mobileUaState');if(st)st.innerHTML='<span class="bad">加载 UA 状态失败：'+esc(String(e.message||e))+'</span>'}}
+async function startMobileUACapture(){try{const d=await safeFetch('/api/mobile-ua/capture/start',{method:'POST'},12000);renderMobileUA(d);alert('已启动扫码采集。请用手机微信扫描二维码或打开局域网链接。')}catch(e){alert('启动采集失败：'+String(e.message||e))}}
+async function stopMobileUACapture(){try{renderMobileUA(await safeFetch('/api/mobile-ua/capture/stop',{method:'POST'}))}catch(e){alert('停止采集失败')}}
+async function saveManualMobileUA(){const ua=(el('mobileUaManual')?.value||'').trim();if(!ua){alert('请先粘贴 UA');return}try{const d=await safeFetch('/api/mobile-ua',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_agent:ua})});renderMobileUA(d.status||d);alert('已保存移动端 UA')}catch(e){alert('保存失败：'+String(e.message||e))}}
 function discTime(t){try{return new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch(e){return t||'-'}}
 function discJoin(a){return (a&&a.length)?a.join(', '):'-'}
 function discMap(m){if(!m)return'-';const ks=Object.keys(m);return ks.length?ks.sort().map(k=>k+': '+m[k]).join(', '):'-'}
