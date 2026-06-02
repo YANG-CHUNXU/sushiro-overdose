@@ -143,6 +143,15 @@ func netTicketTick(ctx context.Context) {
 	}
 	ticket, err := client.CreateNetTicket(ctx, plan.StoreID)
 	if err != nil {
+		if isOfficialServerHTTPError(err) {
+			plan.Status = "retrying"
+			plan.FiredDate = ""
+			plan.FiredAt = ""
+			plan.LastError = friendlyOfficialAPIError(err)
+			_ = SaveNetTicketPlan(plan)
+			clearNetTicketFire(today)
+			return
+		}
 		plan.Status = "error"
 		plan.LastError = err.Error()
 		_ = SaveNetTicketPlan(plan)

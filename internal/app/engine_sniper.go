@@ -178,6 +178,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 		}
 		deadline = deadline.Add(sniperWindow)
 		attempts := 0
+		temporarySkips := map[string]time.Time{}
 		UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 			t.Status = "running"
 		})
@@ -219,12 +220,14 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					e.setState(EngineError, "认证参数已失效，请重新捕获")
 					return
 				}
-				if IsHTTPStatus(err, 500) {
-					e.addLogLevel("狙击接口 HTTP 500，参数可能已失效", "error")
-					sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效")
-					DeleteLocalConfig()
-					e.setState(EngineError, "参数已失效，请重新捕获")
-					return
+				if isOfficialServerHTTPError(err) {
+					UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
+						t.Status = "running"
+						t.Attempts = attempts
+						t.LastError = friendlyOfficialAPIError(err)
+					})
+					time.Sleep(200 * time.Millisecond)
+					continue
 				}
 				time.Sleep(50 * time.Millisecond)
 				continue
@@ -235,6 +238,10 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					continue
 				}
 				if slot.Availability != "" && strings.ToUpper(slot.Availability) != "AVAILABLE" {
+					continue
+				}
+				key := bookingSlotKey(target.StoreID, slot.Date, slot.Start)
+				if isTemporaryBookingSkipped(temporarySkips, key, time.Now().In(settings.Location)) {
 					continue
 				}
 				slotLabel := FormatSlotWindow(slot.Date, slot.Start, DefaultString(slot.End, slot.Start), settings.Location)
@@ -253,12 +260,15 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 						e.setState(EngineError, "预约认证参数已失效")
 						return
 					}
-					if IsHTTPStatus(err, 500) {
-						e.addLogLevel("预约接口 HTTP 500，参数可能已失效", "error")
-						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效")
-						DeleteLocalConfig()
-						e.setState(EngineError, "参数已失效，请重新捕获")
-						return
+					if isOfficialServerHTTPError(err) {
+						markTemporaryBookingSkip(temporarySkips, key, time.Now().In(settings.Location))
+						UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
+							t.Status = "running"
+							t.Attempts = attempts
+							t.LastError = friendlyOfficialAPIError(err)
+							t.LastAttemptAt = time.Now().In(settings.Location).Format(time.RFC3339)
+						})
+						e.addLog(bookingServerErrorLog(slotLabel, err))
 					}
 					continue
 				}

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -322,6 +321,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 
 		success := false
 		attemptCount := 0
+		temporarySkips := map[string]time.Time{}
 
 		for time.Now().In(settings.Location).Before(deadline) {
 			select {
@@ -337,11 +337,10 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 					sendNotification("寿司郎狙击 - 认证失败", "认证参数已失效")
 					return
 				}
-				if strings.Contains(err.Error(), "500") {
-					LogMessage(time.Now().In(settings.Location), "HTTP 500，参数已失效，请重新进入小程序获取")
-					sendNotification("寿司郎狙击 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro sniper`")
-					DeleteLocalConfig()
-					return
+				if isOfficialServerHTTPError(err) {
+					LogMessage(time.Now().In(settings.Location), friendlyOfficialAPIError(err))
+					time.Sleep(200 * time.Millisecond)
+					continue
 				}
 				time.Sleep(100 * time.Millisecond)
 				continue
@@ -353,6 +352,10 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 					continue
 				}
 				if s.Start < target.StartAfter || s.Start >= target.StartBefore {
+					continue
+				}
+				key := bookingSlotKey(target.StoreID, s.Date, s.Start)
+				if isTemporaryBookingSkipped(temporarySkips, key, time.Now().In(settings.Location)) {
 					continue
 				}
 
@@ -369,11 +372,9 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
 						DeleteLocalConfig()
 						return
-					} else if IsHTTPStatus(err, http.StatusInternalServerError) {
-						LogMessage(time.Now().In(settings.Location), "预约接口 HTTP 500，参数可能已失效")
-						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效，请重新捕获")
-						DeleteLocalConfig()
-						return
+					} else if isOfficialServerHTTPError(err) {
+						markTemporaryBookingSkip(temporarySkips, key, time.Now().In(settings.Location))
+						LogMessage(time.Now().In(settings.Location), bookingServerErrorLog(slotLabel, err))
 					}
 					continue
 				}

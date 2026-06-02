@@ -344,6 +344,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 	defer close(healthStop)
 
 	var booked map[string]bool
+	temporarySkips := map[string]time.Time{}
 	errStreak := 0
 	authErrors := 0
 
@@ -392,8 +393,11 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				if strings.ToUpper(slots[i].Availability) != "AVAILABLE" {
 					continue
 				}
-				key := storeID + slots[i].Date + slots[i].Start
+				key := bookingSlotKey(storeID, slots[i].Date, slots[i].Start)
 				if booked != nil && booked[key] {
+					continue
+				}
+				if isTemporaryBookingSkipped(temporarySkips, key, now) {
 					continue
 				}
 				t := &TargetSlot{
@@ -435,14 +439,12 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				}
 			}
 
-			if IsHTTPStatus(err, 500) {
-				e.addLogLevel("预约接口 HTTP 500，参数可能已失效", "error")
-				sendNotification("寿司郎 - HTTP 500", "参数可能已失效")
-				DeleteLocalConfig()
-				e.setState(EngineError, "参数已失效，请重新捕获")
-				return
+			if isOfficialServerHTTPError(err) {
+				key := bookingSlotKey(best.StoreID, best.Date, best.Start)
+				markTemporaryBookingSkip(temporarySkips, key, now)
+				e.addLog(bookingServerErrorLog(slotLabel, err))
 			} else if errors.Is(err, ErrNoReservationAvailable) {
-				key := best.StoreID + best.Date + best.Start
+				key := bookingSlotKey(best.StoreID, best.Date, best.Start)
 				if booked == nil {
 					booked = make(map[string]bool)
 				}

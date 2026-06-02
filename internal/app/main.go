@@ -534,6 +534,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 	defer doneActivity()
 
 	var booked map[string]bool
+	temporarySkips := map[string]time.Time{}
 	errStreak := 0
 	authErrors := 0
 
@@ -582,8 +583,11 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				if strings.ToUpper(slots[i].Availability) != "AVAILABLE" {
 					continue
 				}
-				key := storeID + slots[i].Date + slots[i].Start
+				key := bookingSlotKey(storeID, slots[i].Date, slots[i].Start)
 				if booked != nil && booked[key] {
+					continue
+				}
+				if isTemporaryBookingSkipped(temporarySkips, key, now) {
 					continue
 				}
 				t := &TargetSlot{
@@ -619,13 +623,12 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				}
 			}
 
-			if IsHTTPStatus(err, http.StatusInternalServerError) {
-				LogMessage(now, "预约接口 HTTP 500，参数可能已失效，请重新进入小程序获取")
-				sendNotification("寿司郎 - HTTP 500", "参数可能已失效，请重新进入小程序刷新并运行 `sushiro run`")
-				DeleteLocalConfig()
-				return
+			if isOfficialServerHTTPError(err) {
+				key := bookingSlotKey(best.StoreID, best.Date, best.Start)
+				markTemporaryBookingSkip(temporarySkips, key, now)
+				LogMessage(now, bookingServerErrorLog(slotLabel, err))
 			} else if errors.Is(err, ErrNoReservationAvailable) {
-				key := best.StoreID + best.Date + best.Start
+				key := bookingSlotKey(best.StoreID, best.Date, best.Start)
 				if booked == nil {
 					booked = make(map[string]bool)
 				}

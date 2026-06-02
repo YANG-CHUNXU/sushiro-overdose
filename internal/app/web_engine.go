@@ -178,7 +178,7 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	ticket, err := client.CreateNetTicket(r.Context(), storeID)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, http.StatusBadGateway, friendlyOfficialAPIError(err))
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "ticket": ticket})
