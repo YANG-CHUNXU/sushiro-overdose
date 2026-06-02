@@ -39,7 +39,11 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 	reservations, err := client.GetReservations(r.Context())
 	if err != nil {
 		if errors.Is(err, ErrReservationsEndpointUnavailable) {
-			writeJSON(w, loadReservationsFallback())
+			writeJSON(w, map[string]any{
+				"items":       loadReservationsFallback(),
+				"unavailable": true,
+				"message":     "官方当前预约列表接口已变更或不可用；这里显示的是本地保存/补录记录，不代表寿司郎小程序里没有预约。",
+			})
 			return
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -58,6 +62,97 @@ func loadReservationsFallback() []ReservationRecord {
 		reservation.Status = "本地记录"
 	}
 	return []ReservationRecord{reservation}
+}
+
+func handleLocalReservation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var body struct {
+		Number    string `json:"number"`
+		Date      string `json:"date"`
+		Start     string `json:"start"`
+		End       string `json:"end"`
+		StoreID   string `json:"store_id"`
+		StoreName string `json:"store_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+		return
+	}
+	number := strings.TrimSpace(body.Number)
+	date := normalizeLocalReservationDate(body.Date)
+	if number == "" && date == "" {
+		writeError(w, http.StatusBadRequest, "至少填写预约号或日期")
+		return
+	}
+	start := normalizeLocalReservationTime(body.Start)
+	end := normalizeLocalReservationTime(body.End)
+	storeID := strings.TrimSpace(body.StoreID)
+	storeName := strings.TrimSpace(body.StoreName)
+	if storeID == "" {
+		ws := getWebSettings()
+		if len(ws.StoreIDs) > 0 {
+			storeID = ws.StoreIDs[0]
+		}
+	}
+	if storeName == "" && storeID != "" {
+		if client := getWebClient(); client != nil {
+			if info, err := client.GetStoreInfo(r.Context(), storeID); err == nil {
+				storeName = info.Name
+			}
+		}
+	}
+	slotLabel := strings.TrimSpace(body.Date)
+	if date != "" {
+		slotLabel = date
+	}
+	if start != "" {
+		slotLabel = strings.TrimSpace(slotLabel + " " + FormatCompactTime(start))
+		if end != "" {
+			slotLabel += "-" + FormatCompactTime(end)
+		}
+	}
+	record := ReservationRecord{
+		Status:           "本地补录",
+		Number:           number,
+		QueueDate:        date,
+		Start:            start,
+		End:              end,
+		StoreID:          storeID,
+		MonitoredStoreID: storeID,
+		StoreName:        storeName,
+		SlotLabel:        slotLabel,
+	}
+	if err := SaveState(StateFilePath(), State{ActiveReservation: &record, SavedAt: time.Now().Format(time.RFC3339)}); err != nil {
+		writeError(w, http.StatusInternalServerError, "保存本地预约失败: "+err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "reservation": record})
+}
+
+func normalizeLocalReservationDate(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) == 10 && value[4] == '-' && value[7] == '-' {
+		return strings.ReplaceAll(value, "-", "")
+	}
+	if len(value) == 8 {
+		return value
+	}
+	return ""
+}
+
+func normalizeLocalReservationTime(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, ":", "")
+	if len(value) == 4 {
+		return value + "00"
+	}
+	if len(value) == 6 {
+		return value
+	}
+	return ""
 }
 
 // handleQueueTicket 远程取号（实验性）。需要已捕获的认证态。
