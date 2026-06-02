@@ -8,6 +8,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -36,8 +37,19 @@ func cmdList() {
 
 	reservations, err := client.GetReservations(ctx)
 	if err != nil {
-		fmt.Println("获取预约列表失败:", err)
-		return
+		if errors.Is(err, ErrReservationsEndpointUnavailable) {
+			state, stateErr := LoadState(StateFilePath())
+			if stateErr == nil && state.ActiveReservation != nil {
+				fmt.Println("官方当前预约接口不可用，显示本地保存的最近预约记录。")
+				reservations = []ReservationRecord{*state.ActiveReservation}
+			} else {
+				fmt.Println("官方当前预约接口不可用，且本地没有保存的预约记录。")
+				return
+			}
+		} else {
+			fmt.Println("获取预约列表失败:", err)
+			return
+		}
 	}
 
 	if len(reservations) == 0 {

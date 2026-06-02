@@ -1,9 +1,12 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -35,10 +38,26 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 	client := getWebClient()
 	reservations, err := client.GetReservations(r.Context())
 	if err != nil {
+		if errors.Is(err, ErrReservationsEndpointUnavailable) {
+			writeJSON(w, loadReservationsFallback())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, reservations)
+}
+
+func loadReservationsFallback() []ReservationRecord {
+	state, err := LoadState(StateFilePath())
+	if err != nil || state.ActiveReservation == nil {
+		return []ReservationRecord{}
+	}
+	reservation := *state.ActiveReservation
+	if strings.TrimSpace(reservation.Status) == "" {
+		reservation.Status = "本地记录"
+	}
+	return []ReservationRecord{reservation}
 }
 
 // handleQueueTicket 远程取号（实验性）。需要已捕获的认证态。

@@ -18,6 +18,7 @@ import (
 )
 
 var ErrNoReservationAvailable = errors.New("no reservation available")
+var ErrReservationsEndpointUnavailable = errors.New("reservations endpoint unavailable")
 
 type APIError struct {
 	StatusCode int
@@ -171,6 +172,10 @@ func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, erro
 		"phoneNumber": c.settings.PhoneNumber,
 	})
 	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return nil, ErrReservationsEndpointUnavailable
+		}
 		return nil, err
 	}
 	var reservations []ReservationRecord
