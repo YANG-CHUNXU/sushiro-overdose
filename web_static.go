@@ -161,6 +161,14 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
 .waitbar .lv-g{background:#2E9B5B}
 .waitbar .lv-y{background:#C8881A}
 .waitbar .lv-r{background:var(--red)}
+.qbox{border:1px solid var(--line);border-radius:12px;padding:14px;background:#FBFAF8}
+.pick-out{margin-top:8px;padding:12px 14px;border-radius:10px;background:var(--paper);border:1px solid var(--line);font-size:14px;line-height:1.6}
+.pick-out b{color:var(--red);font-size:16px}
+.adv{border-top:1px dashed var(--line);padding-top:4px}
+.adv>summary{cursor:pointer;list-style:none;padding:12px 0;font-weight:800;color:var(--sub);font-size:13px}
+.adv>summary::-webkit-details-marker{display:none}
+.adv>summary::before{content:'▸ ';color:var(--mute)}
+.adv[open]>summary::before{content:'▾ '}
 .diag-detail code{display:inline-block;max-width:100%;overflow:auto;padding:2px 5px;border-radius:6px;background:#EEE9E4;color:var(--ink)}
 .ft{padding:26px 0 46px;text-align:center;color:var(--mute);font-size:12px}.ft a{color:var(--red);text-decoration:none}
 .hid{display:none!important}.mu{color:var(--mute)}.tc{text-align:center}.tg{color:var(--green)}.tre{color:var(--red)}
@@ -274,10 +282,18 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
 
   <section id="p-qt" class="hid">
     <div class="cd">
-      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">到店预测</div><p class="mu mt8">先收集你关心门店的排队和预约变化，用来判断更适合到店的时间；预测仅供参考。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新预测</button><button class="bt bt-r bt-s" onclick="setBootSampling(true)">启用开机收集</button></div></div>
+      <div class="fl ai jb mb16 fw g8"><div><div class="cd-t" style="margin-bottom:0">排队 · 取号时机</div><p class="mu mt8">看实时叫号、估算几点取号能几点吃上；历史趋势分析收在下方「高级」里。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新</button></div></div>
       <div id="qtCollect" class="mb16"></div>
       <div class="fg"><label>关注门店</label><div id="qtStores" class="chips"><span class="mu">从本地数据自动识别</span></div></div>
-      <div id="qtLive" class="sample-state"><div class="ci">实时排队待加载</div></div>
+      <div class="qbox mt16">
+        <div class="fl ai jb fw g8"><label style="margin:0">⏱ 取号时机</label><span class="mu">按所选门店当前排队估算，仅供参考</span></div>
+        <div class="fl g8 fw mt8">
+          <div class="fg"><label>我想</label><select id="qtPickMode" onchange="calcPickTime()"><option value="eat">几点吃上</option><option value="pick">几点取号</option></select></div>
+          <div class="fg"><label>时间</label><input type="time" id="qtPickTime" onchange="calcPickTime()" oninput="calcPickTime()"></div>
+        </div>
+        <div id="qtPickResult" class="pick-out mt8"><span class="mu">选好门店和时间，给你算取号时机。</span></div>
+      </div>
+      <div id="qtLive" class="sample-state mt16"><div class="ci">实时排队待加载</div></div>
       <div class="mt16" id="qtAlertCard">
         <div class="fl ai jb fw g8"><label style="margin:0">叫号提醒</label><span class="mu">后台收集运行时，命中条件会用你配置的通知渠道推送。</span></div>
         <div class="fl g8 fw mt8">
@@ -289,7 +305,9 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
         </div>
         <div id="qtAlerts" class="mt8"><span class="mu">尚未设置提醒</span></div>
       </div>
-      <div class="sample-grid">
+      <details class="adv mt16">
+      <summary>高级 · 历史趋势分析（需先开后台收集积累数据）</summary>
+      <div class="sample-grid mt16">
         <div class="fg"><label>日期类型</label><select id="qtType" onchange="loadQueueTrends()"><option value="all">全部</option><option value="weekday">工作日</option><option value="weekend">周末</option><option value="holiday">节假日</option></select></div>
         <div class="fg"><label>开始日期</label><input type="date" id="qtFrom" onchange="loadQueueTrends()"></div>
         <div class="fg"><label>结束日期</label><input type="date" id="qtTo" onchange="loadQueueTrends()"></div>
@@ -301,6 +319,7 @@ input:focus,select:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px 
       <div id="qtAdvice" class="mt16"></div>
       <div id="qtChart" class="chart mt16"><div class="empty">加载中</div></div>
       <div id="qtTable" class="mt16"></div>
+      </details>
     </div>
   </section>
 
@@ -527,7 +546,12 @@ function addQueueAlert(){const s=currentAlertStore();if(!s){alert('请先在上�
 function toggleQueueAlert(i,on){if(qtAlerts[i]){qtAlerts[i].enabled=on;saveQueueAlerts()}}
 function removeQueueAlert(i){qtAlerts.splice(i,1);saveQueueAlerts()}
 async function saveQueueAlerts(){try{await fetch('/api/queue/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:qtAlerts})});renderQueueAlerts()}catch(e){alert('保存提醒失败')}}
-async function loadQueueLive(){const box=el('qtLive');if(!box)return;box.innerHTML='<div class="ci">实时排队加载中…</div>';if(qtSelected.length){try{const ids=qtSelected.slice(0,6);const panels=await Promise.all(ids.map(id=>safeFetch('/api/queue/live?store='+encodeURIComponent(id)).catch(()=>null)));renderQueueLivePanels(panels.filter(Boolean))}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}return}const p=new URLSearchParams();p.set('limit','8');try{const d=await safeFetch('/api/queue/stores?'+p.toString());renderQueueLive(d.stores||[])}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}}
+async function loadQueueLive(){const box=el('qtLive');if(!box)return;box.innerHTML='<div class="ci">实时排队加载中…</div>';if(qtSelected.length){try{const ids=qtSelected.slice(0,6);const panels=await Promise.all(ids.map(id=>safeFetch('/api/queue/live?store='+encodeURIComponent(id)).catch(()=>null)));qtPanels=panels.filter(Boolean);renderQueueLivePanels(qtPanels);calcPickTime()}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}return}qtPanels=[];calcPickTime();const p=new URLSearchParams();p.set('limit','8');try{const d=await safeFetch('/api/queue/stores?'+p.toString());renderQueueLive(d.stores||[])}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}}
+let qtPanels=[];
+function qtWaitMin(p){if(!p)return null;return (p.eta_minutes!=null)?p.eta_minutes:(p.server_wait_minutes||null)}
+function fmtMin(m){m=((Math.round(m)%1440)+1440)%1440;const h=Math.floor(m/60),mi=m%60;return (h<10?'0':'')+h+':'+(mi<10?'0':'')+mi}
+function nowMin(){const d=new Date();return d.getHours()*60+d.getMinutes()}
+function calcPickTime(){const box=el('qtPickResult');if(!box)return;const p=qtPanels[0],w=qtWaitMin(p);if(!p||w==null){box.innerHTML='<span class="mu">先在上方选一个关注门店、拿到实时排队后才能估算。</span>';return}const mode=(el('qtPickMode')||{}).value||'eat',t=(el('qtPickTime')||{}).value;if(!t){box.innerHTML='<span class="mu">填一个时间，给你算取号时机。</span>';return}const pr=t.split(':'),base=(+pr[0])*60+(+pr[1]),store=esc(p.store_name||p.store_id),est=(p.eta_minutes!=null)?('约 '+w+' 分钟'):('约 '+w+' 分钟(接口预估)');if(mode==='eat'){const pick=base-w;if(pick<=nowMin()){box.innerHTML='<b>🍣 现在就去取号</b><div class="mu mt8">'+store+' 当前预计等待 '+est+'，想 '+t+' 吃上得马上取号，越早越好。</div>'}else{box.innerHTML='<b>🍣 建议 '+fmtMin(pick)+' 前去取号</b><div class="mu mt8">'+store+' 当前预计等待 '+est+'，'+t+' 吃上需要提前取号。</div>'}}else{const eat=base+w;box.innerHTML='<b>🍽 预计 '+fmtMin(eat)+' 左右能吃上</b><div class="mu mt8">'+store+' '+t+' 取号 · 当前预计等待 '+est+'。</div>'}}
 function sparkSVG(arr){if(!arr||arr.length<2)return'';const w=140,h=34,mn=Math.min(...arr),mx=Math.max(...arr),rg=(mx-mn)||1,n=arr.length,dx=w/(n-1);const pts=arr.map((v,i)=>(i*dx).toFixed(1)+','+(h-3-((v-mn)/rg)*(h-6)).toFixed(1)).join(' ');return'<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none"><polyline points="'+pts+'"/></svg>'}
 function waitLevel(s){const eta=(s.eta_minutes!=null)?s.eta_minutes:(s.server_wait_minutes||0),cap=s.wait_time_cap||180,pct=eta<=0?0:Math.max(5,Math.min(100,Math.round(eta/cap*100))),lvl=eta<=0?'g':eta<=30?'g':eta<=90?'y':'r';return{eta:eta,pct:pct,lvl:lvl}}
 function renderQueueLivePanels(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">暂无实时排队数据</div>';return}box.innerHTML='<div class="sg">'+rows.map(s=>{const open=s.online_open||s.store_status==='OPEN',cls=open?'av':'full';const etaTxt=(s.eta_minutes!=null)?(s.eta_minutes+' 分钟'):(s.server_wait_minutes?(s.server_wait_minutes+' 分钟*'):'—');const c15=(s.called_15m!=null)?('近15分钟叫号 +'+s.called_15m):'近15分钟 待收集';const rate=(s.rate_per_min!=null)?('均速 '+s.rate_per_min.toFixed(1)+' 桌/分'):'均速 待收集';const wl=waitLevel(s),trend=(s.called_15m>0)?' ↑':'';return'<div class="sl '+cls+'"><div class="fl ai jb g8"><div class="tm">叫号 '+(s.called_no||'—')+esc(trend)+'</div>'+sparkSVG(s.spark)+'</div><div class="ss">'+esc(s.store_name||s.store_id)+'</div><div class="waitbar" title="拥挤度"><i class="lv-'+wl.lvl+'" style="width:'+wl.pct+'%"></i></div><div class="mu mt8">前面 '+(s.wait_groups||0)+' 桌 · 约 '+etaTxt+'<br>'+esc(c15)+' · '+esc(rate)+'<br>'+esc(s.store_status||'-')+' · '+esc(s.net_ticket_status||'-')+'</div></div>'}).join('')+'</div><p class="mu mt8">叫号、在等桌数与拥挤度为实时；小折线是近 2 小时叫号推进，近15分钟与均速来自本机后台收集。带 * 为接口预估值。</p>'}
