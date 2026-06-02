@@ -126,7 +126,7 @@ func TestRelayResponseNormalizesHTTPVersion(t *testing.T) {
 	}
 	var out bytes.Buffer
 	ps := &ProxyServer{}
-	if err := ps.relayResponse(&out, resp, http.MethodGet, target, nil); err != nil {
+	if err := ps.relayResponse(&out, resp, http.MethodGet, target, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(out.String(), "HTTP/1.1 200 OK\r\n") {
@@ -152,7 +152,7 @@ func TestRelayResponseBuffersSushiroResponseWithUnknownLength(t *testing.T) {
 	}
 	var out bytes.Buffer
 	ps := &ProxyServer{}
-	if err := ps.relayResponse(&out, resp, http.MethodGet, target, nil); err != nil {
+	if err := ps.relayResponse(&out, resp, http.MethodGet, target, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
@@ -185,7 +185,7 @@ func TestRelayResponseStreamsNonAPISushiroResponseWithUnknownLength(t *testing.T
 	}
 	var out bytes.Buffer
 	ps := &ProxyServer{}
-	if err := ps.relayResponse(&out, resp, http.MethodGet, target, nil); err != nil {
+	if err := ps.relayResponse(&out, resp, http.MethodGet, target, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	text := strings.ToLower(out.String())
@@ -213,7 +213,7 @@ func TestRelayResponseRejectsOversizedSushiroAPIResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	ps := &ProxyServer{}
-	err = ps.relayResponse(io.Discard, resp, http.MethodGet, target, nil)
+	err = ps.relayResponse(io.Discard, resp, http.MethodGet, target, nil, nil, nil)
 	if err == nil {
 		t.Fatal("relayResponse returned nil error for oversized Sushiro API response")
 	}
