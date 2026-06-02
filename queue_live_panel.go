@@ -30,7 +30,10 @@ type QueueLivePanel struct {
 	EtaMinutes      *int     `json:"eta_minutes,omitempty"`   // 综合预估等待（基于均速+在等组数）
 	ObservedAt      string   `json:"observed_at"`             // 本次快照时间
 	HistoryPoints   int      `json:"history_points"`          // 参与计算的历史观测数
+	Spark           []int    `json:"spark,omitempty"`         // 最近一段叫号序列（时间升序），用于画推进小图
 }
+
+const queuePanelSparkMax = 40
 
 func buildQueueLivePanel(ctx context.Context, storeID string, now time.Time) (QueueLivePanel, error) {
 	store, err := NewQueueLiveClient().GetStore(ctx, storeID)
@@ -61,6 +64,7 @@ func buildQueueLivePanel(ctx context.Context, storeID string, now time.Time) (Qu
 		// 把刚拿到的实时快照接到历史末尾，作为“现在”的叫号。
 		history = append(history, snapshot)
 	}
+	panel.Spark = queuePanelSpark(history)
 	if len(history) < 2 {
 		return panel, nil
 	}
@@ -76,6 +80,22 @@ func buildQueueLivePanel(ctx context.Context, storeID string, now time.Time) (Qu
 		}
 	}
 	return panel, nil
+}
+
+// queuePanelSpark 从时间升序的观测里取最近 queuePanelSparkMax 个叫号，用于前端画推进小图。
+func queuePanelSpark(sorted []QueueObservation) []int {
+	if len(sorted) < 2 {
+		return nil
+	}
+	start := 0
+	if len(sorted) > queuePanelSparkMax {
+		start = len(sorted) - queuePanelSparkMax
+	}
+	out := make([]int, 0, len(sorted)-start)
+	for _, o := range sorted[start:] {
+		out = append(out, o.DisplayCalledNo)
+	}
+	return out
 }
 
 // recentStoreObservations 取某店在 [now-window, now] 内、按时间升序、带有效叫号的观测。
