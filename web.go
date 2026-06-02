@@ -55,6 +55,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/reservations", handleReservations)
 	mux.HandleFunc("/api/reservations/cancel", handleCancelReservation)
 	mux.HandleFunc("/api/queue/ticket", handleQueueTicket)
+	mux.HandleFunc("/api/queue/ticket/plan", handleNetTicketPlan)
 
 	// Preferences
 	mux.HandleFunc("/api/preferences", handlePreferences)
@@ -106,6 +107,7 @@ func cmdWeb() {
 		setWebSettings(settings)
 	}
 	sampler.StartIfAuto(ctx)
+	netTicketSched.Start(ctx)
 
 	go func() {
 		<-ctx.Done()

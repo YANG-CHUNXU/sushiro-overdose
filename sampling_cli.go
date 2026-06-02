@@ -214,6 +214,7 @@ func cmdSamplerDaemon() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	netTicketSched.Start(ctx)
 	if err := sampler.startWithConfig(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
 		logMessage(time.Now(), "sampling daemon failed: "+err.Error())
 		return

@@ -68,6 +68,49 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "ticket": ticket})
 }
 
+// handleNetTicketPlan 读取/设置「定时取号」计划。
+func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, LoadNetTicketPlan())
+	case http.MethodPost:
+		var body struct {
+			Enabled    bool   `json:"enabled"`
+			Store      string `json:"store"`
+			StoreName  string `json:"store_name"`
+			TargetTime string `json:"target_time"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+			return
+		}
+		plan := LoadNetTicketPlan()
+		plan.Enabled = body.Enabled
+		plan.StoreID = strings.TrimSpace(body.Store)
+		plan.StoreName = strings.TrimSpace(body.StoreName)
+		plan.TargetTime = strings.TrimSpace(body.TargetTime)
+		// 重新设定即重置当天执行状态，允许（重新）到点取号。
+		plan.FiredDate = ""
+		plan.FiredAt = ""
+		plan.Number = ""
+		plan.TicketID = 0
+		plan.LastError = ""
+		if body.Enabled {
+			plan.Status = "armed"
+		} else {
+			plan.Status = "idle"
+		}
+		clearNetTicketFire(time.Now().Format("2006-01-02"))
+		if err := SaveNetTicketPlan(plan); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, plan)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST only")
+	}
+}
+
 // handleCancelReservation 取消预约/排队号（按 ticketId，复用 cancelReservation 端点）。
 func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
