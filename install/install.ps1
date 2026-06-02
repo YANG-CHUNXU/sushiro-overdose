@@ -74,8 +74,8 @@ if (-not $ExeSource) {
 $ExeTarget = Join-Path $InstallDir "$Binary.exe"
 $AppTarget = Join-Path $InstallDir "Sushiro Overdose.exe"
 
-# 如果已在运行，先尝试结束
-foreach ($ProcessName in @($Binary, "Sushiro Overdose")) {
+# 如果已在运行，先尝试结束（含旧命令名 sushiro-overdose）
+foreach ($ProcessName in @($Binary, "sushiro-overdose", "Sushiro Overdose")) {
     Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Host "检测到正在运行的旧版本，正在停止..." -ForegroundColor Yellow
         $_ | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -84,6 +84,17 @@ foreach ($ProcessName in @($Binary, "Sushiro Overdose")) {
 }
 
 Copy-Item $ExeSource.FullName $ExeTarget -Force
+
+# 清理旧版本残留的命令行 exe（命令名已从 sushiro-overdose 改为 sushiro）
+$LegacyExe = Join-Path $InstallDir "sushiro-overdose.exe"
+if (Test-Path $LegacyExe) {
+    try {
+        Remove-Item $LegacyExe -Force -ErrorAction Stop
+        Write-Host "已清理旧版本 sushiro-overdose.exe" -ForegroundColor Yellow
+    } catch {
+        Write-Host "旧版本 sushiro-overdose.exe 清理失败（可忽略）: $_" -ForegroundColor DarkYellow
+    }
+}
 
 # 下载桌面直下版：GUI 子系统，双击不显示终端黑框。
 $AppInstalled = $false
