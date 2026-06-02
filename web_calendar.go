@@ -69,15 +69,23 @@ func handleStores(w http.ResponseWriter, r *http.Request) {
 	}
 	client := getWebClient()
 	reg := GetStoreRegistry()
+	publicClient := NewQueueLiveClient()
 	stores := make([]map[string]string, 0)
 
 	for _, id := range ws.StoreIDs {
-		info, err := client.GetStoreInfo(r.Context(), id)
 		name := id
 		address := ""
-		if err == nil {
-			name = info.Name
-			address = info.Address
+		if client != nil {
+			if info, err := client.GetStoreInfo(r.Context(), id); err == nil {
+				name = info.Name
+				address = info.Address
+			}
+		}
+		if name == id { // 认证缺失或未命中时，用公开接口兜底解析门店名
+			if s, err := publicClient.GetStore(r.Context(), id); err == nil && s.Name != "" {
+				name = s.Name
+				address = s.Address
+			}
 		}
 		stores = append(stores, map[string]string{
 			"id":       id,

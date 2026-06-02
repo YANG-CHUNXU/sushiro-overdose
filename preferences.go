@@ -37,6 +37,8 @@ type UserPreferences struct {
 	Adult           int         `json:"adult"`
 	Child           int         `json:"child"`
 	TableType       string      `json:"table_type"`
+	PhoneNumber     string      `json:"phone_number"`
+	WechatID        string      `json:"wechat_id"`
 	SelectedStores  []string    `json:"selected_stores"`
 	StorePriority   []string    `json:"store_priority"`
 	DayPriorityMode string      `json:"day_priority_mode"`

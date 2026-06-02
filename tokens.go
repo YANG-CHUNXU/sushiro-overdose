@@ -284,14 +284,24 @@ func (t *CapturedTokens) toSettingsWithPrefs(prefs UserPreferences) Settings {
 		tableType = "T"
 	}
 
+	// 偏好里预填的手机号/微信ID 优先于捕获值，方便取号前提前配置。
+	phoneNumber := t.PhoneNumber
+	if v := strings.TrimSpace(prefs.PhoneNumber); v != "" {
+		phoneNumber = v
+	}
+	wechatID := t.WechatID
+	if v := strings.TrimSpace(prefs.WechatID); v != "" {
+		wechatID = v
+	}
+
 	return Settings{
 		StoreIDs:           storeIDs,
 		Adult:              adult,
 		Child:              prefs.Child,
 		TableType:          tableType,
 		Debug:              true,
-		PhoneNumber:        t.PhoneNumber,
-		WechatID:           t.WechatID,
+		PhoneNumber:        phoneNumber,
+		WechatID:           wechatID,
 		XAppCode:           t.XAppCode,
 		QueryAuthorization: t.QueryAuth,
 		ReservationAuth:    t.ReservationAuth,
