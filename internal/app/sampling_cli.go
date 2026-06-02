@@ -42,7 +42,7 @@ func cmdSample(args []string) {
 	case "autostart", "login":
 		cmdSampleAutoStart(args[1:])
 	default:
-		fmt.Println("Usage: sushiro-overdose sample [status|once|run|start|stop|autostart]")
+		fmt.Println("Usage: sushiro sample [status|once|run|start|stop|autostart]")
 	}
 }
 
@@ -170,7 +170,7 @@ func cmdSampleAutoStart(args []string) {
 		}
 		fmt.Println("系统开机自启动已取消")
 	default:
-		fmt.Println("Usage: sushiro-overdose sample autostart [status|on|off]")
+		fmt.Println("Usage: sushiro sample autostart [status|on|off]")
 	}
 }
 

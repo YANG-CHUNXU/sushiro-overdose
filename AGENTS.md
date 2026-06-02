@@ -39,7 +39,7 @@ main.go (默认启动 Web UI)
 ### 两种使用模式
 
 1. **Web UI 模式（默认）**：无参数运行 → 启动 HTTP 服务 → 优先打开独立应用窗口，失败时回退默认浏览器
-2. **CLI 模式（高级）**：`sushiro-overdose cli` → 传统终端交互
+2. **CLI 模式（高级）**：`sushiro cli` → 传统终端交互
 
 ---
 
@@ -257,20 +257,20 @@ main.go (默认启动 Web UI)
 
 ```bash
 # 编译
-go build -o sushiro-overdose .
+go build -o sushiro .
 
 # 运行（默认打开 Web UI）
-./sushiro-overdose
+./sushiro
 
 # CLI 模式
-./sushiro-overdose cli
+./sushiro cli
 
 # 指定版本号编译
-go build -ldflags "-X main.Version=1.2.3" -o sushiro-overdose .
+go build -ldflags "-X main.Version=1.2.3" -o sushiro .
 
 # 交叉编译
-GOOS=windows GOARCH=amd64 go build -o sushiro-overdose.exe .
-GOOS=linux GOARCH=amd64 go build -o sushiro-overdose .
+GOOS=windows GOARCH=amd64 go build -o sushiro.exe .
+GOOS=linux GOARCH=amd64 go build -o sushiro .
 
 # 代码检查
 go vet ./...
@@ -378,11 +378,11 @@ Sushiro Overdose.app/
 └── Contents/
     ├── Info.plist          (应用元数据: 名称/版本/Bundle ID)
     ├── MacOS/
-    │   └── sushiro-overdose  (可执行二进制)
+    │   └── sushiro          (可执行二进制)
     └── Resources/           (预留给图标 .icns)
 ```
 
-用户双击 .app → macOS 执行 `Contents/MacOS/sushiro-overdose` → 启动 Web UI → 优先打开独立应用窗口，失败时回退默认浏览器。
+用户双击 .app → macOS 执行 `Contents/MacOS/sushiro` → 启动 Web UI → 优先打开独立应用窗口，失败时回退默认浏览器。
 
 如需添加应用图标，将 `.icns` 文件放入 `Resources/` 并在 `Info.plist` 中添加 `CFBundleIconFile`。
 
@@ -423,13 +423,13 @@ Sushiro Overdose.app/
 
 ## 编码约定
 
-1. **所有文件在 `package main`**，无子包
-2. **跨平台函数**：`platform.go` 导出大写函数 → `platform_*.go` 小写实现
+1. **代码按职责分包到 `internal/`**：`app`（编排+CLI+Web）依赖 `core`/`api`/`proxy`/`platform`/`notify`；`core` 为无内部依赖的公共底座。详见 [ARCHITECTURE.md](ARCHITECTURE.md)
+2. **跨平台函数**：`internal/platform/platform.go` 导出大写函数 → `platform_*.go` 小写实现
 3. **错误处理**：用户可见的错误用中文，内部日志用英文
 4. **时间格式**：API 使用紧凑格式（date: `20260413`, time: `193000`），展示时转换为 `2026-04-13`、`19:30`
 5. **配置文件**：JSON 格式，`MarshalIndent` 便于人类阅读
 6. **Git commit**：中文 commit message，遵循 conventional commits 风格
-7. **命名**：发布二进制名 `sushiro-overdose`，所有用户可见文案统一使用此名称
+7. **命名**：可执行/命令名为 `sushiro`（短命令）；仓库名、Go module、release 压缩包前缀（`sushiro-overdose_*.tar.gz`）及 DMG/exe 产品名（`Sushiro-Overdose-*`）保留 `sushiro-overdose` 不变
 
 ---
 

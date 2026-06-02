@@ -18,8 +18,8 @@ rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/Contents/MacOS"
 mkdir -p "${APP_DIR}/Contents/Resources"
 
-cp "${BINARY}" "${APP_DIR}/Contents/MacOS/sushiro-overdose"
-chmod +x "${APP_DIR}/Contents/MacOS/sushiro-overdose"
+cp "${BINARY}" "${APP_DIR}/Contents/MacOS/sushiro"
+chmod +x "${APP_DIR}/Contents/MacOS/sushiro"
 
 cat > "${APP_DIR}/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -29,7 +29,7 @@ cat > "${APP_DIR}/Contents/Info.plist" << PLIST
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
-    <string>sushiro-overdose</string>
+    <string>sushiro</string>
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
     <key>CFBundleName</key>

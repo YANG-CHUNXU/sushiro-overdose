@@ -5,7 +5,8 @@
 set -euo pipefail
 
 REPO="Ryujoxys/sushiro-overdose"
-BINARY="sushiro-overdose"
+ARCHIVE="sushiro-overdose"   # release 压缩包前缀（沿用仓库名）
+BINARY="sushiro"             # 压缩包内的二进制 + 落地命令名
 INSTALL_DIR="/usr/local/bin"
 
 echo "=== sushiro-overdose installer ==="
@@ -57,7 +58,7 @@ if [ "$OS" = "darwin" ]; then
     ASSET_ARCH="all"
 fi
 
-FILENAME="${BINARY}_${LATEST#v}_${OS}_${ASSET_ARCH}.${SUFFIX}"
+FILENAME="${ARCHIVE}_${LATEST#v}_${OS}_${ASSET_ARCH}.${SUFFIX}"
 URL="https://github.com/$REPO/releases/download/$LATEST/$FILENAME"
 
 TMP_DIR=$(mktemp -d)
@@ -103,5 +104,5 @@ else
 fi
 
 echo ""
-echo "✓ sushiro-overdose $LATEST installed to $INSTALL_DIR/$BINARY"
-echo "  运行 sushiro-overdose 开始使用"
+echo "✓ sushiro $LATEST installed to $INSTALL_DIR/$BINARY"
+echo "  运行 sushiro 开始使用"

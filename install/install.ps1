@@ -6,7 +6,8 @@
 $ErrorActionPreference = "Stop"
 
 $Repo = "Ryujoxys/sushiro-overdose"
-$Binary = "sushiro-overdose"
+$Archive = "sushiro-overdose"   # release 压缩包前缀（沿用仓库名）
+$Binary = "sushiro"             # 压缩包内的 exe + 落地命令名
 
 Write-Host ""
 Write-Host "=== sushiro-overdose 一键安装 ===" -ForegroundColor Green
@@ -42,7 +43,7 @@ Write-Host "最新版本: $Latest"
 
 # 构造下载链接
 $Version = $Latest -replace '^v'
-$Filename = "${Binary}_${Version}_windows_${Arch}.zip"
+$Filename = "${Archive}_${Version}_windows_${Arch}.zip"
 $Url = "https://github.com/$Repo/releases/download/$Latest/$Filename"
 $AppFilename = "Sushiro-Overdose-${Version}-windows-${Arch}.exe"
 $AppUrl = "https://github.com/$Repo/releases/download/$Latest/$AppFilename"
@@ -125,12 +126,12 @@ Remove-Item $AppPath -Force -ErrorAction SilentlyContinue
 Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "安装完成！sushiro-overdose $Latest" -ForegroundColor Green
+Write-Host "安装完成！sushiro $Latest" -ForegroundColor Green
 Write-Host "  命令行工具: $ExeTarget" -ForegroundColor Cyan
 if ($AppInstalled) {
     Write-Host "  桌面应用: $AppTarget" -ForegroundColor Cyan
 }
-Write-Host "  使用方式：双击桌面图标，或新开终端执行 sushiro-overdose" -ForegroundColor Cyan
+Write-Host "  使用方式：双击桌面图标，或新开终端执行 sushiro" -ForegroundColor Cyan
 Write-Host ""
 
 # 自动启动询问
@@ -138,7 +139,7 @@ $envAuto = $env:SUSHIRO_AUTO_LAUNCH
 if ($envAuto -eq "1" -or $envAuto -eq "true") {
     $launch = "y"
 } else {
-    $launch = Read-Host "现在启动 sushiro-overdose? [Y/n]"
+    $launch = Read-Host "现在启动 sushiro? [Y/n]"
 }
 if ($launch -eq "" -or $launch -match '^[Yy]') {
     Write-Host "启动中..." -ForegroundColor Green

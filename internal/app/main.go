@@ -48,30 +48,37 @@ func printBanner() {
 }
 
 func printUsage() {
-	fmt.Println("Usage: sushiro-overdose [command]")
+	fmt.Println("用法: sushiro [命令]")
 	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  (no args)    Launch Web UI (recommended)")
-	fmt.Println("  web          Launch Web UI")
-	fmt.Println("  cli          Run in foreground CLI mode (advanced)")
-	fmt.Println("  start, -d    Start booking daemon in background")
-	fmt.Println("  status       Show running status")
-	fmt.Println("  calendar     View available time slots (nearest 7 days)")
-	fmt.Println("  sniper       Sniper mode - pre-book unopened slots")
-	fmt.Println("  list         Show current reservations")
-	fmt.Println("  cancel <id>  Cancel a reservation by ticket ID")
-	fmt.Println("  trends       Analyze slot availability trends")
-	fmt.Println("  recommend    Smart time slot recommendations")
-	fmt.Println("  sample       Collect local signals for visit predictions")
-	fmt.Println("  doctor       Print readonly diagnostics")
-	fmt.Println("  diag-bundle  Export a zipped evidence pack for debugging")
-	fmt.Println("  auth-probe   Test saved auth against basic official APIs")
-	fmt.Println("  repair-proxy Restore system proxy settings")
-	fmt.Println("  uninstall    Remove local sensitive data and certificate")
-	fmt.Println("  stop-processes Stop related app processes before deleting the app")
-	fmt.Println("  exit         Stop background process")
-	fmt.Println("  config       Configure settings (feishu, telegram, bark, etc.)")
-	fmt.Println("  help         Show this help message")
+	fmt.Println("默认 (无命令)   启动 Web UI（推荐，独立窗口优先）")
+	fmt.Println()
+	fmt.Println("运行:")
+	fmt.Println("  web            启动 Web UI")
+	fmt.Println("  cli            前台终端模式（高级）")
+	fmt.Println("  start          后台静默抢号")
+	fmt.Println("  status         查看运行状态")
+	fmt.Println("  exit           停止后台进程")
+	fmt.Println()
+	fmt.Println("预约:")
+	fmt.Println("  calendar       查看近 7 天可预约时段")
+	fmt.Println("  sniper         狙击模式（提前锁定未开放时段）")
+	fmt.Println("  list           查看当前预约")
+	fmt.Println("  cancel <id>    取消预约")
+	fmt.Println()
+	fmt.Println("数据与推荐:")
+	fmt.Println("  trends         分析时段可用率趋势")
+	fmt.Println("  recommend      智能推荐最佳时段")
+	fmt.Println("  sample         信息收集（once|run|start|stop|autostart）")
+	fmt.Println()
+	fmt.Println("配置与维护:")
+	fmt.Println("  config         通知/门店配置（feishu|telegram|bark|serverchan|store）")
+	fmt.Println("  doctor         打印只读诊断")
+	fmt.Println("  diag-bundle    导出脱敏证据包（zip）")
+	fmt.Println("  auth-probe     测试已存认证连通性")
+	fmt.Println("  repair-proxy   恢复系统代理")
+	fmt.Println("  stop-processes 停止相关进程")
+	fmt.Println("  uninstall      移除本地敏感数据与证书")
+	fmt.Println("  help           显示本帮助")
 }
 
 func Run() {
@@ -555,7 +562,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 					authErrors++
 					if authErrors >= 3 {
 						LogMessage(now, "认证失败，请重新运行获取新参数")
-						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新打开 sushiro-overdose 重新捕获")
+						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新打开 sushiro 重新捕获")
 						DeleteLocalConfig()
 						return
 					}
@@ -617,7 +624,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				authErrors++
 				if authErrors >= 3 {
 					LogMessage(now, "认证失败，请重新运行")
-					sendNotification("寿司郎 - 认证失败", "请重新打开 sushiro-overdose 重新捕获")
+					sendNotification("寿司郎 - 认证失败", "请重新打开 sushiro 重新捕获")
 					DeleteLocalConfig()
 					return
 				}

@@ -94,9 +94,9 @@ jobs:
           MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
         run: |
           VERSION="${{ steps.release.outputs.version }}"
-          BINARY="dist/sushiro-overdose_darwin_all/sushiro-overdose"
+          BINARY="dist/sushiro_darwin_all/sushiro"
           if [ ! -f "$BINARY" ]; then
-            BINARY=$(find dist -name 'sushiro-overdose' -path '*darwin*' | head -1)
+            BINARY=$(find dist -name 'sushiro' -path '*darwin*' | head -1)
           fi
           if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
             echo "Darwin binary not found in dist/"

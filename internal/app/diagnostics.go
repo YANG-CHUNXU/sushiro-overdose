@@ -948,7 +948,7 @@ func cmdDoctor() {
 }
 
 func printDiagnostics(w io.Writer, d Diagnostics) {
-	fmt.Fprintf(w, "sushiro-overdose doctor (%s)\n", d.GeneratedAt)
+	fmt.Fprintf(w, "sushiro doctor (%s)\n", d.GeneratedAt)
 	fmt.Fprintf(w, "版本: %s\n", d.Version)
 	fmt.Fprintf(w, "平台: %s/%s\n", d.Platform.GOOS, d.Platform.GOARCH)
 	fmt.Fprintf(w, "运行: %t", d.Running.Running)

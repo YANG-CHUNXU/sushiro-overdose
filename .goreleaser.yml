@@ -2,7 +2,7 @@ version: 2
 
 builds:
   - main: .
-    binary: sushiro-overdose
+    binary: sushiro
     ldflags:
       - -s -w -X main.Version={{.Version}}
     env:
@@ -17,10 +17,11 @@ builds:
 
 universal_binaries:
   - replace: true
-    name_template: sushiro-overdose
+    name_template: sushiro
 
 archives:
   - format: tar.gz
+    # Archive filename keeps the project/repo name; the binary inside is `sushiro`.
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_

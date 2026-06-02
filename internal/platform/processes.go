@@ -11,7 +11,7 @@ import (
 )
 
 func killRelatedAppProcessesByPGrep(excludePID int) []MaintenanceResult {
-	out, err := exec.Command("pgrep", "-f", "sushiro-overdose|Sushiro-Overdose").Output()
+	out, err := exec.Command("pgrep", "-f", "sushiro|Sushiro").Output()
 	if err != nil {
 		return []MaintenanceResult{{
 			Name:   "related_processes",

@@ -402,12 +402,9 @@ func killRelatedAppProcesses(excludePID int) []MaintenanceResult {
 $exclude = [int]$args[0]
 $matches = Get-CimInstance Win32_Process | Where-Object {
   $_.ProcessId -ne $exclude -and $_.ProcessId -ne $PID -and (
-    $_.Name -like 'sushiro-overdose*.exe' -or
-    $_.Name -like 'Sushiro-Overdose*.exe' -or
-    $_.ExecutablePath -like '*\sushiro-overdose*.exe' -or
-    $_.ExecutablePath -like '*\Sushiro-Overdose*.exe' -or
-    $_.CommandLine -like '*sushiro-overdose*' -or
-    $_.CommandLine -like '*Sushiro-Overdose*'
+    $_.Name -like 'sushiro*.exe' -or
+    $_.ExecutablePath -like '*\sushiro*.exe' -or
+    $_.CommandLine -like '*sushiro*'
   )
 }
 foreach ($p in $matches) {

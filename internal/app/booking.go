@@ -24,12 +24,12 @@ func cmdList() {
 
 	tokens, ok := tryLoadConfig()
 	if !ok {
-		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
+		fmt.Println("暂无配置，请先运行 sushiro 完成参数捕获")
 		return
 	}
 	if err := tokens.ValidateForReservation(); err != nil {
 		fmt.Println(err)
-		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
+		fmt.Println("请重新运行 sushiro 完成参数捕获")
 		return
 	}
 	settings := tokens.ToSettings()
@@ -107,12 +107,12 @@ func cmdCancel(args []string) {
 
 	tokens, ok := tryLoadConfig()
 	if !ok {
-		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
+		fmt.Println("暂无配置，请先运行 sushiro 完成参数捕获")
 		return
 	}
 	if err := tokens.ValidateForReservation(); err != nil {
 		fmt.Println(err)
-		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
+		fmt.Println("请重新运行 sushiro 完成参数捕获")
 		return
 	}
 	settings := tokens.ToSettings()
