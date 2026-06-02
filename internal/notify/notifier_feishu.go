@@ -1,4 +1,4 @@
-package app
+package notify
 
 import (
 	"bytes"
@@ -54,3 +54,6 @@ func (f *feishuNotifier) Send(ctx context.Context, title, content string) error 
 	}
 	return nil
 }
+
+// NewFeishuNotifier 构造飞书通知器（供外部包用）。
+func NewFeishuNotifier(webhook string) Notifier { return &feishuNotifier{webhook: webhook} }

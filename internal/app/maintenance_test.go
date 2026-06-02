@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -13,7 +15,7 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 
 	removed := []string{
 		LocalConfigPath(),
-		notifyConfigPath(),
+		NotifyConfigPath(),
 		FeishuConfigPath(),
 		PreferencesPath(),
 		StoreRegistryPath(),
@@ -63,7 +65,7 @@ func TestUninstallLocalDataPartialSelectionKeepsUnselectedFiles(t *testing.T) {
 	setMaintenanceTestHome(t)
 
 	configPath := LocalConfigPath()
-	notifyPath := notifyConfigPath()
+	notifyPath := NotifyConfigPath()
 	certPath := filepath.Join(certDirPath(), "ca.crt")
 	writeMaintenanceTestFile(t, configPath)
 	writeMaintenanceTestFile(t, notifyPath)

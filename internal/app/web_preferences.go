@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -32,18 +34,18 @@ func handlePreferences(w http.ResponseWriter, r *http.Request) {
 func handleNotifyConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		cfg, _ := loadNotifyConfig()
+		cfg, _ := LoadNotifyConfig()
 		if cfg == nil {
-			cfg = &notifyConfig{}
+			cfg = &NotifyConfig{}
 		}
 		writeJSON(w, cfg)
 	case http.MethodPost, http.MethodPut:
-		var cfg notifyConfig
+		var cfg NotifyConfig
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
 			return
 		}
-		if err := saveNotifyConfig(&cfg); err != nil {
+		if err := SaveNotifyConfig(&cfg); err != nil {
 			writeError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
 			return
 		}

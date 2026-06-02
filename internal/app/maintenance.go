@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -371,7 +373,7 @@ func uninstallTargets(options UninstallOptions) []maintenanceTarget {
 	certDir := certDirPath()
 	return []maintenanceTarget{
 		{name: "config", path: LocalConfigPath(), selected: options.All || options.Config},
-		{name: "notify", path: notifyConfigPath(), selected: options.All || options.Notify},
+		{name: "notify", path: NotifyConfigPath(), selected: options.All || options.Notify},
 		{name: "feishu", path: FeishuConfigPath(), selected: options.All || options.Feishu},
 		{name: "preferences", path: PreferencesPath(), selected: options.All || options.Preferences},
 		{name: "stores", path: StoreRegistryPath(), selected: options.All || options.Stores},

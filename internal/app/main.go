@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -147,9 +149,9 @@ func cmdForeground() {
 func cmdConfig(args []string) {
 	if len(args) == 0 {
 		fmt.Println("当前通知设置:")
-		cfg, _ := loadNotifyConfig()
+		cfg, _ := LoadNotifyConfig()
 		if cfg == nil {
-			cfg = &notifyConfig{}
+			cfg = &NotifyConfig{}
 		}
 		fmt.Printf("  飞书: %s\n", notifyStatus(cfg.Feishu.Webhook))
 		fmt.Printf("  Telegram: %s\n", notifyStatus(cfg.Telegram.Token))
@@ -186,38 +188,38 @@ func cmdConfig(args []string) {
 			fmt.Println("Usage: sushiro config telegram <bot_token> <chat_id>")
 			return
 		}
-		cfg, _ := loadNotifyConfig()
+		cfg, _ := LoadNotifyConfig()
 		if cfg == nil {
-			cfg = &notifyConfig{}
+			cfg = &NotifyConfig{}
 		}
 		cfg.Telegram.Token = args[1]
 		cfg.Telegram.ChatID = args[2]
-		saveNotifyConfig(cfg)
+		SaveNotifyConfig(cfg)
 		fmt.Println("Telegram 通知已配置!")
 	case "bark":
 		if len(args) < 3 {
 			fmt.Println("Usage: sushiro config bark <server_url> <device_key>")
 			return
 		}
-		cfg, _ := loadNotifyConfig()
+		cfg, _ := LoadNotifyConfig()
 		if cfg == nil {
-			cfg = &notifyConfig{}
+			cfg = &NotifyConfig{}
 		}
 		cfg.Bark.URL = args[1]
 		cfg.Bark.Key = args[2]
-		saveNotifyConfig(cfg)
+		SaveNotifyConfig(cfg)
 		fmt.Println("Bark 通知已配置!")
 	case "serverchan", "server-chan", "sct":
 		if len(args) < 2 {
 			fmt.Println("Usage: sushiro config serverchan <send_key>")
 			return
 		}
-		cfg, _ := loadNotifyConfig()
+		cfg, _ := LoadNotifyConfig()
 		if cfg == nil {
-			cfg = &notifyConfig{}
+			cfg = &NotifyConfig{}
 		}
 		cfg.ServerChan.Key = args[1]
-		saveNotifyConfig(cfg)
+		SaveNotifyConfig(cfg)
 		fmt.Println("Server酱 通知已配置!")
 	case "store":
 		if len(args) < 2 {
@@ -269,12 +271,12 @@ func notifyStatus(v string) string {
 func updateLocalConfigFeishu(webhook string) {
 	SaveFeishuConfig(webhook)
 	// Also update notify config
-	cfg, _ := loadNotifyConfig()
+	cfg, _ := LoadNotifyConfig()
 	if cfg == nil {
-		cfg = &notifyConfig{}
+		cfg = &NotifyConfig{}
 	}
 	cfg.Feishu.Webhook = webhook
-	saveNotifyConfig(cfg)
+	SaveNotifyConfig(cfg)
 	// Also update in-memory tokens if loaded
 	tokens, err := LoadLocalConfig()
 	if err == nil {
@@ -342,7 +344,7 @@ func run(ctx context.Context) error {
 				SaveFeishuConfig(webhook)
 				settings.FeishuWebhook = webhook
 				// Add feishu to notifier
-				globalNotifier.Add(&feishuNotifier{webhook: webhook})
+				globalNotifier.Add(NewFeishuNotifier(webhook))
 				fmt.Println("飞书通知已配置!")
 			}
 		}

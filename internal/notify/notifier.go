@@ -1,4 +1,4 @@
-package app
+package notify
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
@@ -66,7 +66,7 @@ func (m *MultiNotifier) List() []Notifier {
 
 // ---- Notification config ----
 
-type notifyConfig struct {
+type NotifyConfig struct {
 	Feishu struct {
 		Webhook string `json:"webhook"`
 	} `json:"feishu"`
@@ -83,36 +83,36 @@ type notifyConfig struct {
 	} `json:"server_chan"`
 }
 
-func notifyConfigPath() string {
+func NotifyConfigPath() string {
 	return fmt.Sprintf("%s/notify.json", AppDirPath())
 }
 
-func loadNotifyConfig() (*notifyConfig, error) {
-	data, err := os.ReadFile(notifyConfigPath())
+func LoadNotifyConfig() (*NotifyConfig, error) {
+	data, err := os.ReadFile(NotifyConfigPath())
 	if err != nil {
 		return nil, err
 	}
-	var cfg notifyConfig
+	var cfg NotifyConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
 }
 
-func saveNotifyConfig(cfg *notifyConfig) error {
+func SaveNotifyConfig(cfg *NotifyConfig) error {
 	os.MkdirAll(AppDirPath(), 0o755)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(notifyConfigPath(), data, 0o600)
+	return os.WriteFile(NotifyConfigPath(), data, 0o600)
 }
 
 // BuildNotifierFromConfig creates a MultiNotifier from saved config.
 func BuildNotifierFromConfig() *MultiNotifier {
 	mn := &MultiNotifier{}
 
-	cfg, err := loadNotifyConfig()
+	cfg, err := LoadNotifyConfig()
 	if err != nil {
 		// Try loading legacy feishu config
 		if webhook := LoadFeishuConfig(); webhook != "" {

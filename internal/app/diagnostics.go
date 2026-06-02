@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -190,7 +192,7 @@ func CollectDiagnostics() Diagnostics {
 			AppDir:          AppDirPath(),
 			ConfigPath:      LocalConfigPath(),
 			PreferencesPath: filepath.Join(AppDirPath(), "preferences.json"),
-			NotifyPath:      notifyConfigPath(),
+			NotifyPath:      NotifyConfigPath(),
 			LogPath:         LogPath(),
 			StatePath:       StateFilePath(),
 			CertDir:         certDirPath(),
