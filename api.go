@@ -126,6 +126,42 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 	return reservation, nil
 }
 
+// CreateNetTicket 远程取号（日常排队），对应小程序「排队取号」。端点名来自抓包，
+// payload 参照 createReservation 去掉日期/时间（取号即"现在"）。属实验性：成功与否、
+// 字段细节以接口实际返回为准，错误原文会原样返回便于校正。
+func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (ReservationRecord, error) {
+	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/createNetTicket"
+	payload := map[string]any{
+		"storeId":     storeID,
+		"adult":       c.settings.Adult,
+		"child":       c.settings.Child,
+		"tableType":   c.settings.TableType,
+		"wechatId":    c.settings.WechatID,
+		"phoneNumber": c.settings.PhoneNumber,
+	}
+	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), payload)
+	if err != nil {
+		return ReservationRecord{}, err
+	}
+	var ticket ReservationRecord
+	if err := json.Unmarshal(body, &ticket); err != nil {
+		return ReservationRecord{}, fmt.Errorf("net ticket response is not a JSON object: %w", err)
+	}
+	if !reservationLooksSuccessful(ticket) {
+		var wrapper struct {
+			Data ReservationRecord `json:"data"`
+		}
+		if err := json.Unmarshal(body, &wrapper); err == nil && reservationLooksSuccessful(wrapper.Data) {
+			return wrapper.Data, nil
+		}
+		if err := reservationBusinessError(body); err != nil {
+			return ReservationRecord{}, err
+		}
+		return ReservationRecord{}, fmt.Errorf("net ticket response missing ticket id/number: %s", normalizeErrorBody(body))
+	}
+	return ticket, nil
+}
+
 func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, error) {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/getReservations"
 	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{

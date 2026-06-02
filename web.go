@@ -53,6 +53,8 @@ func cmdWeb() {
 	// Calendar & reservations
 	mux.HandleFunc("/api/calendar", handleCalendar)
 	mux.HandleFunc("/api/reservations", handleReservations)
+	mux.HandleFunc("/api/reservations/cancel", handleCancelReservation)
+	mux.HandleFunc("/api/queue/ticket", handleQueueTicket)
 
 	// Preferences
 	mux.HandleFunc("/api/preferences", handlePreferences)

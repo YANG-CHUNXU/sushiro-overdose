@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -36,6 +37,61 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, reservations)
+}
+
+// handleQueueTicket 远程取号（实验性）。需要已捕获的认证态。
+func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var body struct {
+		Store string `json:"store"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	storeID := strings.TrimSpace(body.Store)
+	if storeID == "" {
+		writeError(w, http.StatusBadRequest, "缺少门店 ID")
+		return
+	}
+	refreshWebClient()
+	client := getWebClient()
+	if client == nil {
+		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，请先完成认证再取号")
+		return
+	}
+	ticket, err := client.CreateNetTicket(r.Context(), storeID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "ticket": ticket})
+}
+
+// handleCancelReservation 取消预约/排队号（按 ticketId，复用 cancelReservation 端点）。
+func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var body struct {
+		TicketID int64 `json:"ticket_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TicketID == 0 {
+		writeError(w, http.StatusBadRequest, "缺少有效的 ticket_id")
+		return
+	}
+	refreshWebClient()
+	client := getWebClient()
+	if client == nil {
+		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，无法取消")
+		return
+	}
+	if err := client.CancelReservation(r.Context(), body.TicketID); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 func handleEngineState(w http.ResponseWriter, r *http.Request) {
