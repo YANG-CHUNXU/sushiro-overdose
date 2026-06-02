@@ -269,6 +269,10 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 		requestHeaderKeys := APIDiscoveryHeaderKeys(req.Header)
 		requestBodyKeys := APIDiscoveryPayloadKeys(bodyBytes)
 		requestBodyFields := APIDiscoveryPayloadFieldKinds(bodyBytes)
+		bodyBytes, patches := patchSushiroRequestForForward(req, bodyBytes)
+		if len(patches) > 0 {
+			ps.addLog(fmt.Sprintf("MITM request patched for mobile compatibility: %s %s (%s)", req.Method, sanitizedProxyURL(requestURLForTrace(req, "https", hostPort)), strings.Join(patches, ", ")))
+		}
 
 		// Capture tokens
 		ps.tokens.CaptureFromRequest(req, bodyBytes)

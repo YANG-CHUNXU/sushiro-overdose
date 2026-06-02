@@ -43,6 +43,22 @@ func (t *CapturedTokens) IsComplete() bool {
 	return t.IsCompleteUnlocked()
 }
 
+func (t *CapturedTokens) CaptureSignature() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join([]string{
+		t.XAppCode,
+		t.QueryAuth,
+		t.ReservationAuth,
+		t.UserAgent,
+		t.Referer,
+		t.XAppClient,
+		t.WechatID,
+		t.PhoneNumber,
+		strings.Join(t.StoreIDs, ","),
+	}, "\x1f")
+}
+
 // IsCompleteUnlocked checks completeness without locking (caller must hold lock).
 func (t *CapturedTokens) IsCompleteUnlocked() bool {
 	return t.XAppCode != "" &&

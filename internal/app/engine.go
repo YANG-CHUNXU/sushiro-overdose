@@ -218,9 +218,11 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 		proxyHint += "；已使用 PAC 仅代理寿司郎域名"
 	}
 	e.addLog(proxyHint + "。请彻底关闭 PC 微信后重新打开，进入寿司郎小程序，选任意门店点一次「排队」或「预约」（不用真的提交）")
+	e.addLog("提示：如果 PC 微信小程序弹出“服务器出错/网络错误”，但本工具抓到认证并通过基础接口自检，可以直接忽略小程序弹窗。")
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	lastProbeSignature := ""
 
 	for {
 		select {
@@ -231,17 +233,28 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 		case <-ticker.C:
 			bus.publish("engine", mustJSON(e.GetState()))
 			if tokens.IsComplete() {
-				e.cleanupProxy()
+				signature := tokens.CaptureSignature()
+				if signature == lastProbeSignature {
+					continue
+				}
+				lastProbeSignature = signature
+				prefs := LoadPreferences()
+				e.setState(EngineCapturing, "已抓到认证参数，正在自检基础接口...")
+				report := runAuthProbeWithTokens(ctx, "", tokens, prefs)
+				if !report.OK {
+					e.addLogLevel("已抓到认证参数，但基础接口自检未通过: "+authProbeFailureSummary(report), "warn")
+					e.setState(EngineCapturing, "已抓到认证参数，但基础接口自检未通过；请继续在小程序里点一次排队/预约，或查看接口调试记录。")
+					continue
+				}
 				if err := SaveLocalConfig(tokens); err != nil {
 					e.addLogLevel("保存配置失败: "+err.Error(), "error")
 				} else {
-					e.addLog("认证参数已捕获并保存！")
-					prefs := LoadPreferences()
+					e.addLog("认证参数已捕获、基础接口自检通过并保存！")
 					setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 				}
-				e.setState(EngineIdle, "认证参数捕获完成！")
+				e.cleanupProxy()
+				e.setState(EngineIdle, "认证参数捕获完成；即使小程序仍显示服务器出错，也不影响本工具使用。")
 
-				prefs := LoadPreferences()
 				tokens.Lock()
 				if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {
 					prefs.SelectedStores = tokens.StoreIDs

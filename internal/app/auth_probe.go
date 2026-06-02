@@ -52,9 +52,9 @@ func handleAuthProbe(w http.ResponseWriter, r *http.Request) {
 }
 
 func RunAuthProbe(ctx context.Context, requestedStore string) AuthProbeReport {
-	report := AuthProbeReport{}
 	tokens, err := LoadLocalConfig()
 	if err != nil {
+		report := AuthProbeReport{}
 		report.Missing = []string{"config.json"}
 		report.Advice = []string{"本地还没有认证参数；先从可用设备获取认证，或导入已有 config.json。"}
 		report.Results = append(report.Results, AuthProbeResult{Name: "读取本地认证", OK: false, Detail: err.Error()})
@@ -62,6 +62,11 @@ func RunAuthProbe(ctx context.Context, requestedStore string) AuthProbeReport {
 	}
 
 	prefs := LoadPreferences()
+	return runAuthProbeWithTokens(ctx, requestedStore, tokens, prefs)
+}
+
+func runAuthProbeWithTokens(ctx context.Context, requestedStore string, tokens *CapturedTokens, prefs UserPreferences) AuthProbeReport {
+	report := AuthProbeReport{}
 	settings := tokens.ToSettingsWithPrefs(prefs)
 	storeID := chooseProbeStoreID(requestedStore, settings.StoreIDs, tokens.StoreIDs)
 	report.StoreID = storeID
@@ -272,6 +277,35 @@ func authProbeAdvice(report AuthProbeReport) []string {
 		out = append(out, "基础接口未全部通过，复制本结果继续排查。")
 	}
 	return UniqueNonEmptyStrings(out)
+}
+
+func authProbeFailureSummary(report AuthProbeReport) string {
+	parts := []string{}
+	for _, result := range report.Results {
+		if result.OK || result.Skipped {
+			continue
+		}
+		label := strings.TrimSpace(result.Name)
+		if label == "" {
+			label = "接口"
+		}
+		detail := strings.TrimSpace(result.Detail)
+		if result.Status != 0 {
+			detail = fmt.Sprintf("HTTP %d %s", result.Status, detail)
+		}
+		if detail != "" {
+			parts = append(parts, label+" "+SanitizeDiagnosticLine(detail))
+		} else {
+			parts = append(parts, label+" 失败")
+		}
+	}
+	if len(parts) == 0 && len(report.Advice) > 0 {
+		parts = append(parts, report.Advice...)
+	}
+	if len(parts) == 0 {
+		return "未知原因"
+	}
+	return strings.Join(parts, "；")
 }
 
 func cmdAuthProbe() {
