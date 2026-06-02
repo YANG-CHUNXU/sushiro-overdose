@@ -1,4 +1,4 @@
-package app
+package proxy
 
 import (
 	"bufio"
@@ -36,7 +36,7 @@ func TestBufferedConnReadsDataAlreadyBufferedAfterConnect(t *testing.T) {
 	}
 
 	got := make([]byte, 5)
-	if _, err := io.ReadFull(&bufferedConn{Conn: server, reader: reader}, got); err != nil {
+	if _, err := io.ReadFull(&BufferedConn{Conn: server, reader: reader}, got); err != nil {
 		t.Fatalf("read buffered payload: %v", err)
 	}
 	if string(got) != "HELLO" {
@@ -63,7 +63,7 @@ func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
 
-	ps := &proxyServer{transport: http.DefaultTransport.(*http.Transport).Clone()}
+	ps := &ProxyServer{transport: http.DefaultTransport.(*http.Transport).Clone()}
 	done := make(chan struct{})
 	go func() {
 		ps.handleConn(server)
@@ -125,7 +125,7 @@ func TestRelayResponseNormalizesHTTPVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	ps := &proxyServer{}
+	ps := &ProxyServer{}
 	if err := ps.relayResponse(&out, resp, http.MethodGet, target); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestRelayResponseBuffersSushiroResponseWithUnknownLength(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	ps := &proxyServer{}
+	ps := &ProxyServer{}
 	if err := ps.relayResponse(&out, resp, http.MethodGet, target); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestRelayResponseStreamsNonAPISushiroResponseWithUnknownLength(t *testing.T
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	ps := &proxyServer{}
+	ps := &ProxyServer{}
 	if err := ps.relayResponse(&out, resp, http.MethodGet, target); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestRelayResponseRejectsOversizedSushiroAPIResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ps := &proxyServer{}
+	ps := &ProxyServer{}
 	err = ps.relayResponse(io.Discard, resp, http.MethodGet, target)
 	if err == nil {
 		t.Fatal("relayResponse returned nil error for oversized Sushiro API response")

@@ -2,6 +2,8 @@
 
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -63,12 +65,12 @@ func darwinRunSystemProxyCommands(commands [][]string, runner darwinCommandRunne
 	return errors.Join(errs...)
 }
 
-func darwinSetSystemProxyCommands(services []string, proxyPort, webPort int) [][]string {
+func darwinSetSystemProxyCommands(services []string, ProxyPort, webPort int) [][]string {
 	commands := make([][]string, 0, len(services)*5)
-	proxyPortString := fmt.Sprintf("%d", proxyPort)
+	proxyPortString := fmt.Sprintf("%d", ProxyPort)
 	for _, svc := range services {
 		if webPort > 0 {
-			pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, proxyPort)
+			pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, ProxyPort)
 			commands = append(commands,
 				[]string{"networksetup", "-setautoproxyurl", svc, pacURL},
 				[]string{"networksetup", "-setautoproxystate", svc, "on"},
@@ -117,7 +119,7 @@ func getNetworkServices() ([]string, error) {
 }
 
 func isCertTrusted() (bool, error) {
-	dir := certDirPath()
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 
 	if _, err := os.Stat(certPath); err != nil {
@@ -132,7 +134,7 @@ func isCertTrusted() (bool, error) {
 }
 
 func installCert() error {
-	dir := certDirPath()
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 
 	keychain, err := defaultUserKeychain()

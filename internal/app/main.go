@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -387,7 +389,7 @@ func run(ctx context.Context) error {
 		client = NewClient(settings)
 	}
 
-	selectedStores, err := selectStores(ctx, client, tokens)
+	selectedStores, err := SelectStores(ctx, client, tokens)
 	if err != nil {
 		return fmt.Errorf("选择门店失败: %w", err)
 	}
@@ -403,10 +405,10 @@ func run(ctx context.Context) error {
 
 	// CLI mode: offer to configure slots interactively or use saved
 	if len(prefs.WeekdaySlots) == 0 && len(prefs.SaturdaySlots) == 0 && len(prefs.SundaySlots) == 0 {
-		slotConfig := configureSlots()
-		prefs.WeekdaySlots = slotPrefToRanges(slotConfig.Weekday)
-		prefs.SaturdaySlots = slotPrefToRanges(slotConfig.Saturday)
-		prefs.SundaySlots = slotPrefToRanges(slotConfig.Sunday)
+		slotConfig := ConfigureSlots()
+		prefs.WeekdaySlots = SlotPrefToRanges(slotConfig.Weekday)
+		prefs.SaturdaySlots = SlotPrefToRanges(slotConfig.Saturday)
+		prefs.SundaySlots = SlotPrefToRanges(slotConfig.Sunday)
 	} else {
 		fmt.Println("\n使用已保存的时段偏好（可通过 Web UI 修改）")
 	}
@@ -425,7 +427,7 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	defer doneActivity()
 
 	// Load or generate CA certificate
-	caCert, caKey, err := loadOrGenerateCA()
+	caCert, caKey, err := LoadOrGenerateCA()
 	if err != nil {
 		return nil, fmt.Errorf("CA证书加载失败: %w", err)
 	}
@@ -444,12 +446,12 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	tokens := NewCapturedTokens()
 
 	// Start MITM proxy
-	proxy, err := startProxy(caCert, caKey, tokens)
+	proxy, err := StartProxy(caCert, caKey, tokens)
 	if err != nil {
 		return nil, fmt.Errorf("启动代理失败: %w", err)
 	}
-	defer proxy.close()
-	actualPort := proxy.port
+	defer proxy.Close()
+	actualPort := proxy.Port()
 
 	// Set system proxy
 	if err := SetSystemProxy(actualPort); err != nil {
@@ -479,7 +481,7 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 		}
 	}()
 
-	if err := waitForCapture(ctx, tokens, skipCapture); err != nil {
+	if err := WaitForCapture(ctx, tokens, skipCapture); err != nil {
 		return nil, err
 	}
 

@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -180,7 +182,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 	settings := tokens.ToSettings()
 
 	// Select store
-	selectedStores, err := selectStores(ctx, client, tokens)
+	selectedStores, err := SelectStores(ctx, client, tokens)
 	if err != nil {
 		return nil, fmt.Errorf("选择门店失败: %w", err)
 	}

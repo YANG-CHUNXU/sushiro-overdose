@@ -2,6 +2,8 @@
 
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -63,8 +65,8 @@ func setSystemProxy(port int) error {
 	return setWindowsManualProxy(port)
 }
 
-func setWindowsPACProxy(proxyPort, webPort int) error {
-	pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, proxyPort)
+func setWindowsPACProxy(ProxyPort, webPort int) error {
+	pacURL := fmt.Sprintf("http://127.0.0.1:%d/proxy.pac?proxy=%d", webPort, ProxyPort)
 	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
 	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "ProxyServer", "/f")
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f"); err != nil {
@@ -82,25 +84,25 @@ func setWindowsPACProxy(proxyPort, webPort int) error {
 
 	refreshProxySettings()
 	blockSushiroQUIC()
-	LogMessage(time.Now(), fmt.Sprintf("Windows PAC 代理已设置: 仅 %s 走 127.0.0.1:%d，其它域名直连", sushiroHost, proxyPort))
+	LogMessage(time.Now(), fmt.Sprintf("Windows PAC 代理已设置: 仅 %s 走 127.0.0.1:%d，其它域名直连", SushiroHost, ProxyPort))
 	return nil
 }
 
 func setWindowsManualProxy(port int) error {
-	proxyServer := fmt.Sprintf("http=127.0.0.1:%d;https=127.0.0.1:%d", port, port)
+	ProxyServer := fmt.Sprintf("http=127.0.0.1:%d;https=127.0.0.1:%d", port, port)
 	proxyOverride := "<local>;localhost;127.*;::1;10.*;192.168.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*"
 	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
 	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "AutoConfigURL", "/f")
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"); err != nil {
 		return fmt.Errorf("写入 ProxyEnable 失败: %w", err)
 	}
-	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyServer", "/t", "REG_SZ", "/d", proxyServer, "/f"); err != nil {
+	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyServer", "/t", "REG_SZ", "/d", ProxyServer, "/f"); err != nil {
 		return fmt.Errorf("写入 ProxyServer 失败: %w", err)
 	}
 	if err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", proxyOverride, "/f"); err != nil {
 		return fmt.Errorf("写入 ProxyOverride 失败: %w", err)
 	}
-	if err := setWinHTTPProxy(proxyServer, proxyOverride); err != nil {
+	if err := setWinHTTPProxy(ProxyServer, proxyOverride); err != nil {
 		LogMessage(time.Now(), "WinHTTP 代理设置跳过: "+err.Error())
 	}
 
@@ -127,7 +129,7 @@ func blockSushiroQUIC() {
 	_ = removeQUICBlockRule()
 	ips := resolveSushiroIPs()
 	if len(ips) == 0 {
-		LogMessage(time.Now(), "QUIC 屏蔽跳过: 无法解析 "+sushiroHost+" 的 IP")
+		LogMessage(time.Now(), "QUIC 屏蔽跳过: 无法解析 "+SushiroHost+" 的 IP")
 		return
 	}
 	if err := runHiddenWindowsCommand("netsh", "advfirewall", "firewall", "add", "rule",
@@ -136,7 +138,7 @@ func blockSushiroQUIC() {
 		LogMessage(time.Now(), "QUIC 屏蔽设置失败(可能需管理员权限): "+err.Error())
 		return
 	}
-	LogMessage(time.Now(), fmt.Sprintf("已屏蔽到 %s 的出站 QUIC(UDP 443)，强制微信走 TCP 以便抓包", sushiroHost))
+	LogMessage(time.Now(), fmt.Sprintf("已屏蔽到 %s 的出站 QUIC(UDP 443)，强制微信走 TCP 以便抓包", SushiroHost))
 }
 
 func unblockSushiroQUIC() {
@@ -150,7 +152,7 @@ func removeQUICBlockRule() error {
 }
 
 func resolveSushiroIPs() []string {
-	addrs, err := net.LookupIP(sushiroHost)
+	addrs, err := net.LookupIP(SushiroHost)
 	if err != nil {
 		return nil
 	}
@@ -166,8 +168,8 @@ func resolveSushiroIPs() []string {
 	return out
 }
 
-func setWinHTTPProxy(proxyServer, proxyOverride string) error {
-	return runHiddenWindowsCommand("netsh", "winhttp", "set", "proxy", "proxy-server="+proxyServer, "bypass-list="+proxyOverride)
+func setWinHTTPProxy(ProxyServer, proxyOverride string) error {
+	return runHiddenWindowsCommand("netsh", "winhttp", "set", "proxy", "proxy-server="+ProxyServer, "bypass-list="+proxyOverride)
 }
 
 func setWinHTTPAutoProxy(pacURL string) error {
@@ -225,7 +227,7 @@ public class WinINet {
 }
 
 func isCertTrusted() (bool, error) {
-	thumbprint, err := localCACertSHA1Thumbprint()
+	thumbprint, err := LocalCACertSHA1Thumbprint()
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -253,9 +255,9 @@ if ($null -ne $currentUser -and $null -ne $localMachine) { Write-Output "trusted
 }
 
 func installCert() error {
-	dir := certDirPath()
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
-	thumbprint, err := localCACertSHA1Thumbprint()
+	thumbprint, err := LocalCACertSHA1Thumbprint()
 	if err != nil {
 		return fmt.Errorf("读取本地 CA 证书失败: %w", err)
 	}
@@ -344,7 +346,7 @@ if ($null -eq $cert) { throw 'certificate was not found in LocalMachine Root aft
 }
 
 func uninstallCert() error {
-	thumbprint, thumbErr := localCACertSHA1Thumbprint()
+	thumbprint, thumbErr := LocalCACertSHA1Thumbprint()
 	if thumbErr == nil {
 		script := `
 $thumb = $args[0].ToUpperInvariant()

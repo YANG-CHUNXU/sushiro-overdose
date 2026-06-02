@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import (
 	"fmt"
 	"net/http"
@@ -21,5 +23,5 @@ func handleProxyPAC(w http.ResponseWriter, r *http.Request) {
   }
   return "DIRECT";
 }
-`, sushiroHost, port)
+`, SushiroHost, port)
 }

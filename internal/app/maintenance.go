@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -370,7 +372,7 @@ func uninstallSystemCertificate(dryRun bool) MaintenanceResult {
 }
 
 func uninstallTargets(options UninstallOptions) []maintenanceTarget {
-	certDir := certDirPath()
+	certDir := CertDirPath()
 	return []maintenanceTarget{
 		{name: "config", path: LocalConfigPath(), selected: options.All || options.Config},
 		{name: "notify", path: NotifyConfigPath(), selected: options.All || options.Notify},

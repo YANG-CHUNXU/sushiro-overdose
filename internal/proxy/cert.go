@@ -1,4 +1,4 @@
-package app
+package proxy
 
 import (
 	"crypto/rand"
@@ -18,13 +18,13 @@ import (
 	"time"
 )
 
-func certDirPath() string {
+func CertDirPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".sushiro-proxy")
 }
 
-func loadOrGenerateCA() (tls.Certificate, *rsa.PrivateKey, error) {
-	dir := certDirPath()
+func LoadOrGenerateCA() (tls.Certificate, *rsa.PrivateKey, error) {
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 	keyPath := filepath.Join(dir, "ca.key")
 
@@ -96,7 +96,7 @@ func loadOrGenerateCA() (tls.Certificate, *rsa.PrivateKey, error) {
 }
 
 func loadLocalCACertificate() (*x509.Certificate, error) {
-	certPath := filepath.Join(certDirPath(), "ca.crt")
+	certPath := filepath.Join(CertDirPath(), "ca.crt")
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, err
@@ -112,7 +112,7 @@ func loadLocalCACertificate() (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func localCACertSHA1Thumbprint() (string, error) {
+func LocalCACertSHA1Thumbprint() (string, error) {
 	cert, err := loadLocalCACertificate()
 	if err != nil {
 		return "", err

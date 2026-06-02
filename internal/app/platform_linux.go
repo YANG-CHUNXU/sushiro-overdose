@@ -2,6 +2,8 @@
 
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -51,7 +53,7 @@ func clearSystemProxy() error {
 }
 
 func isCertTrusted() (bool, error) {
-	dir := certDirPath()
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 	if _, err := os.Stat(certPath); err != nil {
 		return false, nil
@@ -61,7 +63,7 @@ func isCertTrusted() (bool, error) {
 }
 
 func installCert() error {
-	dir := certDirPath()
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 	target := "/usr/local/share/ca-certificates/sushiro-proxy.crt"
 

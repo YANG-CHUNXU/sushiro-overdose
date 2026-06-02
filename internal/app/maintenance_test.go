@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -23,8 +25,8 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 		historyPath(),
 		PidFilePath(),
 		proxyStatePath(),
-		filepath.Join(certDirPath(), "ca.crt"),
-		filepath.Join(certDirPath(), "ca.key"),
+		filepath.Join(CertDirPath(), "ca.crt"),
+		filepath.Join(CertDirPath(), "ca.key"),
 	}
 	for _, path := range removed {
 		writeMaintenanceTestFile(t, path)
@@ -32,7 +34,7 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 
 	kept := []string{
 		LogPath(),
-		filepath.Join(certDirPath(), "leaf.cache"),
+		filepath.Join(CertDirPath(), "leaf.cache"),
 	}
 	for _, path := range kept {
 		writeMaintenanceTestFile(t, path)
@@ -66,7 +68,7 @@ func TestUninstallLocalDataPartialSelectionKeepsUnselectedFiles(t *testing.T) {
 
 	configPath := LocalConfigPath()
 	notifyPath := NotifyConfigPath()
-	certPath := filepath.Join(certDirPath(), "ca.crt")
+	certPath := filepath.Join(CertDirPath(), "ca.crt")
 	writeMaintenanceTestFile(t, configPath)
 	writeMaintenanceTestFile(t, notifyPath)
 	writeMaintenanceTestFile(t, certPath)

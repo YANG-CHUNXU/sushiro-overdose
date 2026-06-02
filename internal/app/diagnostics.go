@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -18,7 +20,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -195,7 +196,7 @@ func CollectDiagnostics() Diagnostics {
 			NotifyPath:      NotifyConfigPath(),
 			LogPath:         LogPath(),
 			StatePath:       StateFilePath(),
-			CertDir:         certDirPath(),
+			CertDir:         CertDirPath(),
 		},
 		Config:        collectConfigDiagnostics(),
 		Certificate:   certificate,
@@ -264,7 +265,7 @@ func configuredNotificationChannels() []string {
 }
 
 func collectCertificateDiagnostics() DiagnosticCertificate {
-	dir := certDirPath()
+	dir := CertDirPath()
 	certPath := filepath.Join(dir, "ca.crt")
 	keyPath := filepath.Join(dir, "ca.key")
 	out := DiagnosticCertificate{
@@ -282,7 +283,7 @@ func collectCertificateDiagnostics() DiagnosticCertificate {
 		out.TrustError = err.Error()
 	}
 	if runtime.GOOS == "windows" {
-		if thumbprint, thumbErr := localCACertSHA1Thumbprint(); thumbErr == nil {
+		if thumbprint, thumbErr := LocalCACertSHA1Thumbprint(); thumbErr == nil {
 			applyWindowsCertificateTrustDetails(&out, thumbprint)
 		}
 	}
@@ -312,7 +313,7 @@ func collectCertificateDiagnostics() DiagnosticCertificate {
 
 func collectPortDiagnostics() []DiagnosticPort {
 	ports := []DiagnosticPort{
-		{Name: "MITM 代理", Host: "127.0.0.1", Port: proxyPort},
+		{Name: "MITM 代理", Host: "127.0.0.1", Port: ProxyPort},
 		{Name: "Web UI 默认端口", Host: "127.0.0.1", Port: defaultWebPort},
 	}
 	activeWebPort := getActiveWebPort()
@@ -329,8 +330,8 @@ func collectPortDiagnostics() []DiagnosticPort {
 		if ports[i].Port == activeWebPort {
 			ports[i].Current = true
 		}
-		if ports[i].Port == proxyPort {
-			if fallback, ok := FirstAvailableLocalPort(proxyPort, proxyPortSearchLimit); ok && fallback != proxyPort {
+		if ports[i].Port == ProxyPort {
+			if fallback, ok := FirstAvailableLocalPort(ProxyPort, ProxyPortSearchLimit); ok && fallback != ProxyPort {
 				ports[i].FallbackPort = fallback
 				ports[i].Note = fmt.Sprintf("捕获代理会自动改用 127.0.0.1:%d", fallback)
 			}
@@ -370,8 +371,8 @@ func collectProxyMarkerDiagnostics() DiagnosticProxyMarker {
 }
 
 func collectNetworkDiagnostics() DiagnosticNetwork {
-	out := DiagnosticNetwork{Host: sushiroHost, Port: 443}
-	addrs, err := net.LookupHost(sushiroHost)
+	out := DiagnosticNetwork{Host: SushiroHost, Port: 443}
+	addrs, err := net.LookupHost(SushiroHost)
 	if err != nil {
 		out.Error = "DNS: " + err.Error()
 		return out
@@ -379,7 +380,7 @@ func collectNetworkDiagnostics() DiagnosticNetwork {
 	out.Addresses = addrs
 
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(sushiroHost, "443"), 3*time.Second)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(SushiroHost, "443"), 3*time.Second)
 	if err != nil {
 		out.Error = "TCP: " + err.Error()
 		return out
@@ -558,7 +559,7 @@ func probeSushiroMITMProxy(port int, certPath string) DiagnosticProbe {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(6 * time.Second))
 
-	if _, err := fmt.Fprintf(conn, "CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n", sushiroHost, sushiroHost); err != nil {
+	if _, err := fmt.Fprintf(conn, "CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n", SushiroHost, SushiroHost); err != nil {
 		probe.LatencyMS = time.Since(start).Milliseconds()
 		probe.Detail = "发送 CONNECT 失败: " + err.Error()
 		return probe
@@ -579,8 +580,8 @@ func probeSushiroMITMProxy(port int, certPath string) DiagnosticProbe {
 		return probe
 	}
 
-	tlsConn := tls.Client(&bufferedConn{Conn: conn, reader: connectReader}, &tls.Config{
-		ServerName: sushiroHost,
+	tlsConn := tls.Client(NewBufferedConn(conn, connectReader), &tls.Config{
+		ServerName: SushiroHost,
 		RootCAs:    roots,
 		MinVersion: tls.VersionTLS12,
 	})
@@ -592,7 +593,7 @@ func probeSushiroMITMProxy(port int, certPath string) DiagnosticProbe {
 	defer tlsConn.Close()
 	_ = tlsConn.SetDeadline(time.Now().Add(6 * time.Second))
 
-	if _, err := fmt.Fprintf(tlsConn, "GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: sushiro-overdose-diagnostic/%s\r\nConnection: close\r\n\r\n", sushiroHost, Version); err != nil {
+	if _, err := fmt.Fprintf(tlsConn, "GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: sushiro-overdose-diagnostic/%s\r\nConnection: close\r\n\r\n", SushiroHost, Version); err != nil {
 		probe.LatencyMS = time.Since(start).Milliseconds()
 		probe.Detail = "发送 HTTPS 探针失败: " + err.Error()
 		return probe
@@ -680,7 +681,7 @@ func collectLinuxProxySummary() DiagnosticSystemProxy {
 	envKeys := []string{"http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"}
 	for _, key := range envKeys {
 		if value := os.Getenv(key); value != "" {
-			out.Summary = append(out.Summary, key+"="+sanitizeDiagnosticLine(value))
+			out.Summary = append(out.Summary, key+"="+SanitizeDiagnosticLine(value))
 		}
 	}
 	if gsettings, err := exec.LookPath("gsettings"); err == nil {
@@ -780,7 +781,7 @@ func readSanitizedLogTail(path string, maxLines int) ([]string, error) {
 		return nil, err
 	}
 	for i := range lines {
-		lines[i] = sanitizeDiagnosticLine(lines[i])
+		lines[i] = SanitizeDiagnosticLine(lines[i])
 	}
 	return lines, nil
 }
@@ -833,30 +834,11 @@ func sanitizedEngineLogTail(entries []LogEntry, maxLines int) []DiagnosticLogEnt
 	for _, entry := range entries {
 		out = append(out, DiagnosticLogEntry{
 			Time:    entry.Time,
-			Message: sanitizeDiagnosticLine(entry.Message),
+			Message: SanitizeDiagnosticLine(entry.Message),
 			Level:   entry.Level,
 		})
 	}
 	return out
-}
-
-var (
-	phoneRedactor  = regexp.MustCompile(`1[3-9][0-9]{9}`)
-	tokenRedactors = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(bearer\s+)?[^\s,;]+`),
-		regexp.MustCompile(`(?i)(x-app-code\s*[:=]\s*)[^\s,;]+`),
-		regexp.MustCompile(`(?i)((query_authorization|reservation_authorization|wechat_id|phone_number)\s*[:=]\s*)[^\s,;]+`),
-	}
-)
-
-func sanitizeDiagnosticLine(s string) string {
-	s = phoneRedactor.ReplaceAllStringFunc(s, func(phone string) string {
-		return MaskPhone(phone)
-	})
-	for _, re := range tokenRedactors {
-		s = re.ReplaceAllString(s, `${1}***`)
-	}
-	return s
 }
 
 func runNotificationTest(ctx context.Context, onlyChannels ...string) ([]NotificationTestResult, bool) {
@@ -1101,7 +1083,7 @@ func splitNonEmptyLines(s string) []string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
-			out = append(out, sanitizeDiagnosticLine(line))
+			out = append(out, SanitizeDiagnosticLine(line))
 		}
 	}
 	return out

@@ -223,7 +223,7 @@ func probeOfficialAPI(ctx context.Context, client *http.Client, method, target, 
 	resp, err := client.Do(req)
 	result.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
-		result.Detail = sanitizeDiagnosticLine(err.Error())
+		result.Detail = SanitizeDiagnosticLine(err.Error())
 		return result, nil
 	}
 	defer resp.Body.Close()
@@ -238,7 +238,7 @@ func probeOfficialAPI(ctx context.Context, client *http.Client, method, target, 
 		return result, respBody
 	}
 	if len(respBody) > 0 && !json.Valid(respBody) {
-		result.Detail = "响应不是 JSON: " + sanitizeDiagnosticLine(string(respBody))
+		result.Detail = "响应不是 JSON: " + SanitizeDiagnosticLine(string(respBody))
 		return result, respBody
 	}
 	result.OK = true

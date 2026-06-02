@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
@@ -62,7 +64,7 @@ type BookingEngine struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	tokens *CapturedTokens
-	proxy  *proxyServer
+	proxy  *ProxyServer
 	logs   []LogEntry
 }
 
@@ -166,7 +168,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 
 	e.setState(EngineCapturing, "正在准备证书...")
 
-	caCert, caKey, err := loadOrGenerateCA()
+	caCert, caKey, err := LoadOrGenerateCA()
 	if err != nil {
 		e.setState(EngineError, "CA证书加载失败: "+err.Error())
 		e.addLogLevel("CA证书加载失败: "+err.Error(), "error")
@@ -189,7 +191,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	e.tokens = tokens
 	e.mu.Unlock()
 
-	proxy, err := startProxy(caCert, caKey, tokens, e.addLog)
+	proxy, err := StartProxy(caCert, caKey, tokens, e.addLog)
 	if err != nil {
 		e.setState(EngineError, "启动代理失败: "+err.Error())
 		e.addLogLevel("启动代理失败: "+err.Error(), "error")
@@ -198,10 +200,10 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	e.mu.Lock()
 	e.proxy = proxy
 	e.mu.Unlock()
-	actualPort := proxy.port
+	actualPort := proxy.Port()
 
 	if err := SetSystemProxy(actualPort); err != nil {
-		proxy.close()
+		proxy.Close()
 		e.setState(EngineError, "设置系统代理失败: "+err.Error())
 		e.addLogLevel("设置系统代理失败: "+err.Error(), "error")
 		return
@@ -253,7 +255,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 func (e *BookingEngine) cleanupProxy() {
 	e.mu.Lock()
 	if e.proxy != nil {
-		e.proxy.close()
+		e.proxy.Close()
 		e.proxy = nil
 	}
 	e.mu.Unlock()
@@ -478,7 +480,7 @@ func (e *BookingEngine) Stop() {
 		e.cancel()
 	}
 	if e.proxy != nil {
-		e.proxy.close()
+		e.proxy.Close()
 		e.proxy = nil
 		ClearSystemProxy()
 		markProxyInactive()

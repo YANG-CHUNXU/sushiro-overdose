@@ -1,4 +1,4 @@
-package app
+package proxy
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
@@ -20,9 +20,9 @@ import (
 	"time"
 )
 
-const proxyPort = 8080
-const proxyPortSearchLimit = 100
-const sushiroHost = "crm-cn-prd.sushiro.com.cn"
+const ProxyPort = 8080
+const ProxyPortSearchLimit = 100
+const SushiroHost = "crm-cn-prd.sushiro.com.cn"
 const proxyErrorBodyLogLimit = 4096
 const proxyTunnelDialTimeout = 3 * time.Second
 const maxSushiroBufferedResponseBytes = 8 << 20
@@ -33,7 +33,7 @@ func isSushiroTargetHost(host string) bool {
 		host = h
 	}
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
-	return host == sushiroHost
+	return host == SushiroHost
 }
 
 func shouldBufferSushiroAPIResponse(target *url.URL) bool {
@@ -46,7 +46,7 @@ func shouldBufferSushiroAPIResponse(target *url.URL) bool {
 
 // ---- MITM Proxy Server ----
 
-type proxyServer struct {
+type ProxyServer struct {
 	listener  net.Listener
 	port      int
 	done      chan struct{}
@@ -59,26 +59,26 @@ type proxyServer struct {
 	seenHosts map[string]struct{}
 }
 
-type bufferedConn struct {
+type BufferedConn struct {
 	net.Conn
 	reader *bufio.Reader
 }
 
-func (c *bufferedConn) Read(p []byte) (int, error) {
+func (c *BufferedConn) Read(p []byte) (int, error) {
 	return c.reader.Read(p)
 }
 
-func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, logger ...func(string)) (*proxyServer, error) {
-	listener, port, err := ListenOnAvailableLocalPort(proxyPort, proxyPortSearchLimit)
+func StartProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, logger ...func(string)) (*ProxyServer, error) {
+	listener, port, err := ListenOnAvailableLocalPort(ProxyPort, ProxyPortSearchLimit)
 	if err != nil {
-		return nil, fmt.Errorf("listen on %d-%d: %w", proxyPort, proxyPort+proxyPortSearchLimit-1, err)
+		return nil, fmt.Errorf("listen on %d-%d: %w", ProxyPort, ProxyPort+ProxyPortSearchLimit-1, err)
 	}
 	var logf func(string)
 	if len(logger) > 0 {
 		logf = logger[0]
 	}
 
-	ps := &proxyServer{
+	ps := &ProxyServer{
 		listener:  listener,
 		port:      port,
 		done:      make(chan struct{}),
@@ -94,7 +94,7 @@ func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 	return ps, nil
 }
 
-func (ps *proxyServer) addLog(msg string) {
+func (ps *ProxyServer) addLog(msg string) {
 	if ps.logf != nil {
 		ps.logf(msg)
 		return
@@ -102,7 +102,7 @@ func (ps *proxyServer) addLog(msg string) {
 	LogMessage(time.Now(), msg)
 }
 
-func (ps *proxyServer) traceConnect(hostPort string, mitm bool) {
+func (ps *ProxyServer) traceConnect(hostPort string, mitm bool) {
 	host := requestTraceHost(hostPort)
 	if host == "" {
 		return
@@ -121,7 +121,7 @@ func (ps *proxyServer) traceConnect(hostPort string, mitm bool) {
 	ps.addLog(fmt.Sprintf("Request address: CONNECT %s (%s)", host, mode))
 }
 
-func (ps *proxyServer) close() {
+func (ps *ProxyServer) Close() {
 	if ps.listener != nil {
 		ps.listener.Close()
 	}
@@ -135,7 +135,7 @@ func (ps *proxyServer) close() {
 	}
 }
 
-func (ps *proxyServer) serve() {
+func (ps *ProxyServer) serve() {
 	for {
 		conn, err := ps.listener.Accept()
 		if err != nil {
@@ -150,7 +150,7 @@ func (ps *proxyServer) serve() {
 	}
 }
 
-func (ps *proxyServer) handleConn(clientConn net.Conn) {
+func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	defer clientConn.Close()
 
 	br := bufio.NewReader(clientConn)
@@ -202,7 +202,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		fmt.Fprintf(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n")
 
 		// Flush any buffered data from br that read ahead past the CONNECT headers.
-		// The MITM path instead wraps br in bufferedConn before the TLS handshake.
+		// The MITM path instead wraps br in BufferedConn before the TLS handshake.
 		if br.Buffered() > 0 {
 			buf := make([]byte, br.Buffered())
 			n, _ := br.Read(buf)
@@ -235,7 +235,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	if err != nil {
 		return
 	}
-	tlsClient := tls.Server(&bufferedConn{Conn: clientConn, reader: br}, &tls.Config{
+	tlsClient := tls.Server(&BufferedConn{Conn: clientConn, reader: br}, &tls.Config{
 		Certificates: []tls.Certificate{hostCert},
 		MinVersion:   tls.VersionTLS12,
 		NextProtos:   []string{"http/1.1"},
@@ -296,7 +296,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	}
 }
 
-func (ps *proxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine string, br *bufio.Reader) {
+func (ps *ProxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine string, br *bufio.Reader) {
 	reader := bufio.NewReader(io.MultiReader(strings.NewReader(firstLine+"\r\n"), br))
 	for {
 		req, err := http.ReadRequest(reader)
@@ -401,7 +401,7 @@ func hostWithoutPort(hostPort string) string {
 	return hostPort
 }
 
-func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
+func (ps *ProxyServer) relayResponse(w io.Writer, resp *http.Response, method string, target *url.URL) error {
 	defer resp.Body.Close()
 	upstreamProto := resp.Proto
 	if shouldBufferSushiroAPIResponse(target) {
@@ -429,7 +429,7 @@ func (ps *proxyServer) relayResponse(w io.Writer, resp *http.Response, method st
 	if resp.StatusCode >= 400 && resp.ContentLength >= 0 && resp.ContentLength <= proxyErrorBodyLogLimit {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err == nil {
-			bodySample = sanitizeDiagnosticLine(strings.TrimSpace(string(bodyBytes)))
+			bodySample = SanitizeDiagnosticLine(strings.TrimSpace(string(bodyBytes)))
 			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			resp.ContentLength = int64(len(bodyBytes))
 		}
@@ -523,7 +523,7 @@ func tlsVersionName(version uint16) string {
 
 // ---- Capture wait loop ----
 
-func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan struct{}) error {
+func WaitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan struct{}) error {
 	fmt.Println("等待捕获认证参数...")
 	fmt.Println("请按以下步骤捕获认证参数：")
 	fmt.Println("  1) 在任务管理器里彻底关闭 PC 微信（包括 WeChat.exe / WeChatAppEx.exe）")
@@ -563,7 +563,7 @@ func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan str
 
 // ---- Interactive selection ----
 
-func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) ([]string, error) {
+func SelectStores(ctx context.Context, client *Client, tokens *CapturedTokens) ([]string, error) {
 	tokens.Lock()
 	storeIDs := make([]string, len(tokens.StoreIDs))
 	copy(storeIDs, tokens.StoreIDs)
@@ -635,7 +635,7 @@ type SlotConfig struct {
 	Sunday   SlotPref
 }
 
-func (c SlotConfig) shouldTarget(slot Slot, loc *time.Location) bool {
+func (c SlotConfig) ShouldTarget(slot Slot, loc *time.Location) bool {
 	day, err := ParseCompactDate(slot.Date, loc)
 	if err != nil {
 		return false
@@ -670,7 +670,7 @@ func (c SlotConfig) shouldTarget(slot Slot, loc *time.Location) bool {
 	return false
 }
 
-func configureSlots() SlotConfig {
+func ConfigureSlots() SlotConfig {
 	opts := []SlotPref{Pref1930to2030, PrefBefore2000, Pref1030to1300, PrefNone}
 
 	choose := func(label string) SlotPref {
@@ -697,7 +697,7 @@ func configureSlots() SlotConfig {
 	}
 }
 
-func slotPrefToRanges(pref SlotPref) []TimeRange {
+func SlotPrefToRanges(pref SlotPref) []TimeRange {
 	switch pref {
 	case Pref1930to2030:
 		return []TimeRange{{Start: "1930", End: "2030"}}
@@ -708,4 +708,12 @@ func slotPrefToRanges(pref SlotPref) []TimeRange {
 	default:
 		return nil
 	}
+}
+
+// Port 返回代理监听端口。
+func (ps *ProxyServer) Port() int { return ps.port }
+
+// NewBufferedConn 构造带预读缓冲的连接（供外部包用）。
+func NewBufferedConn(conn net.Conn, r *bufio.Reader) *BufferedConn {
+	return &BufferedConn{Conn: conn, reader: r}
 }

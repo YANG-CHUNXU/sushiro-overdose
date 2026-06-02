@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -277,8 +279,8 @@ func TestSlotConfigShouldTargetLegacyRanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cfg.shouldTarget(tt.slot, loc); got != tt.want {
-				t.Fatalf("shouldTarget() = %v, want %v", got, tt.want)
+			if got := cfg.ShouldTarget(tt.slot, loc); got != tt.want {
+				t.Fatalf("ShouldTarget() = %v, want %v", got, tt.want)
 			}
 		})
 	}

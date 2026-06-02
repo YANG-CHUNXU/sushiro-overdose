@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/proxy"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -53,7 +55,7 @@ func buildDiagBundle() ([]byte, string, error) {
 
 	if runtime.GOOS == "windows" {
 		add("wechat-processes.txt", collectWeChatProcessInfo())
-		thumb, _ := localCACertSHA1Thumbprint()
+		thumb, _ := LocalCACertSHA1Thumbprint()
 		add("cert-stores-raw.txt", collectWindowsCertStoreDump(thumb))
 	}
 
@@ -97,7 +99,7 @@ func renderEngineLogs(entries []LogEntry) string {
 		if level == "" {
 			level = "info"
 		}
-		fmt.Fprintf(&b, "[%s] %s: %s\n", e.Time, level, sanitizeDiagnosticLine(e.Message))
+		fmt.Fprintf(&b, "[%s] %s: %s\n", e.Time, level, SanitizeDiagnosticLine(e.Message))
 	}
 	return b.String()
 }
