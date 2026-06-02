@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -217,7 +219,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					e.setState(EngineError, "认证参数已失效，请重新捕获")
 					return
 				}
-				if isHTTPStatus(err, 500) {
+				if IsHTTPStatus(err, 500) {
 					e.addLogLevel("狙击接口 HTTP 500，参数可能已失效", "error")
 					sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效")
 					DeleteLocalConfig()
@@ -251,7 +253,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 						e.setState(EngineError, "预约认证参数已失效")
 						return
 					}
-					if isHTTPStatus(err, 500) {
+					if IsHTTPStatus(err, 500) {
 						e.addLogLevel("预约接口 HTTP 500，参数可能已失效", "error")
 						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效")
 						DeleteLocalConfig()

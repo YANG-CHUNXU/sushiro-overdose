@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -515,7 +517,7 @@ func isAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if isHTTPStatus(err, http.StatusUnauthorized) || isHTTPStatus(err, http.StatusForbidden) {
+	if IsHTTPStatus(err, http.StatusUnauthorized) || IsHTTPStatus(err, http.StatusForbidden) {
 		return true
 	}
 	msg := err.Error()
@@ -613,12 +615,12 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				}
 			}
 
-			if isHTTPStatus(err, http.StatusInternalServerError) {
+			if IsHTTPStatus(err, http.StatusInternalServerError) {
 				LogMessage(now, "预约接口 HTTP 500，参数可能已失效，请重新进入小程序获取")
 				sendNotification("寿司郎 - HTTP 500", "参数可能已失效，请重新进入小程序刷新并运行 `sushiro run`")
 				DeleteLocalConfig()
 				return
-			} else if errors.Is(err, errNoReservationAvailable) {
+			} else if errors.Is(err, ErrNoReservationAvailable) {
 				key := best.StoreID + best.Date + best.Start
 				if booked == nil {
 					booked = make(map[string]bool)

@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -136,7 +138,7 @@ func probeGetStoreInfo(ctx context.Context, client *http.Client, settings Settin
 	query := url.Values{}
 	query.Set("storeId", storeID)
 	path := "/wechat/api/2.0/getStoreById?" + query.Encode()
-	result, body := probeOfficialAPI(ctx, client, http.MethodGet, settings.BaseURL+path, path, NewClient(settings).baseHeaders(settings.QueryAuthorization, ""), nil)
+	result, body := probeOfficialAPI(ctx, client, http.MethodGet, settings.BaseURL+path, path, NewClient(settings).BaseHeaders(settings.QueryAuthorization, ""), nil)
 	result.Name = "基础接口：门店信息"
 	if result.OK {
 		var store StoreInfo
@@ -155,7 +157,7 @@ func probeTimeslots(ctx context.Context, client *http.Client, settings Settings,
 	query.Set("storeId", storeID)
 	query.Set("numpersons", fmt.Sprintf("%d", settings.NumPersons()))
 	path := "/wechat/api/2.0/store/timeslots?" + query.Encode()
-	result, body := probeOfficialAPI(ctx, client, http.MethodGet, settings.BaseURL+path, path, NewClient(settings).baseHeaders(settings.QueryAuthorization, ""), nil)
+	result, body := probeOfficialAPI(ctx, client, http.MethodGet, settings.BaseURL+path, path, NewClient(settings).BaseHeaders(settings.QueryAuthorization, ""), nil)
 	result.Name = "基础接口：时段列表"
 	if result.OK {
 		var slots []Slot
@@ -172,7 +174,7 @@ func probeReservations(ctx context.Context, client *http.Client, settings Settin
 		"wechatId":    settings.WechatID,
 		"phoneNumber": settings.PhoneNumber,
 	}
-	result, body := probeOfficialAPI(ctx, client, http.MethodPost, settings.BaseURL+path, path, NewClient(settings).baseHeaders(settings.ReservationAuth, "application/json"), payload)
+	result, body := probeOfficialAPI(ctx, client, http.MethodPost, settings.BaseURL+path, path, NewClient(settings).BaseHeaders(settings.ReservationAuth, "application/json"), payload)
 	result.Name = "认证接口：当前预约"
 	result = normalizeReservationsProbeResult(result)
 	if result.Skipped {

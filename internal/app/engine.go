@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -429,13 +431,13 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				}
 			}
 
-			if isHTTPStatus(err, 500) {
+			if IsHTTPStatus(err, 500) {
 				e.addLogLevel("预约接口 HTTP 500，参数可能已失效", "error")
 				sendNotification("寿司郎 - HTTP 500", "参数可能已失效")
 				DeleteLocalConfig()
 				e.setState(EngineError, "参数已失效，请重新捕获")
 				return
-			} else if errors.Is(err, errNoReservationAvailable) {
+			} else if errors.Is(err, ErrNoReservationAvailable) {
 				key := best.StoreID + best.Date + best.Start
 				if booked == nil {
 					booked = make(map[string]bool)

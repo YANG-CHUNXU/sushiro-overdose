@@ -1,4 +1,4 @@
-package app
+package api
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var errNoReservationAvailable = errors.New("no reservation available")
+var ErrNoReservationAvailable = errors.New("no reservation available")
 
 type APIError struct {
 	StatusCode int
@@ -56,7 +56,7 @@ func (c *Client) GetStoreInfo(ctx context.Context, storeID string) (StoreInfo, e
 	query := url.Values{}
 	query.Set("storeId", storeID)
 	target := c.settings.BaseURL + "/wechat/api/2.0/getStoreById?" + query.Encode()
-	body, err := c.doJSON(ctx, http.MethodGet, target, c.baseHeaders(c.settings.QueryAuthorization, ""), nil)
+	body, err := c.doJSON(ctx, http.MethodGet, target, c.BaseHeaders(c.settings.QueryAuthorization, ""), nil)
 	if err != nil {
 		return StoreInfo{}, err
 	}
@@ -77,7 +77,7 @@ func (c *Client) GetTimeslots(ctx context.Context, storeID string) ([]Slot, erro
 	query.Set("storeId", storeID)
 	query.Set("numpersons", strconv.Itoa(c.settings.NumPersons()))
 	target := c.settings.BaseURL + "/wechat/api/2.0/store/timeslots?" + query.Encode()
-	body, err := c.doJSON(ctx, http.MethodGet, target, c.baseHeaders(c.settings.QueryAuthorization, ""), nil)
+	body, err := c.doJSON(ctx, http.MethodGet, target, c.BaseHeaders(c.settings.QueryAuthorization, ""), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -101,10 +101,10 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 		"date":        slotDate,
 		"time":        slotTime,
 	}
-	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), payload)
+	body, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), payload)
 	if err != nil {
-		if isNoReservationText(err.Error()) {
-			return ReservationRecord{}, errNoReservationAvailable
+		if IsNoReservationText(err.Error()) {
+			return ReservationRecord{}, ErrNoReservationAvailable
 		}
 		return ReservationRecord{}, err
 	}
@@ -120,7 +120,7 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 		if err := json.Unmarshal(body, &wrapper); err == nil && reservationLooksSuccessful(wrapper.Data) {
 			return wrapper.Data, nil
 		}
-		if err := reservationBusinessError(body); err != nil {
+		if err := ReservationBusinessError(body); err != nil {
 			return ReservationRecord{}, err
 		}
 		return ReservationRecord{}, fmt.Errorf("reservation response missing ticket id/number: %s", NormalizeErrorBody(body))
@@ -141,7 +141,7 @@ func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (Reservati
 		"wechatId":    c.settings.WechatID,
 		"phoneNumber": c.settings.PhoneNumber,
 	}
-	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), payload)
+	body, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), payload)
 	if err != nil {
 		return ReservationRecord{}, err
 	}
@@ -156,7 +156,7 @@ func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (Reservati
 		if err := json.Unmarshal(body, &wrapper); err == nil && reservationLooksSuccessful(wrapper.Data) {
 			return wrapper.Data, nil
 		}
-		if err := reservationBusinessError(body); err != nil {
+		if err := ReservationBusinessError(body); err != nil {
 			return ReservationRecord{}, err
 		}
 		return ReservationRecord{}, fmt.Errorf("net ticket response missing ticket id/number: %s", NormalizeErrorBody(body))
@@ -166,7 +166,7 @@ func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (Reservati
 
 func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, error) {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/getReservations"
-	body, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
+	body, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
 		"wechatId":    c.settings.WechatID,
 		"phoneNumber": c.settings.PhoneNumber,
 	})
@@ -188,7 +188,7 @@ func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, erro
 
 func (c *Client) CancelReservation(ctx context.Context, ticketID int64) error {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/cancelReservation"
-	_, err := c.doJSON(ctx, http.MethodPost, target, c.baseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
+	_, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
 		"ticketId":    ticketID,
 		"wechatId":    c.settings.WechatID,
 		"phoneNumber": c.settings.PhoneNumber,
@@ -196,7 +196,7 @@ func (c *Client) CancelReservation(ctx context.Context, ticketID int64) error {
 	return err
 }
 
-func (c *Client) baseHeaders(authorization, contentType string) map[string]string {
+func (c *Client) BaseHeaders(authorization, contentType string) map[string]string {
 	headers := map[string]string{
 		"Authorization": EnsureBearer(authorization),
 		"X-App-Code":    c.settings.XAppCode,
@@ -254,10 +254,10 @@ func reservationLooksSuccessful(r ReservationRecord) bool {
 	return r.TicketID != 0 || strings.TrimSpace(r.Number) != ""
 }
 
-func reservationBusinessError(body []byte) error {
+func ReservationBusinessError(body []byte) error {
 	text := NormalizeErrorBody(body)
-	if isNoReservationText(text) {
-		return errNoReservationAvailable
+	if IsNoReservationText(text) {
+		return ErrNoReservationAvailable
 	}
 
 	var payload map[string]any
@@ -266,15 +266,15 @@ func reservationBusinessError(body []byte) error {
 	}
 	for _, key := range []string{"code", "errorCode", "error_code", "errCode", "message", "msg", "error"} {
 		if v, ok := payload[key]; ok {
-			if isNoReservationText(fmt.Sprintf("%v", v)) {
-				return errNoReservationAvailable
+			if IsNoReservationText(fmt.Sprintf("%v", v)) {
+				return ErrNoReservationAvailable
 			}
 		}
 	}
 	return nil
 }
 
-func isNoReservationText(text string) bool {
+func IsNoReservationText(text string) bool {
 	text = strings.ToLower(text)
 	return strings.Contains(text, "e044") ||
 		strings.Contains(text, "no_more_reservations") ||
@@ -283,7 +283,10 @@ func isNoReservationText(text string) bool {
 		strings.Contains(text, "已满")
 }
 
-func isHTTPStatus(err error, status int) bool {
+func IsHTTPStatus(err error, status int) bool {
 	var apiErr *APIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == status
 }
+
+// SetHTTPClient 替换内部 HTTP 客户端（主要用于测试注入）。
+func (c *Client) SetHTTPClient(h *http.Client) { c.httpClient = h }

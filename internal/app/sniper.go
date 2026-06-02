@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
@@ -358,14 +360,14 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 
 				reservation, err := client.CreateReservation(ctx, target.StoreID, s.Date, s.Start)
 				if err != nil {
-					if errors.Is(err, errNoReservationAvailable) {
+					if errors.Is(err, ErrNoReservationAvailable) {
 						fmt.Printf("\r[%s] %s - 名额已满，继续尝试...", time.Now().Format("15:04:05"), slotLabel)
 					} else if isAuthError(err) {
 						LogMessage(time.Now().In(settings.Location), "预约认证失败，终止狙击")
 						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
 						DeleteLocalConfig()
 						return
-					} else if isHTTPStatus(err, http.StatusInternalServerError) {
+					} else if IsHTTPStatus(err, http.StatusInternalServerError) {
 						LogMessage(time.Now().In(settings.Location), "预约接口 HTTP 500，参数可能已失效")
 						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效，请重新捕获")
 						DeleteLocalConfig()

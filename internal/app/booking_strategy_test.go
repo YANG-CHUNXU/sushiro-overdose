@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
+
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
@@ -391,8 +393,8 @@ func TestIsNoReservationText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.text, func(t *testing.T) {
-			if got := isNoReservationText(tt.text); got != tt.want {
-				t.Fatalf("isNoReservationText(%q) = %v, want %v", tt.text, got, tt.want)
+			if got := IsNoReservationText(tt.text); got != tt.want {
+				t.Fatalf("IsNoReservationText(%q) = %v, want %v", tt.text, got, tt.want)
 			}
 		})
 	}
@@ -407,22 +409,22 @@ func TestReservationBusinessError(t *testing.T) {
 		{
 			name: "plain text no reservation code",
 			body: []byte("E044"),
-			want: errNoReservationAvailable,
+			want: ErrNoReservationAvailable,
 		},
 		{
 			name: "json code no reservation",
 			body: []byte(`{"code":"E044","message":"full"}`),
-			want: errNoReservationAvailable,
+			want: ErrNoReservationAvailable,
 		},
 		{
 			name: "json snake error code no reservation",
 			body: []byte(`{"error_code":"NO_MORE_RESERVATIONS"}`),
-			want: errNoReservationAvailable,
+			want: ErrNoReservationAvailable,
 		},
 		{
 			name: "json chinese message no reservation",
 			body: []byte(`{"message":"名额已满"}`),
-			want: errNoReservationAvailable,
+			want: ErrNoReservationAvailable,
 		},
 		{
 			name: "unknown business response",
@@ -443,9 +445,9 @@ func TestReservationBusinessError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := reservationBusinessError(tt.body)
+			err := ReservationBusinessError(tt.body)
 			if !errors.Is(err, tt.want) {
-				t.Fatalf("reservationBusinessError() = %v, want %v", err, tt.want)
+				t.Fatalf("ReservationBusinessError() = %v, want %v", err, tt.want)
 			}
 		})
 	}
@@ -468,11 +470,11 @@ func TestCreateReservationMapsBusinessError(t *testing.T) {
 	settings := validSettingsForTest()
 	settings.BaseURL = server.URL
 	client := NewClient(settings)
-	client.httpClient = server.Client()
+	client.SetHTTPClient(server.Client())
 
 	_, err := client.CreateReservation(context.Background(), "001", "20260515", "193000")
-	if !errors.Is(err, errNoReservationAvailable) {
-		t.Fatalf("CreateReservation() error = %v, want %v", err, errNoReservationAvailable)
+	if !errors.Is(err, ErrNoReservationAvailable) {
+		t.Fatalf("CreateReservation() error = %v, want %v", err, ErrNoReservationAvailable)
 	}
 	if gotPayload["storeId"] != "001" || gotPayload["date"] != "20260515" || gotPayload["time"] != "193000" {
 		t.Fatalf("reservation payload = %#v", gotPayload)
