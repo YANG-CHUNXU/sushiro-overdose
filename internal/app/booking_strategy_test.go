@@ -481,6 +481,34 @@ func TestCreateReservationMapsBusinessError(t *testing.T) {
 	}
 }
 
+func TestGetNetTicketStatusParsesCurrentTicket(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/wechat/api_auth/2.0/ticket/status" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("wechatId"); got != "wechat-id" {
+			t.Fatalf("wechatId = %q, want wechat-id", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"netTicket":{"STORE_INFO":{"id":3006,"name":"太阳宫凯德店","address":"太阳宫中路"},"TICKET_DETAIL":{"ticketId":9876,"number":"1167","storeId":"3006","wait":33}}}`))
+	}))
+	defer server.Close()
+
+	settings := validSettingsForTest()
+	settings.BaseURL = server.URL
+	settings.WechatID = "wechat-id"
+	client := NewClient(settings)
+	client.SetHTTPClient(server.Client())
+
+	ticket, err := client.GetNetTicketStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetNetTicketStatus() error = %v", err)
+	}
+	if ticket.Number != "1167" || ticket.TicketID != 9876 || ticket.StoreID != "3006" || ticket.Wait != 33 || ticket.StoreName != "太阳宫凯德店" {
+		t.Fatalf("ticket = %#v", ticket)
+	}
+}
+
 func TestCapturedTokensValidation(t *testing.T) {
 	queryOnly := &CapturedTokens{
 		XAppCode:  "app",

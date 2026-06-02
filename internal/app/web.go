@@ -64,6 +64,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/reservations/local", handleLocalReservation)
 	mux.HandleFunc("/api/reservations/cancel", handleCancelReservation)
 	mux.HandleFunc("/api/queue/ticket", handleQueueTicket)
+	mux.HandleFunc("/api/queue/ticket/status", handleQueueTicketStatus)
 	mux.HandleFunc("/api/queue/ticket/plan", handleNetTicketPlan)
 
 	// Preferences

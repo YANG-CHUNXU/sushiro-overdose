@@ -52,6 +52,32 @@ func isKnownOfficialServerError(err error) bool {
 		strings.Contains(body, "error.server")
 }
 
+func isTicketAlreadyIssuedText(text string) bool {
+	body := strings.ToLower(text)
+	return strings.Contains(body, `"code":"e034"`) ||
+		strings.Contains(body, `"code": "e034"`) ||
+		strings.Contains(body, "too_many_tickets") ||
+		strings.Contains(body, "already issued")
+}
+
+func isTicketAlreadyIssuedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *api.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusConflict && isTicketAlreadyIssuedText(apiErr.Body)
+	}
+	return isTicketAlreadyIssuedText(err.Error())
+}
+
+func friendlyNetTicketError(err error) string {
+	if isTicketAlreadyIssuedError(err) {
+		return "官方提示这台终端已经发过排队号，但本地没有拿到号码；不要重复取号，请打开 PC 微信寿司郎小程序的排队/我的预约页查看，或开启接口调试恢复号码"
+	}
+	return friendlyOfficialAPIError(err)
+}
+
 func friendlyOfficialAPIError(err error) string {
 	if err == nil {
 		return ""

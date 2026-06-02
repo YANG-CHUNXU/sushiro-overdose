@@ -46,6 +46,9 @@ func LoadNetTicketPlan() NetTicketPlan {
 	if json.Unmarshal(data, &p) != nil {
 		return NetTicketPlan{Status: "idle"}
 	}
+	if p.Status == "error" && isTicketAlreadyIssuedText(p.LastError) {
+		p.Status = "issued_unknown"
+	}
 	return p
 }
 
@@ -143,27 +146,70 @@ func netTicketTick(ctx context.Context) {
 	}
 	ticket, err := client.CreateNetTicket(ctx, plan.StoreID)
 	if err != nil {
+		if isTicketAlreadyIssuedError(err) {
+			if recovered, ok := recoverExistingNetTicket(ctx, client, &plan); ok {
+				plan = recovered
+				_ = SaveNetTicketPlan(plan)
+				sendQueueAlert(ctx, "🎫 已恢复排队号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(plan.Number, "(详见我的预约)"))
+				return
+			}
+			markNetTicketIssuedUnknown(&plan, friendlyNetTicketError(err))
+			sendQueueAlert(ctx, "⚠️ 已有排队号", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError)
+			return
+		}
 		if isOfficialServerHTTPError(err) {
 			plan.Status = "retrying"
 			plan.FiredDate = ""
 			plan.FiredAt = ""
-			plan.LastError = friendlyOfficialAPIError(err)
+			plan.LastError = friendlyNetTicketError(err)
 			_ = SaveNetTicketPlan(plan)
 			clearNetTicketFire(today)
 			return
 		}
 		plan.Status = "error"
-		plan.LastError = err.Error()
+		plan.LastError = friendlyNetTicketError(err)
 		_ = SaveNetTicketPlan(plan)
-		sendQueueAlert(ctx, "⚠️ 定时取号失败", DefaultString(plan.StoreName, plan.StoreID)+"："+err.Error())
+		sendQueueAlert(ctx, "⚠️ 定时取号失败", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError)
 		return
 	}
+	applyNetTicketSuccess(ctx, client, &plan, ticket)
+	_ = SaveNetTicketPlan(plan)
+	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))
+}
+
+func markNetTicketIssuedUnknown(plan *NetTicketPlan, message string) {
+	plan.Status = "issued_unknown"
+	plan.LastError = message
+	_ = SaveNetTicketPlan(*plan)
+}
+
+func recoverExistingNetTicket(ctx context.Context, client *Client, plan *NetTicketPlan) (NetTicketPlan, bool) {
+	ticket, err := client.GetNetTicketStatus(ctx)
+	if err != nil || !netTicketLooksSuccessful(ticket) {
+		markNetTicketIssuedUnknown(plan, friendlyNetTicketError(err))
+		return *plan, false
+	}
+	applyNetTicketSuccess(ctx, client, plan, ticket)
+	return *plan, true
+}
+
+func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketPlan, ticket ReservationRecord) {
 	plan.Status = "success"
 	plan.Number = ticket.Number
 	plan.TicketID = ticket.TicketID
 	plan.LastError = ""
-	_ = SaveNetTicketPlan(plan)
-	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))
+	storeName := DefaultString(plan.StoreName, plan.StoreID)
+	storeAddress := ""
+	if info, err := client.GetStoreInfo(ctx, plan.StoreID); err == nil {
+		storeName = DefaultString(info.Name, storeName)
+		storeAddress = info.Address
+	}
+	ticket.MonitoredStoreID = plan.StoreID
+	onBookingSuccess(ticket, storeName, storeAddress, "排队取号", "取号")
+}
+
+func netTicketLooksSuccessful(ticket ReservationRecord) bool {
+	return strings.TrimSpace(ticket.Number) != "" || ticket.TicketID != 0
 }
 
 // reserveNetTicketFire 用独占创建的锁文件占位，返回 true 表示本进程抢到了今天的取号执行权。

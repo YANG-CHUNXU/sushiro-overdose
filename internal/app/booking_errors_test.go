@@ -33,3 +33,17 @@ func TestNonServerErrorIsNotOfficialServerError(t *testing.T) {
 		t.Fatalf("403 should not be known server error")
 	}
 }
+
+func TestTicketAlreadyIssuedError(t *testing.T) {
+	err := &api.APIError{
+		StatusCode: 409,
+		Body:       `{"code":"E034","message":"error.newticket.too_many_tickets: The ticket has been already issued at your terminal."}`,
+	}
+	if !isTicketAlreadyIssuedError(err) {
+		t.Fatalf("isTicketAlreadyIssuedError() = false")
+	}
+	msg := friendlyNetTicketError(err)
+	if !strings.Contains(msg, "已经发过排队号") || strings.Contains(msg, "没取到") {
+		t.Fatalf("friendly net ticket message = %q", msg)
+	}
+}

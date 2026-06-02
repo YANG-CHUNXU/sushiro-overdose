@@ -76,6 +76,7 @@ func handleLocalReservation(w http.ResponseWriter, r *http.Request) {
 		End       string `json:"end"`
 		StoreID   string `json:"store_id"`
 		StoreName string `json:"store_name"`
+		TicketID  int64  `json:"ticket_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
@@ -124,6 +125,7 @@ func handleLocalReservation(w http.ResponseWriter, r *http.Request) {
 		MonitoredStoreID: storeID,
 		StoreName:        storeName,
 		SlotLabel:        slotLabel,
+		TicketID:         body.TicketID,
 	}
 	if err := SaveState(StateFilePath(), State{ActiveReservation: &record, SavedAt: time.Now().Format(time.RFC3339)}); err != nil {
 		writeError(w, http.StatusInternalServerError, "保存本地预约失败: "+err.Error())
@@ -178,10 +180,58 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	ticket, err := client.CreateNetTicket(r.Context(), storeID)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, friendlyOfficialAPIError(err))
+		if isTicketAlreadyIssuedError(err) {
+			plan := LoadNetTicketPlan()
+			plan.Enabled = true
+			plan.StoreID = storeID
+			plan.Status = "issued_unknown"
+			plan.FiredDate = time.Now().Format("2006-01-02")
+			plan.FiredAt = time.Now().Format(time.RFC3339)
+			if recovered, ok := recoverExistingNetTicket(r.Context(), client, &plan); ok {
+				_ = SaveNetTicketPlan(recovered)
+				writeJSON(w, map[string]any{"ok": true, "ticket": recovered, "recovered": true})
+				return
+			}
+			markNetTicketIssuedUnknown(&plan, friendlyNetTicketError(err))
+			writeError(w, http.StatusConflict, plan.LastError)
+			return
+		}
+		writeError(w, http.StatusBadGateway, friendlyNetTicketError(err))
 		return
 	}
+	plan := LoadNetTicketPlan()
+	plan.Enabled = true
+	plan.StoreID = storeID
+	plan.FiredDate = time.Now().Format("2006-01-02")
+	plan.FiredAt = time.Now().Format(time.RFC3339)
+	applyNetTicketSuccess(r.Context(), client, &plan, ticket)
+	_ = SaveNetTicketPlan(plan)
 	writeJSON(w, map[string]any{"ok": true, "ticket": ticket})
+}
+
+func handleQueueTicketStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	refreshWebClient()
+	client := getWebClient()
+	if client == nil {
+		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，请先完成认证")
+		return
+	}
+	ticket, err := client.GetNetTicketStatus(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, friendlyNetTicketError(err))
+		return
+	}
+	plan := LoadNetTicketPlan()
+	if strings.TrimSpace(plan.StoreID) == "" {
+		plan.StoreID = ticket.StoreID
+	}
+	applyNetTicketSuccess(r.Context(), client, &plan, ticket)
+	_ = SaveNetTicketPlan(plan)
+	writeJSON(w, map[string]any{"ok": true, "ticket": ticket, "plan": plan})
 }
 
 // handleNetTicketPlan 读取/设置「定时取号」计划。

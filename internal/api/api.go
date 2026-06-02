@@ -110,23 +110,7 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 		return ReservationRecord{}, err
 	}
 
-	var reservation ReservationRecord
-	if err := json.Unmarshal(body, &reservation); err != nil {
-		return ReservationRecord{}, fmt.Errorf("reservation response is not a JSON object: %w", err)
-	}
-	if !reservationLooksSuccessful(reservation) {
-		var wrapper struct {
-			Data ReservationRecord `json:"data"`
-		}
-		if err := json.Unmarshal(body, &wrapper); err == nil && reservationLooksSuccessful(wrapper.Data) {
-			return wrapper.Data, nil
-		}
-		if err := ReservationBusinessError(body); err != nil {
-			return ReservationRecord{}, err
-		}
-		return ReservationRecord{}, fmt.Errorf("reservation response missing ticket id/number: %s", NormalizeErrorBody(body))
-	}
-	return reservation, nil
+	return parseReservationRecord(body, "reservation")
 }
 
 // CreateNetTicket 远程取号（日常排队），对应小程序「排队取号」。端点名来自抓包，
@@ -146,23 +130,18 @@ func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (Reservati
 	if err != nil {
 		return ReservationRecord{}, err
 	}
-	var ticket ReservationRecord
-	if err := json.Unmarshal(body, &ticket); err != nil {
-		return ReservationRecord{}, fmt.Errorf("net ticket response is not a JSON object: %w", err)
+	return parseReservationRecord(body, "net ticket")
+}
+
+func (c *Client) GetNetTicketStatus(ctx context.Context) (ReservationRecord, error) {
+	query := url.Values{}
+	query.Set("wechatId", c.settings.WechatID)
+	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticket/status?" + query.Encode()
+	body, err := c.doJSON(ctx, http.MethodGet, target, c.BaseHeaders(c.settings.ReservationAuth, ""), nil)
+	if err != nil {
+		return ReservationRecord{}, err
 	}
-	if !reservationLooksSuccessful(ticket) {
-		var wrapper struct {
-			Data ReservationRecord `json:"data"`
-		}
-		if err := json.Unmarshal(body, &wrapper); err == nil && reservationLooksSuccessful(wrapper.Data) {
-			return wrapper.Data, nil
-		}
-		if err := ReservationBusinessError(body); err != nil {
-			return ReservationRecord{}, err
-		}
-		return ReservationRecord{}, fmt.Errorf("net ticket response missing ticket id/number: %s", NormalizeErrorBody(body))
-	}
-	return ticket, nil
+	return parseReservationRecord(body, "net ticket status")
 }
 
 func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, error) {
@@ -257,6 +236,73 @@ func (c *Client) doJSON(ctx context.Context, method, target string, headers map[
 
 func reservationLooksSuccessful(r ReservationRecord) bool {
 	return r.TicketID != 0 || strings.TrimSpace(r.Number) != ""
+}
+
+func parseReservationRecord(body []byte, label string) (ReservationRecord, error) {
+	var record ReservationRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		return ReservationRecord{}, fmt.Errorf("%s response is not a JSON object: %w", label, err)
+	}
+	if reservationLooksSuccessful(record) {
+		return record, nil
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err == nil {
+		for _, key := range []string{"netTicket", "data", "ticket", "reservation", "reservationTicket", "currentTicket", "current"} {
+			raw, ok := payload[key]
+			if !ok || len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+				continue
+			}
+			if nested, ok := parseReservationCandidate(raw); ok {
+				return nested, nil
+			}
+		}
+	}
+
+	if err := ReservationBusinessError(body); err != nil {
+		return ReservationRecord{}, err
+	}
+	return ReservationRecord{}, fmt.Errorf("%s response missing ticket id/number: %s", label, NormalizeErrorBody(body))
+}
+
+func parseReservationCandidate(raw json.RawMessage) (ReservationRecord, bool) {
+	var record ReservationRecord
+	if err := json.Unmarshal(raw, &record); err == nil && reservationLooksSuccessful(record) {
+		return record, true
+	}
+
+	var wrapper map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &wrapper); err != nil {
+		return ReservationRecord{}, false
+	}
+	for _, detailKey := range []string{"TICKET_DETAIL", "ticketDetail", "ticket_detail"} {
+		detailRaw, ok := wrapper[detailKey]
+		if !ok || len(detailRaw) == 0 || bytes.Equal(detailRaw, []byte("null")) {
+			continue
+		}
+		var detail ReservationRecord
+		if err := json.Unmarshal(detailRaw, &detail); err != nil || !reservationLooksSuccessful(detail) {
+			continue
+		}
+		for _, storeKey := range []string{"STORE_INFO", "storeInfo", "store_info"} {
+			storeRaw, ok := wrapper[storeKey]
+			if !ok || len(storeRaw) == 0 || bytes.Equal(storeRaw, []byte("null")) {
+				continue
+			}
+			var store StoreInfo
+			if err := json.Unmarshal(storeRaw, &store); err == nil {
+				detail.StoreName = store.Name
+				detail.StoreAddress = store.Address
+				if detail.StoreID == "" && store.ID != 0 {
+					detail.StoreID = strconv.Itoa(store.ID)
+				}
+			}
+			break
+		}
+		return detail, true
+	}
+	return ReservationRecord{}, false
 }
 
 func ReservationBusinessError(body []byte) error {
