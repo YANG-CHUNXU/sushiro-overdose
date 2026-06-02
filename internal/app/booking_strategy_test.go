@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -117,11 +119,11 @@ func TestNormalizePreferencesFillsStrategyDefaults(t *testing.T) {
 	if prefs.Adult != 2 || prefs.TableType != "T" {
 		t.Fatalf("basic defaults = adult %d table %q, want 2/T", prefs.Adult, prefs.TableType)
 	}
-	if prefs.DayPriorityMode != dayPriorityDate {
-		t.Fatalf("DayPriorityMode = %q, want %q", prefs.DayPriorityMode, dayPriorityDate)
+	if prefs.DayPriorityMode != DayPriorityDate {
+		t.Fatalf("DayPriorityMode = %q, want %q", prefs.DayPriorityMode, DayPriorityDate)
 	}
-	if prefs.SlotStrategy != slotStrategyEarliest || prefs.TargetTime != defaultTargetTime {
-		t.Fatalf("slot strategy defaults = %q/%q, want %q/%q", prefs.SlotStrategy, prefs.TargetTime, slotStrategyEarliest, defaultTargetTime)
+	if prefs.SlotStrategy != SlotStrategyEarliest || prefs.TargetTime != DefaultTargetTime {
+		t.Fatalf("slot strategy defaults = %q/%q, want %q/%q", prefs.SlotStrategy, prefs.TargetTime, SlotStrategyEarliest, DefaultTargetTime)
 	}
 	if got, want := strings.Join(prefs.SelectedStores, ","), "001,002"; got != want {
 		t.Fatalf("SelectedStores = %q, want %q", got, want)
@@ -148,8 +150,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "date mode keeps earlier date before weekend preference",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityDate,
-				SlotStrategy:    slotStrategyEarliest,
+				DayPriorityMode: DayPriorityDate,
+				SlotStrategy:    SlotStrategyEarliest,
 			},
 			candidate: TargetSlot{StoreID: "001", Date: "20260516", Start: "103000"},
 			current:   TargetSlot{StoreID: "001", Date: "20260515", Start: "193000"},
@@ -158,8 +160,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "weekend first beats earlier weekday",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityWeekendFirst,
-				SlotStrategy:    slotStrategyEarliest,
+				DayPriorityMode: DayPriorityWeekendFirst,
+				SlotStrategy:    SlotStrategyEarliest,
 			},
 			candidate: TargetSlot{StoreID: "001", Date: "20260516", Start: "103000"},
 			current:   TargetSlot{StoreID: "001", Date: "20260515", Start: "193000"},
@@ -168,8 +170,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "weekday first beats earlier weekend",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityWeekdayFirst,
-				SlotStrategy:    slotStrategyEarliest,
+				DayPriorityMode: DayPriorityWeekdayFirst,
+				SlotStrategy:    SlotStrategyEarliest,
 			},
 			candidate: TargetSlot{StoreID: "001", Date: "20260518", Start: "193000"},
 			current:   TargetSlot{StoreID: "001", Date: "20260516", Start: "103000"},
@@ -178,8 +180,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "latest strategy prefers later time on same day",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityDate,
-				SlotStrategy:    slotStrategyLatest,
+				DayPriorityMode: DayPriorityDate,
+				SlotStrategy:    SlotStrategyLatest,
 			},
 			candidate: TargetSlot{StoreID: "001", Date: "20260515", Start: "203000"},
 			current:   TargetSlot{StoreID: "001", Date: "20260515", Start: "193000"},
@@ -188,8 +190,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "closest strategy prefers nearest target time",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityDate,
-				SlotStrategy:    slotStrategyClosest,
+				DayPriorityMode: DayPriorityDate,
+				SlotStrategy:    SlotStrategyClosest,
 				TargetTime:      "1930",
 			},
 			candidate: TargetSlot{StoreID: "001", Date: "20260515", Start: "194500"},
@@ -199,8 +201,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "closest strategy breaks equal distance by earlier time",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityDate,
-				SlotStrategy:    slotStrategyClosest,
+				DayPriorityMode: DayPriorityDate,
+				SlotStrategy:    SlotStrategyClosest,
 				TargetTime:      "1930",
 			},
 			candidate: TargetSlot{StoreID: "001", Date: "20260515", Start: "190000"},
@@ -210,8 +212,8 @@ func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 		{
 			name: "store priority breaks same date and time",
 			prefs: UserPreferences{
-				DayPriorityMode: dayPriorityDate,
-				SlotStrategy:    slotStrategyEarliest,
+				DayPriorityMode: DayPriorityDate,
+				SlotStrategy:    SlotStrategyEarliest,
 				SelectedStores:  []string{"001", "002"},
 				StorePriority:   []string{"002", "001"},
 			},
@@ -485,10 +487,10 @@ func TestCapturedTokensValidation(t *testing.T) {
 		Referer:   "referer",
 		StoreIDs:  []string{"001"},
 	}
-	if err := queryOnly.validateForQuery(); err != nil {
-		t.Fatalf("validateForQuery() error = %v, want nil", err)
+	if err := queryOnly.ValidateForQuery(); err != nil {
+		t.Fatalf("ValidateForQuery() error = %v, want nil", err)
 	}
-	assertErrorContainsAll(t, queryOnly.validateForReservation(), "预约认证", "微信ID", "手机号")
+	assertErrorContainsAll(t, queryOnly.ValidateForReservation(), "预约认证", "微信ID", "手机号")
 
 	complete := &CapturedTokens{
 		XAppCode:        "app",
@@ -503,15 +505,15 @@ func TestCapturedTokensValidation(t *testing.T) {
 	if !complete.IsComplete() {
 		t.Fatal("IsComplete() = false, want true")
 	}
-	if err := complete.validateForReservation(); err != nil {
-		t.Fatalf("validateForReservation() error = %v, want nil", err)
+	if err := complete.ValidateForReservation(); err != nil {
+		t.Fatalf("ValidateForReservation() error = %v, want nil", err)
 	}
 
 	missingQuery := &CapturedTokens{
 		XAppCode:  "  ",
 		UserAgent: "agent",
 	}
-	assertErrorContainsAll(t, missingQuery.validateForQuery(), "X-App-Code", "查询认证", "Referer", "门店")
+	assertErrorContainsAll(t, missingQuery.ValidateForQuery(), "X-App-Code", "查询认证", "Referer", "门店")
 }
 
 func validSettingsForTest() Settings {

@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"fmt"
@@ -21,12 +23,12 @@ func cmdCalendar() {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	settings := tokens.toSettings()
+	settings := tokens.ToSettings()
 	client := NewClient(settings)
 
-	logMessage(time.Now(), "验证认证参数...")
+	LogMessage(time.Now(), "验证认证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
-		logMessage(time.Now(), "验证失败: "+err.Error())
+		LogMessage(time.Now(), "验证失败: "+err.Error())
 		fmt.Println("认证参数已过期，请重新运行 sushiro-overdose 重新捕获")
 		return
 	}
@@ -69,7 +71,7 @@ func cmdCalendar() {
 	limit := now.AddDate(0, 0, 7)
 	recentSlots := make([]Slot, 0)
 	for _, s := range allSlots {
-		slotTime, err := slotDateTime(s, settings.Location)
+		slotTime, err := SlotDateTime(s, settings.Location)
 		if err != nil || slotTime.After(limit) || slotTime.Before(now) {
 			continue
 		}
@@ -109,11 +111,11 @@ func displayCalendar(slots []Slot, loc *time.Location, storeNames map[string]str
 	// Print detailed slot list
 	fmt.Println("\n--- 详细时段 ---")
 	for _, dateKey := range dates {
-		day, err := parseCompactDate(dateKey, loc)
+		day, err := ParseCompactDate(dateKey, loc)
 		if err != nil {
 			continue
 		}
-		fmt.Printf("\n%s\n", formatDateWithWeekday(day))
+		fmt.Printf("\n%s\n", FormatDateWithWeekday(day))
 
 		entries := grouped[dateKey]
 		sort.Slice(entries, func(i, j int) bool {
@@ -133,8 +135,8 @@ func displayCalendar(slots []Slot, loc *time.Location, storeNames map[string]str
 			}
 
 			fmt.Printf("  %s-%s %s %s%s\n",
-				formatCompactTime(e.Start),
-				formatCompactTime(defaultString(e.End, e.Start)),
+				FormatCompactTime(e.Start),
+				FormatCompactTime(DefaultString(e.End, e.Start)),
 				icon, label, storeTag)
 		}
 	}
@@ -161,8 +163,8 @@ func printSlotCalendarGrid(dates []string, grouped map[string][]Slot, loc *time.
 		return
 	}
 
-	firstDay, _ := parseCompactDate(dates[0], loc)
-	lastDay, _ := parseCompactDate(dates[len(dates)-1], loc)
+	firstDay, _ := ParseCompactDate(dates[0], loc)
+	lastDay, _ := ParseCompactDate(dates[len(dates)-1], loc)
 
 	// Align grid to week boundaries (Monday-based)
 	gridStart := beginningOfWeekMon(firstDay)
@@ -207,7 +209,7 @@ func printSlotCalendarGrid(dates []string, grouped map[string][]Slot, loc *time.
 }
 
 func beginningOfWeekMon(t time.Time) time.Time {
-	d := beginningOfDay(t)
-	idx := weekdayIndexMon0(d.Weekday())
+	d := BeginningOfDay(t)
+	idx := WeekdayIndexMon0(d.Weekday())
 	return d.AddDate(0, 0, -idx)
 }

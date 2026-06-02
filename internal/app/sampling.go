@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -90,7 +92,7 @@ type SlotSampler struct {
 var sampler = &SlotSampler{state: SamplingState{Status: samplingStatusIdle, Message: "未启动"}}
 
 func samplingConfigPath() string {
-	return filepath.Join(appDirPath(), "sampling.json")
+	return filepath.Join(AppDirPath(), "sampling.json")
 }
 
 func defaultSamplingConfig() SamplingConfig {
@@ -118,7 +120,7 @@ func LoadSamplingConfig() SamplingConfig {
 
 func SaveSamplingConfig(cfg SamplingConfig) error {
 	cfg = NormalizeSamplingConfig(cfg)
-	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -138,15 +140,15 @@ func NormalizeSamplingConfig(cfg SamplingConfig) SamplingConfig {
 	if cfg.IntervalSeconds > 24*3600 {
 		cfg.IntervalSeconds = 24 * 3600
 	}
-	if parseTimeSeconds(cfg.ActiveStart) < 0 {
+	if ParseTimeSeconds(cfg.ActiveStart) < 0 {
 		cfg.ActiveStart = defaultSamplingStart
 	}
-	if parseTimeSeconds(cfg.ActiveEnd) < 0 {
+	if ParseTimeSeconds(cfg.ActiveEnd) < 0 {
 		cfg.ActiveEnd = defaultSamplingEnd
 	}
-	cfg.ActiveStart = normalizeTimeStr(cfg.ActiveStart)
-	cfg.ActiveEnd = normalizeTimeStr(cfg.ActiveEnd)
-	cfg.StoreIDs = uniqueNonEmptyStrings(cfg.StoreIDs)
+	cfg.ActiveStart = NormalizeTimeStr(cfg.ActiveStart)
+	cfg.ActiveEnd = NormalizeTimeStr(cfg.ActiveEnd)
+	cfg.StoreIDs = UniqueNonEmptyStrings(cfg.StoreIDs)
 	return cfg
 }
 
@@ -367,14 +369,14 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 		return result
 	}
 
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		result.Skipped = true
 		result.SkipReason = "暂无认证参数，请先完成参数捕获"
 		result.FinishedAt = time.Now().Format(time.RFC3339)
 		return result
 	}
-	if err := tokens.validateForQuery(); err != nil {
+	if err := tokens.ValidateForQuery(); err != nil {
 		result.Skipped = true
 		result.SkipReason = err.Error()
 		result.FinishedAt = time.Now().Format(time.RFC3339)
@@ -390,7 +392,7 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 		return result
 	}
 
-	settings := tokens.toSettingsWithPrefs(prefs)
+	settings := tokens.ToSettingsWithPrefs(prefs)
 	settings.StoreIDs = storeIDs
 	client := NewClient(settings)
 	reg := GetStoreRegistry()
@@ -416,11 +418,11 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 		// 排队快照：用认证态 getStoreById（含 groupQueues=当前叫号），写入观测并评估叫号提醒。
 		if storeInfo, err := client.GetStoreInfo(ctx, storeID); err != nil {
 			storeResult.QueueError = err.Error()
-			logMessage(time.Now(), fmt.Sprintf("采样排队快照获取失败，门店 %s: %v", storeID, err))
+			LogMessage(time.Now(), fmt.Sprintf("采样排队快照获取失败，门店 %s: %v", storeID, err))
 		} else if observation, ok := queueObservationFromStoreInfo(storeID, storeInfo, time.Now()); ok {
 			if err := appendQueueObservation(observation); err != nil {
 				storeResult.QueueError = err.Error()
-				logMessage(time.Now(), fmt.Sprintf("采样排队快照保存失败，门店 %s: %v", storeID, err))
+				LogMessage(time.Now(), fmt.Sprintf("采样排队快照保存失败，门店 %s: %v", storeID, err))
 			} else {
 				storeResult.QueueObserved = true
 				storeResult.QueueWaitGroups = storeInfo.GroupQueuesCount
@@ -500,8 +502,8 @@ func samplingStoreIDs(cfg SamplingConfig, tokens *CapturedTokens, prefs UserPref
 	if cfg.UsePreferenceStores && len(prefs.SelectedStores) > 0 {
 		return prefs.SelectedStores
 	}
-	tokens.mu.Lock()
-	defer tokens.mu.Unlock()
+	tokens.Lock()
+	defer tokens.Unlock()
 	return append([]string(nil), tokens.StoreIDs...)
 }
 
@@ -513,8 +515,8 @@ func samplingWaitDuration(cfg SamplingConfig, now time.Time) time.Duration {
 }
 
 func samplingInActiveWindow(cfg SamplingConfig, now time.Time) bool {
-	start := parseTimeSeconds(cfg.ActiveStart)
-	end := parseTimeSeconds(cfg.ActiveEnd)
+	start := ParseTimeSeconds(cfg.ActiveStart)
+	end := ParseTimeSeconds(cfg.ActiveEnd)
 	current := now.Hour()*3600 + now.Minute()*60 + now.Second()
 	if start < 0 || end < 0 || start == end {
 		return true
@@ -526,7 +528,7 @@ func samplingInActiveWindow(cfg SamplingConfig, now time.Time) bool {
 }
 
 func nextSamplingWindowStart(cfg SamplingConfig, now time.Time) time.Time {
-	start := parseTimeSeconds(cfg.ActiveStart)
+	start := ParseTimeSeconds(cfg.ActiveStart)
 	if start < 0 {
 		return now
 	}
@@ -594,5 +596,5 @@ func samplingSummary(cfg SamplingConfig) string {
 	if len(cfg.StoreIDs) > 0 {
 		stores = strings.Join(cfg.StoreIDs, ",")
 	}
-	return fmt.Sprintf("每 %d 秒，%s-%s，门店: %s", cfg.IntervalSeconds, formatCompactTime(cfg.ActiveStart), formatCompactTime(cfg.ActiveEnd), stores)
+	return fmt.Sprintf("每 %d 秒，%s-%s，门店: %s", cfg.IntervalSeconds, FormatCompactTime(cfg.ActiveStart), FormatCompactTime(cfg.ActiveEnd), stores)
 }

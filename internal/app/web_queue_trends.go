@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"net/http"
 	"strconv"
@@ -28,7 +30,7 @@ func handleQueueTrends(w http.ResponseWriter, r *http.Request) {
 func queueTrendRequestStores(storeValues []string, storesValue string) []string {
 	raw := append([]string{}, storeValues...)
 	raw = append(raw, strings.Split(storesValue, ",")...)
-	return uniqueNonEmptyStrings(raw)
+	return UniqueNonEmptyStrings(raw)
 }
 
 func atoiDefault(value string, fallback int) int {

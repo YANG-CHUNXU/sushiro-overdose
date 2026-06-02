@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -146,7 +148,7 @@ func (c *QueueLiveClient) ListAreas(ctx context.Context) ([]string, error) {
 	if err := json.Unmarshal(body, &areas); err != nil {
 		return nil, fmt.Errorf("queue areas response is not a JSON array: %w", err)
 	}
-	return uniqueNonEmptyStrings(areas), nil
+	return UniqueNonEmptyStrings(areas), nil
 }
 
 func (c *QueueLiveClient) get(ctx context.Context, path string) ([]byte, error) {
@@ -155,7 +157,7 @@ func (c *QueueLiveClient) get(ctx context.Context, path string) ([]byte, error) 
 	if err != nil {
 		return nil, fmt.Errorf("create queue request: %w", err)
 	}
-	req.Header.Set("Authorization", ensureBearer(c.token))
+	req.Header.Set("Authorization", EnsureBearer(c.token))
 	req.Header.Set("Referer", c.referer)
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept", "*/*")
@@ -170,7 +172,7 @@ func (c *QueueLiveClient) get(ctx context.Context, path string) ([]byte, error) 
 		return nil, fmt.Errorf("read queue response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, &APIError{StatusCode: resp.StatusCode, Body: normalizeErrorBody(body)}
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: NormalizeErrorBody(body)}
 	}
 	if !json.Valid(body) {
 		return nil, fmt.Errorf("queue response is not JSON: %s", string(body))

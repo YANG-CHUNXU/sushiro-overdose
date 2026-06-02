@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"math"
 	"os"
@@ -230,20 +232,20 @@ func normalizeInsightObservation(snapshot SlotSnapshot, loc *time.Location) (ins
 		return insightObservation{}, false
 	}
 
-	day, err := parseCompactDate(strings.TrimSpace(snapshot.Date), loc)
+	day, err := ParseCompactDate(strings.TrimSpace(snapshot.Date), loc)
 	if err != nil {
 		return insightObservation{}, false
 	}
 
-	start := normalizeTimeStr(snapshot.Start)
-	if parseTimeSeconds(start) < 0 {
+	start := NormalizeTimeStr(snapshot.Start)
+	if ParseTimeSeconds(start) < 0 {
 		return insightObservation{}, false
 	}
-	end := normalizeTimeStr(snapshot.End)
+	end := NormalizeTimeStr(snapshot.End)
 	if end == "" {
 		end = start
 	}
-	if parseTimeSeconds(end) < 0 {
+	if ParseTimeSeconds(end) < 0 {
 		return insightObservation{}, false
 	}
 
@@ -439,7 +441,7 @@ func insightWeekdayName(weekday int) string {
 	if weekday < 1 || weekday > 7 {
 		return ""
 	}
-	return chineseWeekdayNames[weekday-1]
+	return ChineseWeekdayNames[weekday-1]
 }
 
 func cloneFloat64Ptr(value *float64) *float64 {

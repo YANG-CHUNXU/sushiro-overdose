@@ -1,11 +1,11 @@
-package app
+package core
 
 import (
 	"fmt"
 	"net"
 )
 
-func listenOnAvailableLocalPort(preferred, attempts int) (net.Listener, int, error) {
+func ListenOnAvailableLocalPort(preferred, attempts int) (net.Listener, int, error) {
 	var lastErr error
 	for port := preferred; port < preferred+attempts; port++ {
 		ln, err := listenLocalPort(port)
@@ -20,8 +20,8 @@ func listenOnAvailableLocalPort(preferred, attempts int) (net.Listener, int, err
 	return nil, 0, lastErr
 }
 
-func firstAvailableLocalPort(preferred, attempts int) (int, bool) {
-	ln, port, err := listenOnAvailableLocalPort(preferred, attempts)
+func FirstAvailableLocalPort(preferred, attempts int) (int, bool) {
+	ln, port, err := ListenOnAvailableLocalPort(preferred, attempts)
 	if err != nil {
 		return 0, false
 	}

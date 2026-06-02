@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"encoding/json"
@@ -9,20 +9,20 @@ import (
 )
 
 const (
-	dayPriorityDate         = "date"
-	dayPriorityWeekendFirst = "weekend_first"
-	dayPriorityWeekdayFirst = "weekday_first"
-	dayPriorityCustom       = "custom"
+	DayPriorityDate         = "date"
+	DayPriorityWeekendFirst = "weekend_first"
+	DayPriorityWeekdayFirst = "weekday_first"
+	DayPriorityCustom       = "custom"
 
 	dayKindWeekday  = "weekday"
 	dayKindSaturday = "saturday"
 	dayKindSunday   = "sunday"
 
-	slotStrategyEarliest = "earliest"
-	slotStrategyLatest   = "latest"
-	slotStrategyClosest  = "closest"
+	SlotStrategyEarliest = "earliest"
+	SlotStrategyLatest   = "latest"
+	SlotStrategyClosest  = "closest"
 
-	defaultTargetTime = "1930"
+	DefaultTargetTime = "1930"
 )
 
 // TimeRange represents a target time window for slot booking.
@@ -50,8 +50,8 @@ type UserPreferences struct {
 	SundaySlots     []TimeRange `json:"sunday_slots"`
 }
 
-func preferencesPath() string {
-	return filepath.Join(appDirPath(), "preferences.json")
+func PreferencesPath() string {
+	return filepath.Join(AppDirPath(), "preferences.json")
 }
 
 func DefaultPreferences() UserPreferences {
@@ -59,10 +59,10 @@ func DefaultPreferences() UserPreferences {
 		Adult:           2,
 		Child:           0,
 		TableType:       "T",
-		DayPriorityMode: dayPriorityDate,
+		DayPriorityMode: DayPriorityDate,
 		DayPriority:     []string{dayKindSaturday, dayKindSunday, dayKindWeekday},
-		SlotStrategy:    slotStrategyEarliest,
-		TargetTime:      defaultTargetTime,
+		SlotStrategy:    SlotStrategyEarliest,
+		TargetTime:      DefaultTargetTime,
 		WeekdaySlots:    []TimeRange{{Start: "1930", End: "2030"}},
 		SaturdaySlots:   []TimeRange{{Start: "1030", End: "1300"}, {Start: "1930", End: "2030"}},
 		SundaySlots:     []TimeRange{{Start: "1030", End: "1300"}, {Start: "1930", End: "2030"}},
@@ -70,7 +70,7 @@ func DefaultPreferences() UserPreferences {
 }
 
 func LoadPreferences() UserPreferences {
-	data, err := os.ReadFile(preferencesPath())
+	data, err := os.ReadFile(PreferencesPath())
 	if err != nil {
 		return DefaultPreferences()
 	}
@@ -89,32 +89,32 @@ func NormalizePreferences(prefs UserPreferences) UserPreferences {
 		prefs.TableType = "T"
 	}
 	if !validDayPriorityMode(prefs.DayPriorityMode) {
-		prefs.DayPriorityMode = dayPriorityDate
+		prefs.DayPriorityMode = DayPriorityDate
 	}
 	prefs.DayPriority = normalizeDayPriority(prefs.DayPriority)
 	if !validSlotStrategy(prefs.SlotStrategy) {
-		prefs.SlotStrategy = slotStrategyEarliest
+		prefs.SlotStrategy = SlotStrategyEarliest
 	}
-	if parseTimeSeconds(prefs.TargetTime) < 0 {
-		prefs.TargetTime = defaultTargetTime
+	if ParseTimeSeconds(prefs.TargetTime) < 0 {
+		prefs.TargetTime = DefaultTargetTime
 	}
-	prefs.SelectedStores = uniqueNonEmptyStrings(prefs.SelectedStores)
+	prefs.SelectedStores = UniqueNonEmptyStrings(prefs.SelectedStores)
 	prefs.StorePriority = normalizeStorePriority(prefs.StorePriority, prefs.SelectedStores)
 	return prefs
 }
 
 func SavePreferences(prefs UserPreferences) error {
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	prefs = NormalizePreferences(prefs)
 	data, err := json.MarshalIndent(prefs, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(preferencesPath(), data, 0o600)
+	return os.WriteFile(PreferencesPath(), data, 0o600)
 }
 
 func (p UserPreferences) ShouldTarget(slot Slot, loc *time.Location) bool {
-	day, err := parseCompactDate(slot.Date, loc)
+	day, err := ParseCompactDate(slot.Date, loc)
 	if err != nil {
 		return false
 	}
@@ -133,14 +133,14 @@ func (p UserPreferences) ShouldTarget(slot Slot, loc *time.Location) bool {
 		return false
 	}
 
-	start := normalizeTimeStr(slot.Start)
-	end := normalizeTimeStr(slot.End)
+	start := NormalizeTimeStr(slot.Start)
+	end := NormalizeTimeStr(slot.End)
 	if end == "" {
 		end = start
 	}
 	for _, r := range ranges {
-		rangeStart := normalizeTimeStr(r.Start)
-		rangeEnd := normalizeTimeStr(r.End)
+		rangeStart := NormalizeTimeStr(r.Start)
+		rangeEnd := NormalizeTimeStr(r.End)
 		if rangeStart == "" || rangeEnd == "" {
 			continue
 		}
@@ -154,15 +154,15 @@ func (p UserPreferences) ShouldTarget(slot Slot, loc *time.Location) bool {
 func (p UserPreferences) PreferTargetSlot(candidate, current TargetSlot, loc *time.Location, storeOrder []string) bool {
 	p = NormalizePreferences(p)
 
-	candidateDate, candidateDateErr := parseCompactDate(candidate.Date, loc)
-	currentDate, currentDateErr := parseCompactDate(current.Date, loc)
+	candidateDate, candidateDateErr := ParseCompactDate(candidate.Date, loc)
+	currentDate, currentDateErr := ParseCompactDate(current.Date, loc)
 	if candidateDateErr != nil || currentDateErr != nil {
 		return candidate.Date+candidate.Start+candidate.StoreID < current.Date+current.Start+current.StoreID
 	}
 
-	if p.DayPriorityMode != dayPriorityDate {
-		candidateRank := p.dayPriorityRank(candidateDate.Weekday())
-		currentRank := p.dayPriorityRank(currentDate.Weekday())
+	if p.DayPriorityMode != DayPriorityDate {
+		candidateRank := p.DayPriorityRank(candidateDate.Weekday())
+		currentRank := p.DayPriorityRank(currentDate.Weekday())
 		if candidateRank != currentRank {
 			return candidateRank < currentRank
 		}
@@ -188,19 +188,19 @@ func (p UserPreferences) PreferTargetSlot(candidate, current TargetSlot, loc *ti
 	return candidate.StoreID < current.StoreID
 }
 
-func (p UserPreferences) dayPriorityRank(day time.Weekday) int {
+func (p UserPreferences) DayPriorityRank(day time.Weekday) int {
 	switch p.DayPriorityMode {
-	case dayPriorityWeekendFirst:
+	case DayPriorityWeekendFirst:
 		if day == time.Saturday || day == time.Sunday {
 			return 0
 		}
 		return 1
-	case dayPriorityWeekdayFirst:
+	case DayPriorityWeekdayFirst:
 		if day == time.Saturday || day == time.Sunday {
 			return 1
 		}
 		return 0
-	case dayPriorityCustom:
+	case DayPriorityCustom:
 		kind := dayKind(day)
 		for i, preferred := range p.DayPriority {
 			if preferred == kind {
@@ -211,7 +211,7 @@ func (p UserPreferences) dayPriorityRank(day time.Weekday) int {
 	return 0
 }
 
-func normalizeTimeStr(t string) string {
+func NormalizeTimeStr(t string) string {
 	t = strings.TrimSpace(t)
 	t = strings.ReplaceAll(t, ":", "")
 	switch len(t) {
@@ -226,7 +226,7 @@ func normalizeTimeStr(t string) string {
 
 func validDayPriorityMode(mode string) bool {
 	switch mode {
-	case dayPriorityDate, dayPriorityWeekendFirst, dayPriorityWeekdayFirst, dayPriorityCustom:
+	case DayPriorityDate, DayPriorityWeekendFirst, DayPriorityWeekdayFirst, DayPriorityCustom:
 		return true
 	default:
 		return false
@@ -235,7 +235,7 @@ func validDayPriorityMode(mode string) bool {
 
 func validSlotStrategy(strategy string) bool {
 	switch strategy {
-	case slotStrategyEarliest, slotStrategyLatest, slotStrategyClosest:
+	case SlotStrategyEarliest, SlotStrategyLatest, SlotStrategyClosest:
 		return true
 	default:
 		return false
@@ -263,7 +263,7 @@ func normalizeDayPriority(priority []string) []string {
 }
 
 func normalizeStorePriority(priority, selected []string) []string {
-	base := uniqueNonEmptyStrings(priority)
+	base := UniqueNonEmptyStrings(priority)
 	if len(selected) == 0 {
 		return base
 	}
@@ -289,7 +289,7 @@ func normalizeStorePriority(priority, selected []string) []string {
 	return normalized
 }
 
-func uniqueNonEmptyStrings(items []string) []string {
+func UniqueNonEmptyStrings(items []string) []string {
 	seen := map[string]bool{}
 	normalized := make([]string, 0, len(items))
 	for _, item := range items {
@@ -350,19 +350,19 @@ func rankInOrder(value string, order []string) int {
 }
 
 func compareSlotStart(candidateStart, currentStart, strategy, targetTime string) int {
-	candidateSeconds := parseTimeSeconds(candidateStart)
-	currentSeconds := parseTimeSeconds(currentStart)
+	candidateSeconds := ParseTimeSeconds(candidateStart)
+	currentSeconds := ParseTimeSeconds(currentStart)
 	if candidateSeconds < 0 || currentSeconds < 0 {
 		return strings.Compare(candidateStart, currentStart)
 	}
 
 	switch strategy {
-	case slotStrategyLatest:
+	case SlotStrategyLatest:
 		return currentSeconds - candidateSeconds
-	case slotStrategyClosest:
-		targetSeconds := parseTimeSeconds(targetTime)
+	case SlotStrategyClosest:
+		targetSeconds := ParseTimeSeconds(targetTime)
 		if targetSeconds < 0 {
-			targetSeconds = parseTimeSeconds(defaultTargetTime)
+			targetSeconds = ParseTimeSeconds(DefaultTargetTime)
 		}
 		candidateDiff := absInt(candidateSeconds - targetSeconds)
 		currentDiff := absInt(currentSeconds - targetSeconds)
@@ -375,12 +375,12 @@ func compareSlotStart(candidateStart, currentStart, strategy, targetTime string)
 	}
 }
 
-func parseTimeSeconds(value string) int {
-	normalized := normalizeTimeStr(value)
+func ParseTimeSeconds(value string) int {
+	normalized := NormalizeTimeStr(value)
 	if len(normalized) != 6 {
 		return -1
 	}
-	hour, minute, second, err := parseCompactTime(normalized)
+	hour, minute, second, err := ParseCompactTime(normalized)
 	if err != nil {
 		return -1
 	}

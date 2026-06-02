@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -41,7 +43,7 @@ func (m *MultiNotifier) Send(ctx context.Context, title, content string) {
 		go func(n Notifier) {
 			defer wg.Done()
 			if err := n.Send(ctx, title, content); err != nil {
-				logMessage(time.Now(), fmt.Sprintf("[%s] 通知发送失败: %s", n.Name(), err))
+				LogMessage(time.Now(), fmt.Sprintf("[%s] 通知发送失败: %s", n.Name(), err))
 			}
 		}(n)
 	}
@@ -82,7 +84,7 @@ type notifyConfig struct {
 }
 
 func notifyConfigPath() string {
-	return fmt.Sprintf("%s/notify.json", appDirPath())
+	return fmt.Sprintf("%s/notify.json", AppDirPath())
 }
 
 func loadNotifyConfig() (*notifyConfig, error) {
@@ -98,7 +100,7 @@ func loadNotifyConfig() (*notifyConfig, error) {
 }
 
 func saveNotifyConfig(cfg *notifyConfig) error {
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -113,7 +115,7 @@ func BuildNotifierFromConfig() *MultiNotifier {
 	cfg, err := loadNotifyConfig()
 	if err != nil {
 		// Try loading legacy feishu config
-		if webhook := loadFeishuConfig(); webhook != "" {
+		if webhook := LoadFeishuConfig(); webhook != "" {
 			mn.Add(&feishuNotifier{webhook: webhook})
 		}
 		return mn

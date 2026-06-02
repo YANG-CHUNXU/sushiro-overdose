@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -31,7 +33,7 @@ type NetTicketPlan struct {
 	LastError  string `json:"last_error,omitempty"`
 }
 
-func netTicketPlanPath() string { return filepath.Join(appDirPath(), netTicketPlanFile) }
+func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
 
 func LoadNetTicketPlan() NetTicketPlan {
 	data, err := os.ReadFile(netTicketPlanPath())
@@ -46,7 +48,7 @@ func LoadNetTicketPlan() NetTicketPlan {
 }
 
 func SaveNetTicketPlan(p NetTicketPlan) error {
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
@@ -118,7 +120,7 @@ func netTicketTick(ctx context.Context) {
 		plan.FiredDate = today
 		plan.FiredAt = now.Format(time.RFC3339)
 		_ = SaveNetTicketPlan(plan)
-		sendQueueAlert(ctx, "⏰ 定时取号未执行", defaultString(plan.StoreName, plan.StoreID)+"：超过 "+netTicketDisplayTime(plan.TargetTime)+" 窗口仍未取到号")
+		sendQueueAlert(ctx, "⏰ 定时取号未执行", DefaultString(plan.StoreName, plan.StoreID)+"：超过 "+netTicketDisplayTime(plan.TargetTime)+" 窗口仍未取到号")
 		return
 	}
 	// 命中窗口：按日期占位，确保只取一次（web/守护两个进程都安全）。
@@ -142,7 +144,7 @@ func netTicketTick(ctx context.Context) {
 		plan.Status = "error"
 		plan.LastError = err.Error()
 		_ = SaveNetTicketPlan(plan)
-		sendQueueAlert(ctx, "⚠️ 定时取号失败", defaultString(plan.StoreName, plan.StoreID)+"："+err.Error())
+		sendQueueAlert(ctx, "⚠️ 定时取号失败", DefaultString(plan.StoreName, plan.StoreID)+"："+err.Error())
 		return
 	}
 	plan.Status = "success"
@@ -150,12 +152,12 @@ func netTicketTick(ctx context.Context) {
 	plan.TicketID = ticket.TicketID
 	plan.LastError = ""
 	_ = SaveNetTicketPlan(plan)
-	sendQueueAlert(ctx, "🎫 已自动取号", defaultString(plan.StoreName, plan.StoreID)+"：号码 "+defaultString(ticket.Number, "(详见我的预约)"))
+	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))
 }
 
 // reserveNetTicketFire 用独占创建的锁文件占位，返回 true 表示本进程抢到了今天的取号执行权。
 func reserveNetTicketFire(date string) bool {
-	p := filepath.Join(appDirPath(), "netticket_fire_"+date+".lock")
+	p := filepath.Join(AppDirPath(), "netticket_fire_"+date+".lock")
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return false
@@ -167,7 +169,7 @@ func reserveNetTicketFire(date string) bool {
 
 // clearNetTicketFire 在用户重新设定计划时清掉当天占位，允许再次取号。
 func clearNetTicketFire(date string) {
-	_ = os.Remove(filepath.Join(appDirPath(), "netticket_fire_"+date+".lock"))
+	_ = os.Remove(filepath.Join(AppDirPath(), "netticket_fire_"+date+".lock"))
 }
 
 func netTicketTargetToday(hhmm string, now time.Time) (time.Time, bool) {
@@ -195,13 +197,13 @@ func netTicketDisplayTime(hhmm string) string {
 
 // currentAuthedClient 从本地配置构造一个带认证的 API 客户端（headless 守护也能用）。
 func currentAuthedClient() *Client {
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		return nil
 	}
-	if tokens.validateForReservation() != nil {
+	if tokens.ValidateForReservation() != nil {
 		return nil
 	}
 	prefs := LoadPreferences()
-	return NewClient(tokens.toSettingsWithPrefs(prefs))
+	return NewClient(tokens.ToSettingsWithPrefs(prefs))
 }

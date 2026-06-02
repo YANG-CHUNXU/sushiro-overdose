@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bytes"
 	"context"
@@ -154,7 +156,7 @@ func setupSamplingRunTest(t *testing.T, storeID string) SamplingConfig {
 		PhoneNumber:     "13800138000",
 		StoreIDs:        []string{storeID},
 	}
-	if err := saveLocalConfig(tokens); err != nil {
+	if err := SaveLocalConfig(tokens); err != nil {
 		t.Fatalf("save local config: %v", err)
 	}
 	return NormalizeSamplingConfig(SamplingConfig{

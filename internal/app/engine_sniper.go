@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"fmt"
@@ -32,7 +34,7 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	bus.publish("engine", mustJSON(e.GetState()))
 	pauseSamplingForMainFlow()
 
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		cancel()
 		e.setState(EngineIdle, "暂无认证参数")
@@ -40,16 +42,16 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	}
 	prefs := LoadPreferences()
 	if len(prefs.SelectedStores) > 0 {
-		tokens.mu.Lock()
+		tokens.Lock()
 		tokens.StoreIDs = prefs.SelectedStores
-		tokens.mu.Unlock()
+		tokens.Unlock()
 	}
-	if err := tokens.validateForReservation(); err != nil {
+	if err := tokens.ValidateForReservation(); err != nil {
 		cancel()
 		e.setState(EngineIdle, "预约参数不完整")
 		return err
 	}
-	settings := tokens.toSettingsWithPrefs(prefs)
+	settings := tokens.ToSettingsWithPrefs(prefs)
 	targets = normalizeSniperTargetsForSettings(targets, settings)
 	if len(targets) == 0 {
 		cancel()
@@ -67,7 +69,7 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 		cancel()
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
-			deleteLocalConfig()
+			DeleteLocalConfig()
 			return fmt.Errorf("认证参数已过期，请重新捕获")
 		}
 		return fmt.Errorf("验证失败: %w", err)
@@ -103,8 +105,8 @@ func validateSniperTargetsForSettings(targets []SniperTarget, settings Settings)
 	}
 	for i, target := range targets {
 		target.Date = strings.ReplaceAll(strings.TrimSpace(target.Date), "-", "")
-		target.StartAfter = normalizeTimeStr(target.StartAfter)
-		target.StartBefore = normalizeTimeStr(target.StartBefore)
+		target.StartAfter = NormalizeTimeStr(target.StartAfter)
+		target.StartBefore = NormalizeTimeStr(target.StartBefore)
 		target.StoreID = strings.TrimSpace(target.StoreID)
 		if target.StoreID == "" {
 			target.StoreID = defaultStore
@@ -113,11 +115,11 @@ func validateSniperTargetsForSettings(targets []SniperTarget, settings Settings)
 			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "请选择门店"})
 			continue
 		}
-		if _, err := parseCompactDate(target.Date, loc); err != nil {
+		if _, err := ParseCompactDate(target.Date, loc); err != nil {
 			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "日期无效，请使用 YYYY-MM-DD 或 YYYYMMDD"})
 			continue
 		}
-		if parseTimeSeconds(target.StartAfter) < 0 || parseTimeSeconds(target.StartBefore) < 0 {
+		if ParseTimeSeconds(target.StartAfter) < 0 || ParseTimeSeconds(target.StartBefore) < 0 {
 			rejected = append(rejected, sniperTargetValidationError{Index: i, Target: target, Reason: "时间无效，请使用 HH:MM 或 HHMM"})
 			continue
 		}
@@ -146,7 +148,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 		targetID := sniperPlanTargetFromTarget(target, settings.Location).ID
 		openAt := sniperOpenTime(target, settings.Location)
 		targetLabel := fmt.Sprintf("%s %s-%s @ %s",
-			target.Date, formatCompactTime(target.StartAfter), formatCompactTime(target.StartBefore), target.StoreID)
+			target.Date, FormatCompactTime(target.StartAfter), FormatCompactTime(target.StartBefore), target.StoreID)
 		UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 			t.Status = "pending"
 			t.LastError = ""
@@ -209,14 +211,14 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 				if isAuthError(err) {
 					e.addLogLevel("狙击认证失败，请重新捕获参数", "error")
 					sendNotification("寿司郎狙击 - 认证失败", "认证参数已失效")
-					deleteLocalConfig()
+					DeleteLocalConfig()
 					e.setState(EngineError, "认证参数已失效，请重新捕获")
 					return
 				}
 				if isHTTPStatus(err, 500) {
 					e.addLogLevel("狙击接口 HTTP 500，参数可能已失效", "error")
 					sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效")
-					deleteLocalConfig()
+					DeleteLocalConfig()
 					e.setState(EngineError, "参数已失效，请重新捕获")
 					return
 				}
@@ -231,7 +233,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 				if slot.Availability != "" && strings.ToUpper(slot.Availability) != "AVAILABLE" {
 					continue
 				}
-				slotLabel := formatSlotWindow(slot.Date, slot.Start, defaultString(slot.End, slot.Start), settings.Location)
+				slotLabel := FormatSlotWindow(slot.Date, slot.Start, DefaultString(slot.End, slot.Start), settings.Location)
 				reservation, err := client.CreateReservation(ctx, target.StoreID, slot.Date, slot.Start)
 				if err != nil {
 					UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
@@ -243,14 +245,14 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					if isAuthError(err) {
 						e.addLogLevel("预约认证失败，终止狙击", "error")
 						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
-						deleteLocalConfig()
+						DeleteLocalConfig()
 						e.setState(EngineError, "预约认证参数已失效")
 						return
 					}
 					if isHTTPStatus(err, 500) {
 						e.addLogLevel("预约接口 HTTP 500，参数可能已失效", "error")
 						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效")
-						deleteLocalConfig()
+						DeleteLocalConfig()
 						e.setState(EngineError, "参数已失效，请重新捕获")
 						return
 					}

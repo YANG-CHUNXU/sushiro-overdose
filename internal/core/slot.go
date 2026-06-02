@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var chineseWeekdayNames = [...]string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"}
+var ChineseWeekdayNames = [...]string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"}
 
 type Slot struct {
 	StoreID      string `json:"storeId"`
@@ -120,14 +120,14 @@ type ReservationRecord struct {
 	SlotLabel        string `json:"slot_label,omitempty"`
 }
 
-func parseCompactDate(raw string, loc *time.Location) (time.Time, error) {
+func ParseCompactDate(raw string, loc *time.Location) (time.Time, error) {
 	if len(raw) != 8 {
 		return time.Time{}, fmt.Errorf("invalid date: %s", raw)
 	}
 	return time.ParseInLocation("20060102", raw, loc)
 }
 
-func parseCompactTime(raw string) (int, int, int, error) {
+func ParseCompactTime(raw string) (int, int, int, error) {
 	if len(raw) != 6 {
 		return 0, 0, 0, fmt.Errorf("invalid time: %s", raw)
 	}
@@ -146,43 +146,43 @@ func parseCompactTime(raw string) (int, int, int, error) {
 	return hour, minute, second, nil
 }
 
-func formatCompactTime(raw string) string {
-	hour, minute, _, err := parseCompactTime(raw)
+func FormatCompactTime(raw string) string {
+	hour, minute, _, err := ParseCompactTime(raw)
 	if err != nil {
 		return raw
 	}
 	return fmt.Sprintf("%02d:%02d", hour, minute)
 }
 
-func formatSlotWindow(slotDate, start, end string, loc *time.Location) string {
-	day, err := parseCompactDate(slotDate, loc)
+func FormatSlotWindow(slotDate, start, end string, loc *time.Location) string {
+	day, err := ParseCompactDate(slotDate, loc)
 	if err != nil {
-		return slotDate + " " + formatCompactTime(start) + "-" + formatCompactTime(end)
+		return slotDate + " " + FormatCompactTime(start) + "-" + FormatCompactTime(end)
 	}
-	return fmt.Sprintf("%s %s-%s", day.Format("2006-01-02"), formatCompactTime(start), formatCompactTime(end))
+	return fmt.Sprintf("%s %s-%s", day.Format("2006-01-02"), FormatCompactTime(start), FormatCompactTime(end))
 }
 
-func formatDateWithWeekday(day time.Time) string {
-	return fmt.Sprintf("%s（%s）", day.Format("2006-01-02"), chineseWeekdayNames[weekdayIndexMon0(day.Weekday())])
+func FormatDateWithWeekday(day time.Time) string {
+	return fmt.Sprintf("%s（%s）", day.Format("2006-01-02"), ChineseWeekdayNames[WeekdayIndexMon0(day.Weekday())])
 }
 
-func weekdayIndexMon0(day time.Weekday) int {
+func WeekdayIndexMon0(day time.Weekday) int {
 	if day == time.Sunday {
 		return 6
 	}
 	return int(day) - 1
 }
 
-func beginningOfDay(now time.Time) time.Time {
+func BeginningOfDay(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
-func slotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
-	day, err := parseCompactDate(slot.Date, loc)
+func SlotDateTime(slot Slot, loc *time.Location) (time.Time, error) {
+	day, err := ParseCompactDate(slot.Date, loc)
 	if err != nil {
 		return time.Time{}, err
 	}
-	hour, minute, second, err := parseCompactTime(slot.Start)
+	hour, minute, second, err := ParseCompactTime(slot.Start)
 	if err != nil {
 		return time.Time{}, err
 	}

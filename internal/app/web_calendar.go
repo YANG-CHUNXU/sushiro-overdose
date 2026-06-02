@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"net/http"
 	"strings"
@@ -140,10 +142,10 @@ func calendarSlotMatchesPeriod(slot Slot, period string) bool {
 	case "", "all":
 		return true
 	case "lunch":
-		seconds := parseTimeSeconds(slot.Start)
+		seconds := ParseTimeSeconds(slot.Start)
 		return seconds >= 10*3600 && seconds < 16*3600
 	case "dinner":
-		return parseTimeSeconds(slot.Start) >= 16*3600
+		return ParseTimeSeconds(slot.Start) >= 16*3600
 	default:
 		return true
 	}

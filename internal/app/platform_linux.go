@@ -2,6 +2,8 @@
 
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"fmt"
 	"os"
@@ -169,7 +171,7 @@ func removeSamplingAutoStart() error {
 func linuxSamplingServicePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(appDirPath(), "sushiro-overdose-sampler.service")
+		return filepath.Join(AppDirPath(), "sushiro-overdose-sampler.service")
 	}
 	return filepath.Join(home, ".config", "systemd", "user", "sushiro-overdose-sampler.service")
 }

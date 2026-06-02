@@ -2,6 +2,8 @@
 
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"errors"
 	"fmt"
@@ -263,7 +265,7 @@ func installSamplingAutoStart() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		return err
 	}
 	plist := `<?xml version="1.0" encoding="UTF-8"?>

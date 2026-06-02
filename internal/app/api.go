@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bytes"
 	"context"
@@ -121,7 +123,7 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 		if err := reservationBusinessError(body); err != nil {
 			return ReservationRecord{}, err
 		}
-		return ReservationRecord{}, fmt.Errorf("reservation response missing ticket id/number: %s", normalizeErrorBody(body))
+		return ReservationRecord{}, fmt.Errorf("reservation response missing ticket id/number: %s", NormalizeErrorBody(body))
 	}
 	return reservation, nil
 }
@@ -157,7 +159,7 @@ func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (Reservati
 		if err := reservationBusinessError(body); err != nil {
 			return ReservationRecord{}, err
 		}
-		return ReservationRecord{}, fmt.Errorf("net ticket response missing ticket id/number: %s", normalizeErrorBody(body))
+		return ReservationRecord{}, fmt.Errorf("net ticket response missing ticket id/number: %s", NormalizeErrorBody(body))
 	}
 	return ticket, nil
 }
@@ -196,7 +198,7 @@ func (c *Client) CancelReservation(ctx context.Context, ticketID int64) error {
 
 func (c *Client) baseHeaders(authorization, contentType string) map[string]string {
 	headers := map[string]string{
-		"Authorization": ensureBearer(authorization),
+		"Authorization": EnsureBearer(authorization),
 		"X-App-Code":    c.settings.XAppCode,
 		"X-App-Client":  c.settings.XAppClient,
 		"User-Agent":    c.settings.UserAgent,
@@ -237,7 +239,7 @@ func (c *Client) doJSON(ctx context.Context, method, target string, headers map[
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, &APIError{StatusCode: resp.StatusCode, Body: normalizeErrorBody(responseBody)}
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: NormalizeErrorBody(responseBody)}
 	}
 	if len(responseBody) == 0 {
 		return nil, nil
@@ -253,7 +255,7 @@ func reservationLooksSuccessful(r ReservationRecord) bool {
 }
 
 func reservationBusinessError(body []byte) error {
-	text := normalizeErrorBody(body)
+	text := NormalizeErrorBody(body)
 	if isNoReservationText(text) {
 		return errNoReservationAvailable
 	}
@@ -284,23 +286,4 @@ func isNoReservationText(text string) bool {
 func isHTTPStatus(err error, status int) bool {
 	var apiErr *APIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == status
-}
-
-func normalizeErrorBody(body []byte) string {
-	if len(body) == 0 {
-		return "<empty>"
-	}
-	var payload any
-	if err := json.Unmarshal(body, &payload); err == nil {
-		return stringifyJSON(payload)
-	}
-	return string(body)
-}
-
-func stringifyJSON(value any) string {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Sprintf("%v", value)
-	}
-	return string(data)
 }

@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"encoding/json"
 	"os"
@@ -148,7 +150,7 @@ func TestAppendQueueObservationTightensPrivateObservationFile(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		t.Fatalf("mkdir app dir: %v", err)
 	}
 	path := queueObservationPath()

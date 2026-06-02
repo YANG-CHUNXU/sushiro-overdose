@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"crypto/rand"
@@ -103,7 +105,7 @@ func cmdWeb() {
 	tokens, ok := tryLoadConfig()
 	if ok {
 		prefs := LoadPreferences()
-		settings := tokens.toSettingsWithPrefs(prefs)
+		settings := tokens.ToSettingsWithPrefs(prefs)
 		setWebSettings(settings)
 	}
 	sampler.StartIfAuto(ctx)
@@ -131,7 +133,7 @@ func cmdWeb() {
 }
 
 func findAvailablePort(preferred int) int {
-	if port, ok := firstAvailableLocalPort(preferred, 100); ok {
+	if port, ok := FirstAvailableLocalPort(preferred, 100); ok {
 		return port
 	}
 	return preferred
@@ -179,15 +181,15 @@ func getWebClient() *Client {
 }
 
 func refreshWebClient() {
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		return
 	}
-	if err := tokens.validateForQuery(); err != nil {
+	if err := tokens.ValidateForQuery(); err != nil {
 		return
 	}
 	prefs := LoadPreferences()
-	settings := tokens.toSettingsWithPrefs(prefs)
+	settings := tokens.ToSettingsWithPrefs(prefs)
 	setWebSettings(settings)
 }
 

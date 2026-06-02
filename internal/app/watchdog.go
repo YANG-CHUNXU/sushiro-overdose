@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"encoding/json"
 	"fmt"
@@ -10,7 +12,7 @@ import (
 const proxyStateFile = "proxy_active.json"
 
 func proxyStatePath() string {
-	return fmt.Sprintf("%s/%s", appDirPath(), proxyStateFile)
+	return fmt.Sprintf("%s/%s", AppDirPath(), proxyStateFile)
 }
 
 type proxyState struct {
@@ -29,7 +31,7 @@ func markProxyActive(port, pid int) {
 		PID:    pid,
 	}
 	data, _ := json.MarshalIndent(state, "", "  ")
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	_ = os.WriteFile(proxyStatePath(), data, 0o644)
 }
 
@@ -62,7 +64,7 @@ func checkStaleProxy() bool {
 	}
 
 	// Stale proxy detected — clean up
-	logMessage(time.Now(), fmt.Sprintf("检测到残留代理设置 (PID %d 已退出)，正在清除...", state.PID))
+	LogMessage(time.Now(), fmt.Sprintf("检测到残留代理设置 (PID %d 已退出)，正在清除...", state.PID))
 	ClearSystemProxy()
 	markProxyInactive()
 	return true

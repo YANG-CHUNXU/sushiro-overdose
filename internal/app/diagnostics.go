@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bufio"
 	"context"
@@ -167,7 +169,7 @@ type NotificationTestResult struct {
 }
 
 func CollectDiagnostics() Diagnostics {
-	logTail, logErr := readSanitizedLogTail(logPath(), diagnosticLogLines)
+	logTail, logErr := readSanitizedLogTail(LogPath(), diagnosticLogLines)
 	engineLogs := sanitizedEngineLogTail(engine.GetLogs(), diagnosticLogLines)
 	certificate := collectCertificateDiagnostics()
 	proxyMarker := collectProxyMarkerDiagnostics()
@@ -185,12 +187,12 @@ func CollectDiagnostics() Diagnostics {
 			PID:     readPID(),
 		},
 		Data: DiagnosticDataPaths{
-			AppDir:          appDirPath(),
-			ConfigPath:      localConfigPath(),
-			PreferencesPath: filepath.Join(appDirPath(), "preferences.json"),
+			AppDir:          AppDirPath(),
+			ConfigPath:      LocalConfigPath(),
+			PreferencesPath: filepath.Join(AppDirPath(), "preferences.json"),
 			NotifyPath:      notifyConfigPath(),
-			LogPath:         logPath(),
-			StatePath:       stateFilePath(),
+			LogPath:         LogPath(),
+			StatePath:       StateFilePath(),
 			CertDir:         certDirPath(),
 		},
 		Config:        collectConfigDiagnostics(),
@@ -212,8 +214,8 @@ func CollectDiagnostics() Diagnostics {
 
 func collectConfigDiagnostics() DiagnosticConfig {
 	out := DiagnosticConfig{
-		Path:    localConfigPath(),
-		Missing: newCapturedTokens().missingFields(true),
+		Path:    LocalConfigPath(),
+		Missing: NewCapturedTokens().MissingFields(true),
 	}
 	if _, err := os.Stat(out.Path); err == nil {
 		out.Exists = true
@@ -221,7 +223,7 @@ func collectConfigDiagnostics() DiagnosticConfig {
 		out.Error = err.Error()
 	}
 
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		if out.Error == "" && !os.IsNotExist(err) {
 			out.Error = err.Error()
@@ -230,19 +232,19 @@ func collectConfigDiagnostics() DiagnosticConfig {
 		return out
 	}
 
-	queryMissing := tokens.missingFields(false)
-	reservationMissing := tokens.missingFields(true)
+	queryMissing := tokens.MissingFields(false)
+	reservationMissing := tokens.MissingFields(true)
 	out.QueryComplete = len(queryMissing) == 0
 	out.ReservationComplete = len(reservationMissing) == 0
 	out.Complete = out.ReservationComplete
 	out.Missing = reservationMissing
 
-	tokens.mu.Lock()
+	tokens.Lock()
 	if strings.TrimSpace(tokens.PhoneNumber) != "" {
-		out.PhoneMasked = maskPhone(tokens.PhoneNumber)
+		out.PhoneMasked = MaskPhone(tokens.PhoneNumber)
 	}
 	out.StoreCount = len(tokens.StoreIDs)
-	tokens.mu.Unlock()
+	tokens.Unlock()
 
 	prefs := LoadPreferences()
 	out.SelectedStoreCount = len(prefs.SelectedStores)
@@ -326,7 +328,7 @@ func collectPortDiagnostics() []DiagnosticPort {
 			ports[i].Current = true
 		}
 		if ports[i].Port == proxyPort {
-			if fallback, ok := firstAvailableLocalPort(proxyPort, proxyPortSearchLimit); ok && fallback != proxyPort {
+			if fallback, ok := FirstAvailableLocalPort(proxyPort, proxyPortSearchLimit); ok && fallback != proxyPort {
 				ports[i].FallbackPort = fallback
 				ports[i].Note = fmt.Sprintf("捕获代理会自动改用 127.0.0.1:%d", fallback)
 			}
@@ -847,7 +849,7 @@ var (
 
 func sanitizeDiagnosticLine(s string) string {
 	s = phoneRedactor.ReplaceAllStringFunc(s, func(phone string) string {
-		return maskPhone(phone)
+		return MaskPhone(phone)
 	})
 	for _, re := range tokenRedactors {
 		s = re.ReplaceAllString(s, `${1}***`)

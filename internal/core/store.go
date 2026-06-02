@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"encoding/json"
@@ -23,14 +23,14 @@ var (
 	globalRegistryOnce sync.Once
 )
 
-func storeRegistryPath() string {
-	return fmt.Sprintf("%s/stores.json", appDirPath())
+func StoreRegistryPath() string {
+	return fmt.Sprintf("%s/stores.json", AppDirPath())
 }
 
 func loadStoreRegistry() *StoreRegistry {
 	r := &StoreRegistry{
 		entries: map[string]StoreEntry{},
-		path:    storeRegistryPath(),
+		path:    StoreRegistryPath(),
 	}
 	data, err := os.ReadFile(r.path)
 	if err == nil {
@@ -90,6 +90,6 @@ func (r *StoreRegistry) save() {
 		entries = append(entries, e)
 	}
 	data, _ := json.MarshalIndent(entries, "", "  ")
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	_ = os.WriteFile(r.path, data, 0o600)
 }

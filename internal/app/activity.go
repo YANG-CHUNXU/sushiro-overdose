@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"crypto/rand"
 	"encoding/hex"
@@ -28,11 +30,11 @@ type processLock struct {
 }
 
 func mainActivityPath() string {
-	return filepath.Join(appDirPath(), mainActivityFile)
+	return filepath.Join(AppDirPath(), mainActivityFile)
 }
 
 func markMainFlowActive(status string) func() {
-	_ = os.MkdirAll(appDirPath(), 0o755)
+	_ = os.MkdirAll(AppDirPath(), 0o755)
 	if current, err := readActivityMarker(mainActivityPath()); err == nil && current.PID != os.Getpid() {
 		if IsProcessAlive(current.PID) {
 			return func() {}
@@ -92,8 +94,8 @@ func readActivityMarker(path string) (activityMarker, error) {
 }
 
 func acquireProcessLock(name string) (*processLock, error) {
-	path := filepath.Join(appDirPath(), name)
-	_ = os.MkdirAll(appDirPath(), 0o755)
+	path := filepath.Join(AppDirPath(), name)
+	_ = os.MkdirAll(AppDirPath(), 0o755)
 	for attempt := 0; attempt < 2; attempt++ {
 		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
@@ -117,7 +119,7 @@ func acquireProcessLock(name string) (*processLock, error) {
 }
 
 func processLockHolder(name string) (int, bool) {
-	path := filepath.Join(appDirPath(), name)
+	path := filepath.Join(AppDirPath(), name)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, false

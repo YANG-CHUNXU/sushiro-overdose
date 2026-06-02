@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"fmt"
@@ -20,12 +22,12 @@ func cmdList() {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	if err := tokens.validateForReservation(); err != nil {
+	if err := tokens.ValidateForReservation(); err != nil {
 		fmt.Println(err)
 		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	settings := tokens.toSettings()
+	settings := tokens.ToSettings()
 	client := NewClient(settings)
 
 	reservations, err := client.GetReservations(ctx)
@@ -53,7 +55,7 @@ func cmdList() {
 		fmt.Printf("     号码: %s\n", r.Number)
 		fmt.Printf("     日期: %s\n", queueDate)
 		if r.Start != "" {
-			fmt.Printf("     时段: %s-%s\n", formatCompactTime(r.Start), formatCompactTime(defaultString(r.End, r.Start)))
+			fmt.Printf("     时段: %s-%s\n", FormatCompactTime(r.Start), FormatCompactTime(DefaultString(r.End, r.Start)))
 		}
 		fmt.Printf("     状态: %s\n", status)
 		if r.StoreID != "" {
@@ -92,12 +94,12 @@ func cmdCancel(args []string) {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	if err := tokens.validateForReservation(); err != nil {
+	if err := tokens.ValidateForReservation(); err != nil {
 		fmt.Println(err)
 		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	settings := tokens.toSettings()
+	settings := tokens.ToSettings()
 	client := NewClient(settings)
 
 	fmt.Printf("正在取消预约 #%d...\n", ticketID)
@@ -107,7 +109,7 @@ func cmdCancel(args []string) {
 	}
 
 	fmt.Printf("预约 #%d 已取消\n", ticketID)
-	logMessage(time.Now(), fmt.Sprintf("预约 #%d 已取消", ticketID))
+	LogMessage(time.Now(), fmt.Sprintf("预约 #%d 已取消", ticketID))
 }
 
 // onBookingSuccess handles the shared logic for a successful booking:
@@ -123,8 +125,8 @@ func onBookingSuccess(reservation ReservationRecord, storeName, storeAddress, sl
 		ActiveReservation: &reservation,
 		SavedAt:           now.Format(time.RFC3339),
 	}
-	if err := saveState(stateFilePath(), state); err != nil {
-		logMessage(now, "保存预约状态失败: "+err.Error())
+	if err := SaveState(StateFilePath(), state); err != nil {
+		LogMessage(now, "保存预约状态失败: "+err.Error())
 	}
 
 	fmt.Println()
@@ -141,12 +143,12 @@ func onBookingSuccess(reservation ReservationRecord, storeName, storeAddress, sl
 	fmt.Println("  ╚══════════════════════════════════════╝")
 	fmt.Println()
 
-	logMessage(now, fmt.Sprintf("=== %s成功 ===", mode))
-	logMessage(now, fmt.Sprintf("  门店：%s", storeName))
-	logMessage(now, fmt.Sprintf("  时段：%s", slotLabel))
-	logMessage(now, fmt.Sprintf("  号码：%s", reservation.Number))
+	LogMessage(now, fmt.Sprintf("=== %s成功 ===", mode))
+	LogMessage(now, fmt.Sprintf("  门店：%s", storeName))
+	LogMessage(now, fmt.Sprintf("  时段：%s", slotLabel))
+	LogMessage(now, fmt.Sprintf("  号码：%s", reservation.Number))
 	if storeAddress != "" {
-		logMessage(now, fmt.Sprintf("  地址：%s", storeAddress))
+		LogMessage(now, fmt.Sprintf("  地址：%s", storeAddress))
 	}
 
 	title := fmt.Sprintf("寿司郎%s成功 - %s", mode, storeName)

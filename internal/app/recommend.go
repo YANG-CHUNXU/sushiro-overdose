@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"fmt"
@@ -76,7 +78,7 @@ func cmdRecommend() {
 		if r.Observations < 3 {
 			continue
 		}
-		slotTime, err := slotDateTime(Slot{Date: r.Date, Start: r.Start}, now.Location())
+		slotTime, err := SlotDateTime(Slot{Date: r.Date, Start: r.Start}, now.Location())
 		if err != nil || slotTime.Before(now) {
 			continue
 		}
@@ -106,7 +108,7 @@ func cmdRecommend() {
 	if ok {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		settings := tokens.toSettings()
+		settings := tokens.ToSettings()
 		client := NewClient(settings)
 		reg := GetStoreRegistry()
 
@@ -128,7 +130,7 @@ func cmdRecommend() {
 			}
 
 			fmt.Printf("  %d. %s %s-%s\n", i+1,
-				r.Date, formatCompactTime(r.Start), formatCompactTime(defaultString(r.End, r.Start)))
+				r.Date, FormatCompactTime(r.Start), FormatCompactTime(DefaultString(r.End, r.Start)))
 			fmt.Printf("     门店: %s | 可预约概率: %.0f%% | 置信度: %s\n",
 				storeName, r.AvailRate, confidence)
 			fmt.Printf("     基于 %d 次观察\n\n", r.Observations)
@@ -140,8 +142,8 @@ func cmdRecommend() {
 				break
 			}
 			fmt.Printf("  %d. %s %s-%s — %.0f%% (%d次)\n",
-				i+1, r.Date, formatCompactTime(r.Start),
-				formatCompactTime(defaultString(r.End, r.Start)),
+				i+1, r.Date, FormatCompactTime(r.Start),
+				FormatCompactTime(DefaultString(r.End, r.Start)),
 				r.AvailRate, r.Observations)
 		}
 	}

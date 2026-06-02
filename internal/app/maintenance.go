@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"encoding/json"
 	"fmt"
@@ -255,10 +257,10 @@ func readProxyStateMarker() (proxyState, bool) {
 }
 
 func cleanupProcessMarkers() {
-	_ = os.Remove(pidFilePath())
+	_ = os.Remove(PidFilePath())
 	_ = os.Remove(samplingPidFilePath())
 	_ = os.Remove(mainActivityPath())
-	_ = os.Remove(filepath.Join(appDirPath(), samplingLockFileName))
+	_ = os.Remove(filepath.Join(AppDirPath(), samplingLockFileName))
 	markProxyInactive()
 }
 
@@ -368,14 +370,14 @@ func uninstallSystemCertificate(dryRun bool) MaintenanceResult {
 func uninstallTargets(options UninstallOptions) []maintenanceTarget {
 	certDir := certDirPath()
 	return []maintenanceTarget{
-		{name: "config", path: localConfigPath(), selected: options.All || options.Config},
+		{name: "config", path: LocalConfigPath(), selected: options.All || options.Config},
 		{name: "notify", path: notifyConfigPath(), selected: options.All || options.Notify},
-		{name: "feishu", path: feishuConfigPath(), selected: options.All || options.Feishu},
-		{name: "preferences", path: preferencesPath(), selected: options.All || options.Preferences},
-		{name: "stores", path: storeRegistryPath(), selected: options.All || options.Stores},
-		{name: "state", path: stateFilePath(), selected: options.All || options.State},
+		{name: "feishu", path: FeishuConfigPath(), selected: options.All || options.Feishu},
+		{name: "preferences", path: PreferencesPath(), selected: options.All || options.Preferences},
+		{name: "stores", path: StoreRegistryPath(), selected: options.All || options.Stores},
+		{name: "state", path: StateFilePath(), selected: options.All || options.State},
 		{name: "history", path: historyPath(), selected: options.All || options.History},
-		{name: "pid", path: pidFilePath(), selected: options.All || options.PID},
+		{name: "pid", path: PidFilePath(), selected: options.All || options.PID},
 		{name: "proxy_marker", path: proxyStatePath(), selected: options.All || options.ProxyMarker},
 		{name: "ca_cert", path: filepath.Join(certDir, "ca.crt"), selected: options.All || options.Certificates},
 		{name: "ca_key", path: filepath.Join(certDir, "ca.key"), selected: options.All || options.Certificates},

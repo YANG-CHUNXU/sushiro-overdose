@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"archive/zip"
 	"bytes"
@@ -44,7 +46,7 @@ func buildDiagBundle() ([]byte, string, error) {
 	}
 
 	add("engine-log.txt", renderEngineLogs(engine.GetLogs()))
-	add("sushiro-log.txt", readSanitizedFile(logPath(), diagBundleLogLines))
+	add("sushiro-log.txt", readSanitizedFile(LogPath(), diagBundleLogLines))
 	add("sampling-log.txt", readSanitizedFile(samplingLogPath(), diagBundleLogLines))
 
 	add("pac-fetch.txt", probeLocalPAC())
@@ -203,7 +205,7 @@ func cmdDiagBundle() {
 		fmt.Fprintln(os.Stderr, "诊断包生成失败:", err)
 		os.Exit(1)
 	}
-	outDir := appDirPath()
+	outDir := AppDirPath()
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "无法创建输出目录:", err)
 		os.Exit(1)

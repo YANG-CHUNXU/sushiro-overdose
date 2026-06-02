@@ -2,6 +2,8 @@
 
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"fmt"
 	"net"
@@ -71,12 +73,12 @@ func setWindowsPACProxy(proxyPort, webPort int) error {
 		return fmt.Errorf("写入 AutoDetect 失败: %w", err)
 	}
 	if err := setWinHTTPAutoProxy(pacURL); err != nil {
-		logMessage(time.Now(), "WinHTTP PAC 代理设置跳过: "+err.Error())
+		LogMessage(time.Now(), "WinHTTP PAC 代理设置跳过: "+err.Error())
 	}
 
 	refreshProxySettings()
 	blockSushiroQUIC()
-	logMessage(time.Now(), fmt.Sprintf("Windows PAC 代理已设置: 仅 %s 走 127.0.0.1:%d，其它域名直连", sushiroHost, proxyPort))
+	LogMessage(time.Now(), fmt.Sprintf("Windows PAC 代理已设置: 仅 %s 走 127.0.0.1:%d，其它域名直连", sushiroHost, proxyPort))
 	return nil
 }
 
@@ -95,7 +97,7 @@ func setWindowsManualProxy(port int) error {
 		return fmt.Errorf("写入 ProxyOverride 失败: %w", err)
 	}
 	if err := setWinHTTPProxy(proxyServer, proxyOverride); err != nil {
-		logMessage(time.Now(), "WinHTTP 代理设置跳过: "+err.Error())
+		LogMessage(time.Now(), "WinHTTP 代理设置跳过: "+err.Error())
 	}
 
 	refreshProxySettings()
@@ -108,7 +110,7 @@ func clearSystemProxy() error {
 	err := runHiddenWindowsCommand("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f")
 	_ = runHiddenWindowsCommand("reg", "delete", key, "/v", "AutoConfigURL", "/f")
 	if resetErr := clearWinHTTPProxy(); resetErr != nil {
-		logMessage(time.Now(), "WinHTTP 代理清理跳过: "+resetErr.Error())
+		LogMessage(time.Now(), "WinHTTP 代理清理跳过: "+resetErr.Error())
 	}
 	unblockSushiroQUIC()
 	refreshProxySettings()
@@ -121,21 +123,21 @@ func blockSushiroQUIC() {
 	_ = removeQUICBlockRule()
 	ips := resolveSushiroIPs()
 	if len(ips) == 0 {
-		logMessage(time.Now(), "QUIC 屏蔽跳过: 无法解析 "+sushiroHost+" 的 IP")
+		LogMessage(time.Now(), "QUIC 屏蔽跳过: 无法解析 "+sushiroHost+" 的 IP")
 		return
 	}
 	if err := runHiddenWindowsCommand("netsh", "advfirewall", "firewall", "add", "rule",
 		"name="+quicBlockRuleName, "dir=out", "action=block",
 		"protocol=UDP", "remoteport=443", "remoteip="+strings.Join(ips, ",")); err != nil {
-		logMessage(time.Now(), "QUIC 屏蔽设置失败(可能需管理员权限): "+err.Error())
+		LogMessage(time.Now(), "QUIC 屏蔽设置失败(可能需管理员权限): "+err.Error())
 		return
 	}
-	logMessage(time.Now(), fmt.Sprintf("已屏蔽到 %s 的出站 QUIC(UDP 443)，强制微信走 TCP 以便抓包", sushiroHost))
+	LogMessage(time.Now(), fmt.Sprintf("已屏蔽到 %s 的出站 QUIC(UDP 443)，强制微信走 TCP 以便抓包", sushiroHost))
 }
 
 func unblockSushiroQUIC() {
 	if err := removeQUICBlockRule(); err != nil {
-		logMessage(time.Now(), "QUIC 屏蔽清理跳过: "+err.Error())
+		LogMessage(time.Now(), "QUIC 屏蔽清理跳过: "+err.Error())
 	}
 }
 

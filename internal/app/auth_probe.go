@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bytes"
 	"context"
@@ -49,7 +51,7 @@ func handleAuthProbe(w http.ResponseWriter, r *http.Request) {
 
 func RunAuthProbe(ctx context.Context, requestedStore string) AuthProbeReport {
 	report := AuthProbeReport{}
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		report.Missing = []string{"config.json"}
 		report.Advice = []string{"本地还没有认证参数；先从可用设备获取认证，或导入已有 config.json。"}
@@ -58,11 +60,11 @@ func RunAuthProbe(ctx context.Context, requestedStore string) AuthProbeReport {
 	}
 
 	prefs := LoadPreferences()
-	settings := tokens.toSettingsWithPrefs(prefs)
+	settings := tokens.ToSettingsWithPrefs(prefs)
 	storeID := chooseProbeStoreID(requestedStore, settings.StoreIDs, tokens.StoreIDs)
 	report.StoreID = storeID
 
-	if missing := tokens.missingFields(false); len(missing) > 0 {
+	if missing := tokens.MissingFields(false); len(missing) > 0 {
 		report.Missing = append(report.Missing, missing...)
 		report.Results = append(report.Results, AuthProbeResult{Name: "查询认证参数", OK: false, Detail: "缺少: " + strings.Join(missing, ", ")})
 		report.Advice = append(report.Advice, "查询认证不完整，基础门店/时段接口无法验证。")
@@ -81,7 +83,7 @@ func RunAuthProbe(ctx context.Context, requestedStore string) AuthProbeReport {
 	report.Store = storeName
 	report.Results = append(report.Results, probeTimeslots(ctx, httpClient, settings, storeID))
 
-	if missing := tokens.missingFields(true); len(missing) > 0 {
+	if missing := tokens.MissingFields(true); len(missing) > 0 {
 		report.Results = append(report.Results, AuthProbeResult{
 			Name:    "预约认证接口",
 			Skipped: true,
@@ -140,7 +142,7 @@ func probeGetStoreInfo(ctx context.Context, client *http.Client, settings Settin
 		var store StoreInfo
 		if err := json.Unmarshal(body, &store); err == nil {
 			name := strings.TrimSpace(store.Name)
-			result.Detail = fmt.Sprintf("门店 %s %s", storeID, defaultString(name, "返回正常"))
+			result.Detail = fmt.Sprintf("门店 %s %s", storeID, DefaultString(name, "返回正常"))
 			return result, name
 		}
 	}
@@ -230,7 +232,7 @@ func probeOfficialAPI(ctx context.Context, client *http.Client, method, target, 
 		return result, nil
 	}
 	if resp.StatusCode >= 400 {
-		result.Detail = normalizeErrorBody(respBody)
+		result.Detail = NormalizeErrorBody(respBody)
 		return result, respBody
 	}
 	if len(respBody) > 0 && !json.Valid(respBody) {
@@ -267,7 +269,7 @@ func authProbeAdvice(report AuthProbeReport) []string {
 	if len(out) == 0 {
 		out = append(out, "基础接口未全部通过，复制本结果继续排查。")
 	}
-	return uniqueNonEmptyStrings(out)
+	return UniqueNonEmptyStrings(out)
 }
 
 func cmdAuthProbe() {

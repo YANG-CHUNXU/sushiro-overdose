@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"errors"
@@ -7,17 +9,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-)
-
-const (
-	appDir      = ".sushiro"
-	pidFile     = "sushiro.pid"
-	logFilePath = "sushiro.log"
 )
 
 // Version is injected from the root main package (which receives it via ldflags).
@@ -28,23 +23,6 @@ func SetVersion(v string) {
 	if v != "" {
 		Version = v
 	}
-}
-
-func appDirPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, appDir)
-}
-
-func pidFilePath() string {
-	return filepath.Join(appDirPath(), pidFile)
-}
-
-func stateFilePath() string {
-	return filepath.Join(appDirPath(), ".sushiro_state.json")
-}
-
-func logPath() string {
-	return filepath.Join(appDirPath(), logFilePath)
 }
 
 func printBanner() {
@@ -99,8 +77,8 @@ func Run() {
 		return
 	}
 
-	os.MkdirAll(appDirPath(), 0o755)
-	migrateOldConfig()
+	os.MkdirAll(AppDirPath(), 0o755)
+	MigrateOldConfig()
 
 	if len(args) == 0 || (len(args) == 1 && args[0] == "web") {
 		cmdWeb()
@@ -179,7 +157,7 @@ func cmdConfig(args []string) {
 		fmt.Printf("  Server酱: %s\n", notifyStatus(cfg.ServerChan.Key))
 		fmt.Println()
 		fmt.Print("配置飞书通知？输入 Webhook 地址（留空跳过，输入 clear 清除）: ")
-		input := readInput()
+		input := ReadInput()
 		if strings.ToLower(input) == "clear" {
 			updateLocalConfigFeishu("")
 			fmt.Println("飞书通知已清除")
@@ -289,7 +267,7 @@ func notifyStatus(v string) string {
 // ---- Update feishu in local config ----
 
 func updateLocalConfigFeishu(webhook string) {
-	saveFeishuConfig(webhook)
+	SaveFeishuConfig(webhook)
 	// Also update notify config
 	cfg, _ := loadNotifyConfig()
 	if cfg == nil {
@@ -298,7 +276,7 @@ func updateLocalConfigFeishu(webhook string) {
 	cfg.Feishu.Webhook = webhook
 	saveNotifyConfig(cfg)
 	// Also update in-memory tokens if loaded
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err == nil {
 		tokens.FeishuWebhook = webhook
 	}
@@ -335,33 +313,33 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := saveLocalConfig(tokens); err != nil {
-			logMessage(time.Now(), "保存配置失败: "+err.Error())
+		if err := SaveLocalConfig(tokens); err != nil {
+			LogMessage(time.Now(), "保存配置失败: "+err.Error())
 		} else {
-			logMessage(time.Now(), "配置已保存到 "+localConfigPath())
+			LogMessage(time.Now(), "配置已保存到 "+LocalConfigPath())
 		}
 	}
 
-	settings := tokens.toSettings()
+	settings := tokens.ToSettings()
 
 	// Initialize notifier
 	setNotifier(BuildNotifierFromConfig())
 
 	// Interactive Feishu config (legacy support)
-	tokens.mu.Lock()
+	tokens.Lock()
 	feishu := tokens.FeishuWebhook
-	tokens.mu.Unlock()
+	tokens.Unlock()
 	if feishu == "" {
 		fmt.Println()
 		fmt.Print("是否配置飞书通知机器人？(y/N): ")
-		if answer := readInput(); strings.ToLower(answer) == "y" {
+		if answer := ReadInput(); strings.ToLower(answer) == "y" {
 			fmt.Println("飞书群 → 群设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook 地址")
 			fmt.Print("请输入 Webhook 地址: ")
-			if webhook := readInput(); webhook != "" {
-				tokens.mu.Lock()
+			if webhook := ReadInput(); webhook != "" {
+				tokens.Lock()
 				tokens.FeishuWebhook = webhook
-				tokens.mu.Unlock()
-				saveFeishuConfig(webhook)
+				tokens.Unlock()
+				SaveFeishuConfig(webhook)
 				settings.FeishuWebhook = webhook
 				// Add feishu to notifier
 				globalNotifier.Add(&feishuNotifier{webhook: webhook})
@@ -373,35 +351,35 @@ func run(ctx context.Context) error {
 	client := NewClient(settings)
 
 	// Verify config still works
-	logMessage(time.Now(), "验证认证参数...")
+	LogMessage(time.Now(), "验证认证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
-		logMessage(time.Now(), "验证失败: "+err.Error())
-		logMessage(time.Now(), "认证参数可能已过期，需要重新获取...")
+		LogMessage(time.Now(), "验证失败: "+err.Error())
+		LogMessage(time.Now(), "认证参数可能已过期，需要重新获取...")
 		sendNotification("寿司郎 - 认证过期", "需要重新运行捕获认证参数")
-		deleteLocalConfig()
+		DeleteLocalConfig()
 		tokens, err = runCapturePhase(ctx)
 		if err != nil {
 			return err
 		}
-		saveLocalConfig(tokens)
-		settings = tokens.toSettings()
+		SaveLocalConfig(tokens)
+		settings = tokens.ToSettings()
 		client = NewClient(settings)
 	}
 
-	if err := tokens.validateForReservation(); err != nil {
-		logMessage(time.Now(), "预约参数不完整，需要重新捕获: "+err.Error())
-		deleteLocalConfig()
+	if err := tokens.ValidateForReservation(); err != nil {
+		LogMessage(time.Now(), "预约参数不完整，需要重新捕获: "+err.Error())
+		DeleteLocalConfig()
 		tokens, err = runCapturePhase(ctx)
 		if err != nil {
 			return err
 		}
-		if err := tokens.validateForReservation(); err != nil {
+		if err := tokens.ValidateForReservation(); err != nil {
 			return err
 		}
-		if err := saveLocalConfig(tokens); err != nil {
-			logMessage(time.Now(), "保存配置失败: "+err.Error())
+		if err := SaveLocalConfig(tokens); err != nil {
+			LogMessage(time.Now(), "保存配置失败: "+err.Error())
 		}
-		settings = tokens.toSettings()
+		settings = tokens.ToSettings()
 		client = NewClient(settings)
 	}
 
@@ -411,10 +389,10 @@ func run(ctx context.Context) error {
 	}
 	settings.StoreIDs = selectedStores
 
-	tokens.mu.Lock()
+	tokens.Lock()
 	tokens.StoreIDs = selectedStores
-	tokens.mu.Unlock()
-	saveLocalConfig(tokens)
+	tokens.Unlock()
+	SaveLocalConfig(tokens)
 
 	prefs := LoadPreferences()
 	prefs.SelectedStores = selectedStores
@@ -433,7 +411,7 @@ func run(ctx context.Context) error {
 	healthStop := startHealthCheck(ctx, client, selectedStores)
 	defer close(healthStop)
 
-	logMessage(time.Now(), "开始抢号...")
+	LogMessage(time.Now(), "开始抢号...")
 	runBookingLoop(ctx, client, settings, selectedStores, prefs)
 	return nil
 }
@@ -459,7 +437,7 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 		fmt.Println("证书安装成功!")
 	}
 
-	tokens := newCapturedTokens()
+	tokens := NewCapturedTokens()
 
 	// Start MITM proxy
 	proxy, err := startProxy(caCert, caKey, tokens)
@@ -502,32 +480,32 @@ func runCapturePhase(ctx context.Context) (*CapturedTokens, error) {
 	}
 
 	// Prompt phone number if not captured
-	tokens.mu.Lock()
+	tokens.Lock()
 	phone := tokens.PhoneNumber
-	tokens.mu.Unlock()
+	tokens.Unlock()
 	if phone == "" {
 		fmt.Print("\n请输入手机号: ")
-		input := readInput()
-		tokens.mu.Lock()
+		input := ReadInput()
+		tokens.Lock()
 		tokens.PhoneNumber = input
-		tokens.mu.Unlock()
+		tokens.Unlock()
 	}
 
 	return tokens, nil
 }
 
 func tryLoadConfig() (*CapturedTokens, bool) {
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		return nil, false
 	}
-	if err := tokens.validateForQuery(); err != nil {
-		logMessage(time.Now(), "已保存配置不可用: "+err.Error())
+	if err := tokens.ValidateForQuery(); err != nil {
+		LogMessage(time.Now(), "已保存配置不可用: "+err.Error())
 		return nil, false
 	}
-	logMessage(time.Now(), "使用已保存的配置")
-	logMessage(time.Now(), fmt.Sprintf("  手机号: %s", maskPhone(tokens.PhoneNumber)))
-	logMessage(time.Now(), fmt.Sprintf("  门店: %v", tokens.StoreIDs))
+	LogMessage(time.Now(), "使用已保存的配置")
+	LogMessage(time.Now(), fmt.Sprintf("  手机号: %s", MaskPhone(tokens.PhoneNumber)))
+	LogMessage(time.Now(), fmt.Sprintf("  门店: %v", tokens.StoreIDs))
 	return tokens, true
 }
 
@@ -541,14 +519,6 @@ func isAuthError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "HTTP 401") ||
 		strings.Contains(msg, "HTTP 403")
-}
-
-func maskPhone(phone string) string {
-	phone = strings.TrimSpace(phone)
-	if len(phone) < 7 {
-		return "***"
-	}
-	return phone[:3] + "****" + phone[len(phone)-4:]
 }
 
 func runBookingLoop(ctx context.Context, client *Client, settings Settings, storeIDs []string, prefs UserPreferences) {
@@ -575,15 +545,15 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				if isAuthError(err) {
 					authErrors++
 					if authErrors >= 3 {
-						logMessage(now, "认证失败，请重新运行获取新参数")
+						LogMessage(now, "认证失败，请重新运行获取新参数")
 						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新打开 sushiro-overdose 重新捕获")
-						deleteLocalConfig()
+						DeleteLocalConfig()
 						return
 					}
 				}
 				errStreak++
 				if errStreak >= 5 {
-					logMessage(now, "连续失败过多，等待5秒...")
+					LogMessage(now, "连续失败过多，等待5秒...")
 					time.Sleep(5 * time.Second)
 					errStreak = 0
 				}
@@ -626,7 +596,7 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			continue
 		}
 
-		slotLabel := formatSlotWindow(best.Date, best.Start, best.End, settings.Location)
+		slotLabel := FormatSlotWindow(best.Date, best.Start, best.End, settings.Location)
 		fmt.Printf("\r[%s] %s - 尝试预约...", now.Format("15:04:05"), slotLabel)
 
 		reservation, err := client.CreateReservation(ctx, best.StoreID, best.Date, best.Start)
@@ -634,17 +604,17 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			if isAuthError(err) {
 				authErrors++
 				if authErrors >= 3 {
-					logMessage(now, "认证失败，请重新运行")
+					LogMessage(now, "认证失败，请重新运行")
 					sendNotification("寿司郎 - 认证失败", "请重新打开 sushiro-overdose 重新捕获")
-					deleteLocalConfig()
+					DeleteLocalConfig()
 					return
 				}
 			}
 
 			if isHTTPStatus(err, http.StatusInternalServerError) {
-				logMessage(now, "预约接口 HTTP 500，参数可能已失效，请重新进入小程序获取")
+				LogMessage(now, "预约接口 HTTP 500，参数可能已失效，请重新进入小程序获取")
 				sendNotification("寿司郎 - HTTP 500", "参数可能已失效，请重新进入小程序刷新并运行 `sushiro run`")
-				deleteLocalConfig()
+				DeleteLocalConfig()
 				return
 			} else if errors.Is(err, errNoReservationAvailable) {
 				key := best.StoreID + best.Date + best.Start

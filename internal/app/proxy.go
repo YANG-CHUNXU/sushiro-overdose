@@ -1,12 +1,13 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bufio"
 	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -23,72 +24,6 @@ const sushiroHost = "crm-cn-prd.sushiro.com.cn"
 const proxyErrorBodyLogLimit = 4096
 const proxyTunnelDialTimeout = 3 * time.Second
 const maxSushiroBufferedResponseBytes = 8 << 20
-
-func (t *CapturedTokens) captureFromRequest(req *http.Request, bodyBytes []byte) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	host := req.URL.Host
-	if host == "" {
-		host = req.Host
-	}
-	if !isSushiroTargetHost(host) {
-		return
-	}
-
-	if v := req.Header.Get("X-App-Code"); v != "" && t.XAppCode == "" {
-		t.XAppCode = v
-	}
-	if v := req.Header.Get("User-Agent"); v != "" && t.UserAgent == "" {
-		t.UserAgent = v
-	}
-	if v := req.Header.Get("Referer"); v != "" && t.Referer == "" {
-		t.Referer = v
-	}
-	if v := req.Header.Get("X-App-Client"); v != "" && t.XAppClient == "" {
-		t.XAppClient = v
-	}
-
-	authHeader := req.Header.Get("Authorization")
-	if authHeader != "" {
-		path := req.URL.Path
-		if strings.Contains(path, "/api_auth/") || strings.Contains(path, "createReservation") {
-			if t.ReservationAuth == "" {
-				t.ReservationAuth = authHeader
-			}
-		} else {
-			if t.QueryAuth == "" {
-				t.QueryAuth = authHeader
-			}
-		}
-	}
-
-	if sid := req.URL.Query().Get("storeId"); sid != "" {
-		found := false
-		for _, existing := range t.StoreIDs {
-			if existing == sid {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.StoreIDs = append(t.StoreIDs, sid)
-		}
-	}
-
-	// Parse POST body for wechatId and phoneNumber
-	if req.Method == http.MethodPost && len(bodyBytes) > 0 {
-		var body map[string]any
-		if json.Unmarshal(bodyBytes, &body) == nil {
-			if wid, ok := body["wechatId"].(string); ok && t.WechatID == "" {
-				t.WechatID = wid
-			}
-			if pn, ok := body["phoneNumber"].(string); ok && t.PhoneNumber == "" {
-				t.PhoneNumber = pn
-			}
-		}
-	}
-}
 
 func isSushiroTargetHost(host string) bool {
 	host = strings.TrimSpace(host)
@@ -132,7 +67,7 @@ func (c *bufferedConn) Read(p []byte) (int, error) {
 }
 
 func startProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, logger ...func(string)) (*proxyServer, error) {
-	listener, port, err := listenOnAvailableLocalPort(proxyPort, proxyPortSearchLimit)
+	listener, port, err := ListenOnAvailableLocalPort(proxyPort, proxyPortSearchLimit)
 	if err != nil {
 		return nil, fmt.Errorf("listen on %d-%d: %w", proxyPort, proxyPort+proxyPortSearchLimit-1, err)
 	}
@@ -162,7 +97,7 @@ func (ps *proxyServer) addLog(msg string) {
 		ps.logf(msg)
 		return
 	}
-	logMessage(time.Now(), msg)
+	LogMessage(time.Now(), msg)
 }
 
 func (ps *proxyServer) traceConnect(hostPort string, mitm bool) {
@@ -310,7 +245,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 	}
 
 	state := tlsClient.ConnectionState()
-	ps.addLog(fmt.Sprintf("MITM established for %s (client_tls=%s alpn=%s)", serverName, tlsVersionName(state.Version), defaultString(state.NegotiatedProtocol, "http/1.1")))
+	ps.addLog(fmt.Sprintf("MITM established for %s (client_tls=%s alpn=%s)", serverName, tlsVersionName(state.Version), DefaultString(state.NegotiatedProtocol, "http/1.1")))
 
 	// Read-Forward-Relay loop
 	clientReader := bufio.NewReader(tlsClient)
@@ -331,7 +266,7 @@ func (ps *proxyServer) handleConn(clientConn net.Conn) {
 		}
 
 		// Capture tokens
-		ps.tokens.captureFromRequest(req, bodyBytes)
+		ps.tokens.CaptureFromRequest(req, bodyBytes)
 		ps.addLog(fmt.Sprintf("Request address: %s %s", req.Method, sanitizedProxyURL(requestURLForTrace(req, "https", hostPort))))
 
 		// Rebuild request for forwarding
@@ -392,7 +327,7 @@ func (ps *proxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 
 		resp, err := ps.transport.RoundTrip(req)
 		if err != nil {
-			logMessage(time.Now(), fmt.Sprintf("HTTP proxy request failed: %s %s: %v", req.Method, req.URL.String(), err))
+			LogMessage(time.Now(), fmt.Sprintf("HTTP proxy request failed: %s %s: %v", req.Method, req.URL.String(), err))
 			fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
@@ -627,14 +562,14 @@ func waitForCapture(ctx context.Context, tokens *CapturedTokens, skip <-chan str
 // ---- Interactive selection ----
 
 func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) ([]string, error) {
-	tokens.mu.Lock()
+	tokens.Lock()
 	storeIDs := make([]string, len(tokens.StoreIDs))
 	copy(storeIDs, tokens.StoreIDs)
-	tokens.mu.Unlock()
+	tokens.Unlock()
 
 	if len(storeIDs) == 0 {
 		fmt.Print("未捕获到门店ID，请手动输入门店编号: ")
-		return []string{readInput()}, nil
+		return []string{ReadInput()}, nil
 	}
 
 	fmt.Println("\n--- 可选门店 ---")
@@ -654,7 +589,7 @@ func selectStores(ctx context.Context, client *Client, tokens *CapturedTokens) (
 	}
 
 	fmt.Print("\n请选择门店编号（多个用逗号分隔，直接回车选全部）: ")
-	input := readInput()
+	input := ReadInput()
 
 	if input == "" {
 		return storeIDs, nil
@@ -699,7 +634,7 @@ type SlotConfig struct {
 }
 
 func (c SlotConfig) shouldTarget(slot Slot, loc *time.Location) bool {
-	day, err := parseCompactDate(slot.Date, loc)
+	day, err := ParseCompactDate(slot.Date, loc)
 	if err != nil {
 		return false
 	}
@@ -743,7 +678,7 @@ func configureSlots() SlotConfig {
 				fmt.Printf("  %d. %s\n", i+1, prefNames[p])
 			}
 			fmt.Print("请选择: ")
-			input := readInput()
+			input := ReadInput()
 			var idx int
 			if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(opts) {
 				return opts[idx-1]

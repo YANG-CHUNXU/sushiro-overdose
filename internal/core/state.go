@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"bufio"
@@ -15,7 +15,7 @@ type State struct {
 	SavedAt           string             `json:"saved_at,omitempty"`
 }
 
-func loadState(path string) (State, error) {
+func LoadState(path string) (State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -31,7 +31,7 @@ func loadState(path string) (State, error) {
 	return state, nil
 }
 
-func saveState(path string, state State) error {
+func SaveState(path string, state State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create state directory: %w", err)
 	}
@@ -49,7 +49,7 @@ func saveState(path string, state State) error {
 	return nil
 }
 
-func clearState(path string) error {
+func ClearState(path string) error {
 	err := os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove state: %w", err)
@@ -57,15 +57,15 @@ func clearState(path string) error {
 	return nil
 }
 
-func logMessage(now time.Time, message string) {
+func LogMessage(now time.Time, message string) {
 	fmt.Printf("[%s] %s\n", now.Format(time.RFC3339), message)
 }
 
-// stdinReader is a shared buffered reader for stdin to avoid losing data.
-var stdinReader = bufio.NewReader(os.Stdin)
+// StdinReader is a shared buffered reader for stdin to avoid losing data.
+var StdinReader = bufio.NewReader(os.Stdin)
 
-// readInput reads a trimmed line from stdin.
-func readInput() string {
-	line, _ := stdinReader.ReadString('\n')
+// ReadInput reads a trimmed line from stdin.
+func ReadInput() string {
+	line, _ := StdinReader.ReadString('\n')
 	return strings.TrimSpace(line)
 }

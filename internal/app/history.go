@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bufio"
 	"encoding/json"
@@ -21,7 +23,7 @@ type SlotSnapshot struct {
 }
 
 func historyPath() string {
-	return filepath.Join(appDirPath(), "history.jsonl")
+	return filepath.Join(AppDirPath(), "history.jsonl")
 }
 
 var (
@@ -156,8 +158,8 @@ func cmdTrends() {
 		}
 		fmt.Printf("  [%s] %s-%s %s %5.1f%% 可用 (%d/%d)\n",
 			k.StoreID,
-			formatCompactTime(k.Start),
-			formatCompactTime(k.End),
+			FormatCompactTime(k.Start),
+			FormatCompactTime(k.End),
 			bar, rate, stats.avail, stats.total)
 	}
 
@@ -187,7 +189,7 @@ func cmdTrends() {
 				break
 			}
 			fmt.Printf("  %d. %s %s %s — %.0f%% 可用 (%d次观察)\n",
-				i+1, r.key.StoreID, r.key.Date, formatCompactTime(r.key.Start),
+				i+1, r.key.StoreID, r.key.Date, FormatCompactTime(r.key.Start),
 				r.rate*100, r.total)
 		}
 	}

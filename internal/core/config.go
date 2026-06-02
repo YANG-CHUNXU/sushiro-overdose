@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"encoding/json"
@@ -260,7 +260,7 @@ func (s Settings) Validate() error {
 	return nil
 }
 
-func ensureBearer(token string) string {
+func EnsureBearer(token string) string {
 	token = strings.TrimSpace(token)
 	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
 		return token

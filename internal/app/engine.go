@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"errors"
@@ -78,8 +80,8 @@ func (e *BookingEngine) captureStatus() *CaptureStatusJSON {
 	if e.tokens == nil {
 		return nil
 	}
-	e.tokens.mu.Lock()
-	defer e.tokens.mu.Unlock()
+	e.tokens.Lock()
+	defer e.tokens.Unlock()
 	return &CaptureStatusJSON{
 		XAppCode:        e.tokens.XAppCode != "",
 		QueryAuth:       e.tokens.QueryAuth != "",
@@ -118,7 +120,7 @@ func (e *BookingEngine) addLogLevel(msg, level string) {
 	}
 	e.mu.Unlock()
 	bus.publish("log", mustJSON(entry))
-	logMessage(time.Now(), msg)
+	LogMessage(time.Now(), msg)
 }
 
 func (e *BookingEngine) GetLogs() []LogEntry {
@@ -178,7 +180,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 		e.addLog("证书安装成功")
 	}
 
-	tokens := newCapturedTokens()
+	tokens := NewCapturedTokens()
 	e.mu.Lock()
 	e.tokens = tokens
 	e.mu.Unlock()
@@ -222,22 +224,22 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 			bus.publish("engine", mustJSON(e.GetState()))
 			if tokens.IsComplete() {
 				e.cleanupProxy()
-				if err := saveLocalConfig(tokens); err != nil {
+				if err := SaveLocalConfig(tokens); err != nil {
 					e.addLogLevel("保存配置失败: "+err.Error(), "error")
 				} else {
 					e.addLog("认证参数已捕获并保存！")
 					prefs := LoadPreferences()
-					setWebSettings(tokens.toSettingsWithPrefs(prefs))
+					setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 				}
 				e.setState(EngineIdle, "认证参数捕获完成！")
 
 				prefs := LoadPreferences()
-				tokens.mu.Lock()
+				tokens.Lock()
 				if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {
 					prefs.SelectedStores = tokens.StoreIDs
 					SavePreferences(prefs)
 				}
-				tokens.mu.Unlock()
+				tokens.Unlock()
 				return
 			}
 		}
@@ -275,7 +277,7 @@ func (e *BookingEngine) StartBooking() error {
 	bus.publish("engine", mustJSON(e.GetState()))
 	pauseSamplingForMainFlow()
 
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err != nil {
 		cancel()
 		e.setState(EngineIdle, "暂无认证参数")
@@ -284,17 +286,17 @@ func (e *BookingEngine) StartBooking() error {
 
 	prefs := LoadPreferences()
 	if len(prefs.SelectedStores) > 0 {
-		tokens.mu.Lock()
+		tokens.Lock()
 		tokens.StoreIDs = prefs.SelectedStores
-		tokens.mu.Unlock()
+		tokens.Unlock()
 	}
-	if err := tokens.validateForReservation(); err != nil {
+	if err := tokens.ValidateForReservation(); err != nil {
 		cancel()
 		e.setState(EngineIdle, "预约参数不完整")
 		return err
 	}
 
-	settings := tokens.toSettingsWithPrefs(prefs)
+	settings := tokens.ToSettingsWithPrefs(prefs)
 	client := NewClient(settings)
 
 	// Quick verify
@@ -302,7 +304,7 @@ func (e *BookingEngine) StartBooking() error {
 		cancel()
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
-			deleteLocalConfig()
+			DeleteLocalConfig()
 			return fmt.Errorf("认证参数已过期，请重新捕获")
 		}
 		return fmt.Errorf("验证失败: %w", err)
@@ -357,7 +359,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 					if authErrors >= 3 {
 						e.addLogLevel("认证失败，请重新捕获参数", "error")
 						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新捕获")
-						deleteLocalConfig()
+						DeleteLocalConfig()
 						e.setState(EngineError, "认证参数已失效，请重新捕获")
 						return
 					}
@@ -409,7 +411,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			continue
 		}
 
-		slotLabel := formatSlotWindow(best.Date, best.Start, best.End, settings.Location)
+		slotLabel := FormatSlotWindow(best.Date, best.Start, best.End, settings.Location)
 		e.addLog(fmt.Sprintf("发现目标: %s — 尝试预约...", slotLabel))
 
 		reservation, err := client.CreateReservation(ctx, best.StoreID, best.Date, best.Start)
@@ -419,7 +421,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				if authErrors >= 3 {
 					e.addLogLevel("认证失败", "error")
 					sendNotification("寿司郎 - 认证失败", "请重新捕获参数")
-					deleteLocalConfig()
+					DeleteLocalConfig()
 					e.setState(EngineError, "认证参数已失效")
 					return
 				}
@@ -428,7 +430,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			if isHTTPStatus(err, 500) {
 				e.addLogLevel("预约接口 HTTP 500，参数可能已失效", "error")
 				sendNotification("寿司郎 - HTTP 500", "参数可能已失效")
-				deleteLocalConfig()
+				DeleteLocalConfig()
 				e.setState(EngineError, "参数已失效，请重新捕获")
 				return
 			} else if errors.Is(err, errNoReservationAvailable) {
@@ -499,6 +501,6 @@ func (e *BookingEngine) Stop() {
 
 // HasValidConfig checks if we have saved authentication tokens.
 func HasValidConfig() bool {
-	tokens, err := loadLocalConfig()
-	return err == nil && tokens.validateForReservation() == nil
+	tokens, err := LoadLocalConfig()
+	return err == nil && tokens.ValidateForReservation() == nil
 }

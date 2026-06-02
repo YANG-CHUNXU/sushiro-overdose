@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"errors"
@@ -18,7 +20,7 @@ func cmdStart() {
 		return
 	}
 
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 
 	self, _ := os.Executable()
 	cmd := exec.Command(self, "--daemon-child")
@@ -32,9 +34,9 @@ func cmdStart() {
 		os.Exit(1)
 	}
 
-	os.WriteFile(pidFilePath(), []byte(fmt.Sprintf("%d", cmd.Process.Pid)), 0o644)
+	os.WriteFile(PidFilePath(), []byte(fmt.Sprintf("%d", cmd.Process.Pid)), 0o644)
 	fmt.Printf("sushiro started (PID %d)\n", cmd.Process.Pid)
-	fmt.Println("日志: " + logPath())
+	fmt.Println("日志: " + LogPath())
 }
 
 func cmdStop() {
@@ -45,10 +47,10 @@ func cmdStop() {
 	}
 	if err := KillProcess(atoi(pid)); err != nil {
 		fmt.Println("停止失败:", err)
-		os.Remove(pidFilePath())
+		os.Remove(PidFilePath())
 		return
 	}
-	os.Remove(pidFilePath())
+	os.Remove(PidFilePath())
 	fmt.Println("sushiro stopped")
 }
 
@@ -60,7 +62,7 @@ func cmdStatus() {
 	}
 	fmt.Printf("sushiro is running (PID %s)\n", pid)
 
-	log, err := os.ReadFile(logPath())
+	log, err := os.ReadFile(LogPath())
 	if err == nil && len(log) > 0 {
 		lines := strings.Split(strings.TrimSpace(string(log)), "\n")
 		start := len(lines) - 10
@@ -75,9 +77,9 @@ func cmdStatus() {
 }
 
 func cmdDaemon() {
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 
-	logFile, err := os.OpenFile(logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := os.OpenFile(LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return
 	}
@@ -86,20 +88,20 @@ func cmdDaemon() {
 	os.Stdout = logFile
 	os.Stderr = logFile
 
-	logMessage(time.Now(), "sushiro daemon started")
+	LogMessage(time.Now(), "sushiro daemon started")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logMessage(time.Now(), "exit with error: "+err.Error())
+		LogMessage(time.Now(), "exit with error: "+err.Error())
 	}
 
-	os.Remove(pidFilePath())
+	os.Remove(PidFilePath())
 }
 
 func readPID() string {
-	data, err := os.ReadFile(pidFilePath())
+	data, err := os.ReadFile(PidFilePath())
 	if err != nil {
 		return ""
 	}

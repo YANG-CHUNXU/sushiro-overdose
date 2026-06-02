@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -50,8 +52,8 @@ type queueAlertRuleState struct {
 
 var queueAlertMu sync.Mutex
 
-func queueAlertConfigPath() string { return filepath.Join(appDirPath(), queueAlertConfigFile) }
-func queueAlertStatePath() string  { return filepath.Join(appDirPath(), queueAlertStateFile) }
+func queueAlertConfigPath() string { return filepath.Join(AppDirPath(), queueAlertConfigFile) }
+func queueAlertStatePath() string  { return filepath.Join(AppDirPath(), queueAlertStateFile) }
 
 func LoadQueueAlertConfig() QueueAlertConfig {
 	data, err := os.ReadFile(queueAlertConfigPath())
@@ -66,7 +68,7 @@ func LoadQueueAlertConfig() QueueAlertConfig {
 }
 
 func SaveQueueAlertConfig(cfg QueueAlertConfig) error {
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -85,7 +87,7 @@ func loadQueueAlertState() map[string]queueAlertRuleState {
 }
 
 func saveQueueAlertState(state map[string]queueAlertRuleState) {
-	os.MkdirAll(appDirPath(), 0o755)
+	os.MkdirAll(AppDirPath(), 0o755)
 	if data, err := json.MarshalIndent(state, "", "  "); err == nil {
 		_ = os.WriteFile(queueAlertStatePath(), data, 0o600)
 	}
@@ -173,6 +175,6 @@ func queueAlertEvaluateRule(rule QueueAlertRule, obs QueueObservation, state map
 }
 
 func sendQueueAlert(ctx context.Context, title, content string) {
-	logMessage(time.Now(), fmt.Sprintf("[排队提醒] %s — %s", title, content))
+	LogMessage(time.Now(), fmt.Sprintf("[排队提醒] %s — %s", title, content))
 	BuildNotifierFromConfig().Send(ctx, title, content)
 }

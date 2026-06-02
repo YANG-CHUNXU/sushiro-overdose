@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"errors"
@@ -17,11 +19,11 @@ const samplingPidFile = "sampling.pid"
 const samplingLogFile = "sampling.log"
 
 func samplingPidFilePath() string {
-	return filepath.Join(appDirPath(), samplingPidFile)
+	return filepath.Join(AppDirPath(), samplingPidFile)
 }
 
 func samplingLogPath() string {
-	return filepath.Join(appDirPath(), samplingLogFile)
+	return filepath.Join(AppDirPath(), samplingLogFile)
 }
 
 func cmdSample(args []string) {
@@ -97,7 +99,7 @@ func cmdSampleStart() {
 		fmt.Printf("sampling is already running (PID %d)\n", holder)
 		return
 	}
-	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		fmt.Println("启动失败:", err)
 		return
 	}
@@ -192,7 +194,7 @@ func autoStartSummary(status AutoStartStatus) string {
 }
 
 func cmdSamplerDaemon() {
-	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		return
 	}
 	logFile, err := os.OpenFile(samplingLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
@@ -202,13 +204,13 @@ func cmdSamplerDaemon() {
 	defer logFile.Close()
 	os.Stdout = logFile
 	os.Stderr = logFile
-	logMessage(time.Now(), "sampling daemon started")
+	LogMessage(time.Now(), "sampling daemon started")
 
 	cfg := LoadSamplingConfig()
 	cfg.Enabled = true
 	cfg.AutoStart = true
 	if err := SaveSamplingConfig(cfg); err != nil {
-		logMessage(time.Now(), "save sampling config failed: "+err.Error())
+		LogMessage(time.Now(), "save sampling config failed: "+err.Error())
 		return
 	}
 
@@ -216,7 +218,7 @@ func cmdSamplerDaemon() {
 	defer stop()
 	netTicketSched.Start(ctx)
 	if err := sampler.startWithConfig(ctx, cfg); err != nil && !errors.Is(err, context.Canceled) {
-		logMessage(time.Now(), "sampling daemon failed: "+err.Error())
+		LogMessage(time.Now(), "sampling daemon failed: "+err.Error())
 		return
 	}
 	writeSamplingPID(os.Getpid())

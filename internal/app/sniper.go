@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"encoding/json"
@@ -17,7 +19,7 @@ import (
 const sniperConfigFile = ".sushiro_sniper.json"
 
 func sniperConfigPath() string {
-	return filepath.Join(appDirPath(), sniperConfigFile)
+	return filepath.Join(AppDirPath(), sniperConfigFile)
 }
 
 // SniperTarget represents a pre-configured reservation target.
@@ -62,17 +64,17 @@ func cmdSniper(args []string) {
 		fmt.Println("暂无配置，请先运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	if err := tokens.validateForReservation(); err != nil {
+	if err := tokens.ValidateForReservation(); err != nil {
 		fmt.Println(err)
 		fmt.Println("请重新运行 sushiro-overdose 完成参数捕获")
 		return
 	}
-	settings := tokens.toSettings()
+	settings := tokens.ToSettings()
 	client := NewClient(settings)
 
-	logMessage(time.Now(), "验证认证参数...")
+	LogMessage(time.Now(), "验证认证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
-		logMessage(time.Now(), "验证失败: "+err.Error())
+		LogMessage(time.Now(), "验证失败: "+err.Error())
 		fmt.Println("认证参数已过期，请重新运行 sushiro-overdose 重新捕获")
 		return
 	}
@@ -118,7 +120,7 @@ func cmdSniper(args []string) {
 			storeName = t.StoreID
 		}
 		fmt.Printf("  %s %s-%s @ %s%s\n",
-			t.Date, formatCompactTime(t.StartAfter), formatCompactTime(t.StartBefore),
+			t.Date, FormatCompactTime(t.StartAfter), FormatCompactTime(t.StartBefore),
 			storeName, status)
 	}
 	fmt.Println()
@@ -138,12 +140,12 @@ func parseSniperArgs(dateStr, timeStr, storeStr string, defaultStores []string) 
 	startAfter := "000000"
 	startBefore := "235959"
 	if len(parts) >= 1 {
-		if normalized := normalizeTimeStr(parts[0]); parseTimeSeconds(normalized) >= 0 {
+		if normalized := NormalizeTimeStr(parts[0]); ParseTimeSeconds(normalized) >= 0 {
 			startAfter = normalized
 		}
 	}
 	if len(parts) >= 2 {
-		if normalized := normalizeTimeStr(parts[1]); parseTimeSeconds(normalized) >= 0 {
+		if normalized := NormalizeTimeStr(parts[1]); ParseTimeSeconds(normalized) >= 0 {
 			startBefore = normalized
 		}
 	}
@@ -171,7 +173,7 @@ func parseSniperArgs(dateStr, timeStr, storeStr string, defaultStores []string) 
 }
 
 func interactiveSniperConfig(ctx context.Context, client *Client, tokens *CapturedTokens) ([]SniperTarget, error) {
-	settings := tokens.toSettings()
+	settings := tokens.ToSettings()
 
 	// Select store
 	selectedStores, err := selectStores(ctx, client, tokens)
@@ -196,7 +198,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 
 	fmt.Println()
 	fmt.Print("选择日期（输入编号，多个用逗号分隔，如 1,3,7）: ")
-	dateInput := readInput()
+	dateInput := ReadInput()
 
 	validDates := make([]string, 0)
 	for _, part := range strings.Split(dateInput, ",") {
@@ -205,7 +207,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 		if _, err := fmt.Sscanf(part, "%d", &idx); err == nil && idx >= 1 && idx <= len(days) {
 			validDates = append(validDates, days[idx-1].Format("20060102"))
 		} else if len(part) == 8 {
-			if _, err := parseCompactDate(part, settings.Location); err == nil {
+			if _, err := ParseCompactDate(part, settings.Location); err == nil {
 				validDates = append(validDates, part)
 			}
 		}
@@ -217,7 +219,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 	// Time range
 	fmt.Println("\n--- 时间范围 ---")
 	fmt.Print("最早可接受时间 (如 1930): ")
-	startInput := readInput()
+	startInput := ReadInput()
 	startAfter := "000000"
 	if len(startInput) == 4 {
 		startAfter = startInput + "00"
@@ -226,7 +228,7 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 	}
 
 	fmt.Print("最晚可接受时间 (如 2030): ")
-	endInput := readInput()
+	endInput := ReadInput()
 	startBefore := "235959"
 	if len(endInput) == 4 {
 		startBefore = endInput + "00"
@@ -249,11 +251,11 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 // sniperOpenTime calculates when a target slot opens for booking.
 // Rule: slot opens 30 days before the target date, at the same time.
 func sniperOpenTime(target SniperTarget, loc *time.Location) time.Time {
-	day, err := parseCompactDate(target.Date, loc)
+	day, err := ParseCompactDate(target.Date, loc)
 	if err != nil {
 		return time.Time{}
 	}
-	hour, minute, _, _ := parseCompactTime(target.StartAfter)
+	hour, minute, _, _ := ParseCompactTime(target.StartAfter)
 
 	// Open time = target date - 30 days, at the target time
 	openDay := day.AddDate(0, 0, -30)
@@ -284,16 +286,16 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 		}
 
 		targetLabel := fmt.Sprintf("%s %s-%s @ %s",
-			target.Date, formatCompactTime(target.StartAfter),
-			formatCompactTime(target.StartBefore), storeName)
+			target.Date, FormatCompactTime(target.StartAfter),
+			FormatCompactTime(target.StartBefore), storeName)
 
 		// Skip if too far past
 		if openAt.Before(now.Add(-3 * time.Minute)) {
 			// Already open, try immediately
-			logMessage(now, fmt.Sprintf("目标已开放，立即尝试: %s", targetLabel))
+			LogMessage(now, fmt.Sprintf("目标已开放，立即尝试: %s", targetLabel))
 		} else if openAt.After(now) {
 			wait := time.Until(openAt)
-			logMessage(now, fmt.Sprintf("等待 %v 后开始狙击: %s", wait.Round(time.Second), targetLabel))
+			LogMessage(now, fmt.Sprintf("等待 %v 后开始狙击: %s", wait.Round(time.Second), targetLabel))
 
 			// Sleep until 3 seconds before open time
 			if wait > 5*time.Second {
@@ -325,14 +327,14 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			slots, err := client.GetTimeslots(ctx, target.StoreID)
 			if err != nil {
 				if isAuthError(err) {
-					logMessage(time.Now().In(settings.Location), "认证失败，终止狙击")
+					LogMessage(time.Now().In(settings.Location), "认证失败，终止狙击")
 					sendNotification("寿司郎狙击 - 认证失败", "认证参数已失效")
 					return
 				}
 				if strings.Contains(err.Error(), "500") {
-					logMessage(time.Now().In(settings.Location), "HTTP 500，参数已失效，请重新进入小程序获取")
+					LogMessage(time.Now().In(settings.Location), "HTTP 500，参数已失效，请重新进入小程序获取")
 					sendNotification("寿司郎狙击 - HTTP 500", "参数已失效，请重新进入小程序刷新并运行 `sushiro sniper`")
-					deleteLocalConfig()
+					DeleteLocalConfig()
 					return
 				}
 				time.Sleep(100 * time.Millisecond)
@@ -349,7 +351,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 				}
 
 				attemptCount++
-				slotLabel := formatSlotWindow(s.Date, s.Start, defaultString(s.End, s.Start), settings.Location)
+				slotLabel := FormatSlotWindow(s.Date, s.Start, DefaultString(s.End, s.Start), settings.Location)
 				fmt.Printf("\r[%s] 狙击中... %s (第%d次)", time.Now().Format("15:04:05"), slotLabel, attemptCount)
 
 				reservation, err := client.CreateReservation(ctx, target.StoreID, s.Date, s.Start)
@@ -357,14 +359,14 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 					if errors.Is(err, errNoReservationAvailable) {
 						fmt.Printf("\r[%s] %s - 名额已满，继续尝试...", time.Now().Format("15:04:05"), slotLabel)
 					} else if isAuthError(err) {
-						logMessage(time.Now().In(settings.Location), "预约认证失败，终止狙击")
+						LogMessage(time.Now().In(settings.Location), "预约认证失败，终止狙击")
 						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
-						deleteLocalConfig()
+						DeleteLocalConfig()
 						return
 					} else if isHTTPStatus(err, http.StatusInternalServerError) {
-						logMessage(time.Now().In(settings.Location), "预约接口 HTTP 500，参数可能已失效")
+						LogMessage(time.Now().In(settings.Location), "预约接口 HTTP 500，参数可能已失效")
 						sendNotification("寿司郎狙击 - HTTP 500", "参数可能已失效，请重新捕获")
-						deleteLocalConfig()
+						DeleteLocalConfig()
 						return
 					}
 					continue
@@ -383,7 +385,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 		}
 
 		if !success {
-			logMessage(time.Now().In(settings.Location), fmt.Sprintf("目标超时: %s", targetLabel))
+			LogMessage(time.Now().In(settings.Location), fmt.Sprintf("目标超时: %s", targetLabel))
 		}
 	}
 }
@@ -430,7 +432,7 @@ func printCalendarGrid(days []time.Time, now time.Time) {
 	}
 
 	// Determine starting column (Monday=0 ... Sunday=6)
-	firstWeekday := weekdayIndexMon0(days[0].Weekday())
+	firstWeekday := WeekdayIndexMon0(days[0].Weekday())
 
 	// Print rows
 	col := 0
@@ -441,7 +443,7 @@ func printCalendarGrid(days []time.Time, now time.Time) {
 	}
 
 	for _, e := range entries {
-		wIdx := weekdayIndexMon0(e.day.Weekday())
+		wIdx := WeekdayIndexMon0(e.day.Weekday())
 
 		// Fill gaps if we jumped to a new week
 		for col%7 != wIdx {

@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"bufio"
 	"encoding/json"
@@ -186,19 +188,19 @@ type queueHolidayConfig struct {
 }
 
 func queueObservationPath() string {
-	return filepath.Join(appDirPath(), queueObservationFile)
+	return filepath.Join(AppDirPath(), queueObservationFile)
 }
 
 func queueSessionPath() string {
-	return filepath.Join(appDirPath(), queueSessionFile)
+	return filepath.Join(AppDirPath(), queueSessionFile)
 }
 
 func queueStatsPath() string {
-	return filepath.Join(appDirPath(), queueStatsFile)
+	return filepath.Join(AppDirPath(), queueStatsFile)
 }
 
 func queueHolidayPath() string {
-	return filepath.Join(appDirPath(), queueHolidayFile)
+	return filepath.Join(AppDirPath(), queueHolidayFile)
 }
 
 func appendQueueObservation(observation QueueObservation) error {
@@ -215,7 +217,7 @@ func appendQueueObservation(observation QueueObservation) error {
 	if observation.DisplayCalledNo <= 0 && observation.WaitMinutes <= 0 && observation.GroupQueuesCount <= 0 && !queueGroupQueuesHasAny(observation.GroupQueues) {
 		return nil
 	}
-	if err := os.MkdirAll(appDirPath(), 0o755); err != nil {
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(queueObservationPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -523,7 +525,7 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 }
 
 func normalizeQueueTrendQuery(query QueueTrendQuery, now time.Time) QueueTrendQuery {
-	query.StoreIDs = uniqueNonEmptyStrings(query.StoreIDs)
+	query.StoreIDs = UniqueNonEmptyStrings(query.StoreIDs)
 	query.DateType = strings.ToLower(strings.TrimSpace(query.DateType))
 	if query.DateType == "" {
 		query.DateType = "all"
@@ -538,23 +540,23 @@ func normalizeQueueTrendQuery(query QueueTrendQuery, now time.Time) QueueTrendQu
 	}
 	from, ok := parseTrendDateParam(query.From, now.Location())
 	if !ok {
-		from = beginningOfDay(now).AddDate(0, 0, -14)
+		from = BeginningOfDay(now).AddDate(0, 0, -14)
 	}
 	to, ok := parseTrendDateParam(query.To, now.Location())
 	if !ok {
-		to = beginningOfDay(now)
+		to = BeginningOfDay(now)
 	}
 	if to.Before(from) {
 		from, to = to, from
 	}
 	query.From = from.Format("2006-01-02")
 	query.To = to.Format("2006-01-02")
-	if parseTimeSeconds(compactTrendTime(query.Start)) < 0 {
+	if ParseTimeSeconds(compactTrendTime(query.Start)) < 0 {
 		query.Start = "10:00"
 	} else {
 		query.Start = displayTrendTime(query.Start)
 	}
-	if parseTimeSeconds(compactTrendTime(query.End)) < 0 {
+	if ParseTimeSeconds(compactTrendTime(query.End)) < 0 {
 		query.End = "22:00"
 	} else {
 		query.End = displayTrendTime(query.End)
@@ -572,7 +574,7 @@ func queueTrendMatches(query QueueTrendQuery, at time.Time, storeFilter map[stri
 	}
 	from, _ := parseTrendDateParam(query.From, at.Location())
 	to, _ := parseTrendDateParam(query.To, at.Location())
-	day := beginningOfDay(at)
+	day := BeginningOfDay(at)
 	if day.Before(from) || day.After(to) {
 		return false
 	}
@@ -584,8 +586,8 @@ func queueTrendMatches(query QueueTrendQuery, at time.Time, storeFilter map[stri
 }
 
 func queueTrendTimeInRange(at time.Time, startRaw, endRaw string) bool {
-	start := parseTimeSeconds(compactTrendTime(startRaw))
-	end := parseTimeSeconds(compactTrendTime(endRaw))
+	start := ParseTimeSeconds(compactTrendTime(startRaw))
+	end := ParseTimeSeconds(compactTrendTime(endRaw))
 	if start < 0 || end < 0 || start == end {
 		return true
 	}
@@ -809,9 +811,9 @@ func buildQueueSamplingStatus(now time.Time, summary QueueTrendSummary) QueueSam
 	if holder, ok := processLockHolder(samplingLockFileName); ok && holder > 0 {
 		status.DaemonRunning = true
 	}
-	tokens, err := loadLocalConfig()
+	tokens, err := LoadLocalConfig()
 	if err == nil {
-		err = tokens.validateForQuery()
+		err = tokens.ValidateForQuery()
 	}
 	status.AuthOK = err == nil
 	status.NeedsAuth = err != nil
@@ -1157,7 +1159,7 @@ func parseTrendDateParam(raw string, loc *time.Location) (time.Time, bool) {
 	}
 	for _, layout := range []string{"2006-01-02", "20060102"} {
 		if day, err := time.ParseInLocation(layout, raw, loc); err == nil {
-			return beginningOfDay(day), true
+			return BeginningOfDay(day), true
 		}
 	}
 	return time.Time{}, false

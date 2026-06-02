@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"fmt"
@@ -28,13 +30,13 @@ func startHealthCheck(ctx context.Context, client *Client, storeIDs []string) ch
 					_, err := client.GetTimeslots(ctx, storeID)
 					if err != nil {
 						if isAuthError(err) {
-							logMessage(time.Now(), "健康检查：认证参数已失效")
+							LogMessage(time.Now(), "健康检查：认证参数已失效")
 							sendNotification("寿司郎 - 认证过期", "健康检测发现认证参数已失效，请重新打开 sushiro-overdose 重新捕获")
-							deleteLocalConfig()
+							DeleteLocalConfig()
 							return
 						}
 						if fmt.Sprintf("%v", err) != "" {
-							logMessage(time.Now(), fmt.Sprintf("健康检查：%v", err))
+							LogMessage(time.Now(), fmt.Sprintf("健康检查：%v", err))
 						}
 						break
 					}

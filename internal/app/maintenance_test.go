@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"os"
 	"path/filepath"
@@ -10,14 +12,14 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 	setMaintenanceTestHome(t)
 
 	removed := []string{
-		localConfigPath(),
+		LocalConfigPath(),
 		notifyConfigPath(),
-		feishuConfigPath(),
-		preferencesPath(),
-		storeRegistryPath(),
-		stateFilePath(),
+		FeishuConfigPath(),
+		PreferencesPath(),
+		StoreRegistryPath(),
+		StateFilePath(),
 		historyPath(),
-		pidFilePath(),
+		PidFilePath(),
 		proxyStatePath(),
 		filepath.Join(certDirPath(), "ca.crt"),
 		filepath.Join(certDirPath(), "ca.key"),
@@ -27,7 +29,7 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 	}
 
 	kept := []string{
-		logPath(),
+		LogPath(),
 		filepath.Join(certDirPath(), "leaf.cache"),
 	}
 	for _, path := range kept {
@@ -60,7 +62,7 @@ func TestUninstallLocalDataAllRemovesSensitiveFiles(t *testing.T) {
 func TestUninstallLocalDataPartialSelectionKeepsUnselectedFiles(t *testing.T) {
 	setMaintenanceTestHome(t)
 
-	configPath := localConfigPath()
+	configPath := LocalConfigPath()
 	notifyPath := notifyConfigPath()
 	certPath := filepath.Join(certDirPath(), "ca.crt")
 	writeMaintenanceTestFile(t, configPath)
@@ -94,7 +96,7 @@ func TestUninstallLocalDataPartialSelectionKeepsUnselectedFiles(t *testing.T) {
 func TestUninstallLocalDataDryRunKeepsFiles(t *testing.T) {
 	setMaintenanceTestHome(t)
 
-	configPath := localConfigPath()
+	configPath := LocalConfigPath()
 	writeMaintenanceTestFile(t, configPath)
 
 	report := UninstallLocalData(UninstallOptions{Config: true, DryRun: true})

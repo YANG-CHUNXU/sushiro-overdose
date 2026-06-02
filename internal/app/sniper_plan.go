@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"encoding/json"
 	"os"
@@ -38,8 +40,8 @@ func NormalizeSniperPlan(targets []SniperTarget, loc *time.Location) SniperPlanS
 	seen := map[string]bool{}
 	for _, target := range targets {
 		target.Date = strings.TrimSpace(target.Date)
-		target.StartAfter = normalizeTimeStr(target.StartAfter)
-		target.StartBefore = normalizeTimeStr(target.StartBefore)
+		target.StartAfter = NormalizeTimeStr(target.StartAfter)
+		target.StartBefore = NormalizeTimeStr(target.StartBefore)
 		target.StoreID = strings.TrimSpace(target.StoreID)
 		if target.Date == "" || target.StartAfter == "" || target.StartBefore == "" || target.StoreID == "" {
 			continue
@@ -102,7 +104,7 @@ func SaveSniperPlan(state SniperPlanState, loc *time.Location) error {
 	if err != nil {
 		return err
 	}
-	_ = os.MkdirAll(appDirPath(), 0o755)
+	_ = os.MkdirAll(AppDirPath(), 0o755)
 	return os.WriteFile(sniperConfigPath(), data, 0o600)
 }
 
@@ -173,8 +175,8 @@ func normalizeLoadedPlanTargets(targets []SniperPlanTarget, loc *time.Location) 
 	seen := map[string]bool{}
 	for _, target := range targets {
 		target.Date = strings.TrimSpace(target.Date)
-		target.StartAfter = normalizeTimeStr(target.StartAfter)
-		target.StartBefore = normalizeTimeStr(target.StartBefore)
+		target.StartAfter = NormalizeTimeStr(target.StartAfter)
+		target.StartBefore = NormalizeTimeStr(target.StartBefore)
 		target.StoreID = strings.TrimSpace(target.StoreID)
 		if target.ID == "" {
 			target.ID = strings.Join([]string{target.StoreID, target.Date, target.StartAfter, target.StartBefore}, ":")
