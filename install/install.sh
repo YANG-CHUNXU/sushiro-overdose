@@ -9,7 +9,7 @@ ARCHIVE="sushiro-overdose"   # release 压缩包前缀（沿用仓库名）
 BINARY="sushiro"             # 压缩包内的二进制 + 落地命令名
 INSTALL_DIR="/usr/local/bin"
 
-echo "=== sushiro-overdose installer ==="
+echo "=== sushiro installer ==="
 
 # Detect OS and architecture
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')

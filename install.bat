@@ -3,7 +3,7 @@ chcp 65001 >nul 2>&1
 setlocal
 
 echo.
-echo === sushiro-overdose Windows 一键安装 ===
+echo === sushiro Windows 一键安装 ===
 echo.
 echo 即将从 GitHub 下载最新版本并安装到 %%LOCALAPPDATA%%\sushiro
 echo.

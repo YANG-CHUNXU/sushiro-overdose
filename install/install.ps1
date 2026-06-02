@@ -10,7 +10,7 @@ $Archive = "sushiro-overdose"   # release 压缩包前缀（沿用仓库名）
 $Binary = "sushiro"             # 压缩包内的 exe + 落地命令名
 
 Write-Host ""
-Write-Host "=== sushiro-overdose 一键安装 ===" -ForegroundColor Green
+Write-Host "=== sushiro 一键安装 ===" -ForegroundColor Green
 Write-Host ""
 
 # 架构检测
