@@ -273,8 +273,10 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 		plan.LastError = ""
 		if body.Enabled {
 			plan.Status = "armed"
+			enableNetTicketStatusPush(&plan)
 		} else {
 			plan.Status = "idle"
+			clearNetTicketStatusPush(&plan)
 		}
 		clearNetTicketFire(time.Now().Format("2006-01-02"))
 		if err := SaveNetTicketPlan(plan); err != nil {
@@ -309,6 +311,7 @@ func handleCancelNetTicket(w http.ResponseWriter, r *http.Request) {
 	plan.Number = ""
 	plan.TicketID = 0
 	plan.LastError = ""
+	clearNetTicketStatusPush(&plan)
 	_ = SaveNetTicketPlan(plan)
 	writeJSON(w, map[string]any{"ok": true})
 }

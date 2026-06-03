@@ -16,9 +16,12 @@ import (
 )
 
 const (
-	netTicketPlanFile      = "netticket_plan.json"
-	netTicketWindowMinutes = 12 // 到点后多久内仍尝试取号；过窗口则放弃
-	netTicketTickSeconds   = 20
+	netTicketPlanFile                 = "netticket_plan.json"
+	netTicketWindowMinutes            = 12 // 到点后多久内仍尝试取号；过窗口则放弃
+	netTicketTickSeconds              = 20
+	netTicketStatusPushDefaultMinutes = 10
+	netTicketStatusPushMinMinutes     = 3
+	netTicketStatusMonitorMaxAge      = 8 * time.Hour
 )
 
 // NetTicketPlan 是「定时取号」计划：到指定时间自动远程取号。
@@ -34,6 +37,11 @@ type NetTicketPlan struct {
 	FiredDate   string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
 	FiredAt     string `json:"fired_at,omitempty"`
 	LastError   string `json:"last_error,omitempty"`
+
+	StatusPushEnabled bool   `json:"status_push_enabled"`
+	StatusPushMinutes int    `json:"status_push_minutes,omitempty"`
+	LastStatusPushAt  string `json:"last_status_push_at,omitempty"`
+	LastStatusText    string `json:"last_status_text,omitempty"`
 }
 
 func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
@@ -50,6 +58,7 @@ func LoadNetTicketPlan() NetTicketPlan {
 	if p.Status == "error" && isTicketAlreadyIssuedText(p.LastError) {
 		p.Status = "issued_unknown"
 	}
+	normalizeNetTicketStatusPush(&p)
 	return p
 }
 
@@ -106,6 +115,7 @@ func netTicketTick(ctx context.Context) {
 	}
 	now := time.Now()
 	today := now.Format("2006-01-02")
+	netTicketTickStatusMonitor(ctx, plan, now)
 	if plan.FiredDate == today {
 		return // 今天已处理过
 	}
@@ -222,6 +232,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 func markNetTicketIssuedUnknown(plan *NetTicketPlan, message string) {
 	plan.Status = "issued_unknown"
 	plan.LastError = message
+	enableNetTicketStatusPush(plan)
 	_ = SaveNetTicketPlan(*plan)
 }
 
@@ -240,6 +251,7 @@ func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketP
 	plan.Number = ticket.Number
 	plan.TicketID = ticket.TicketID
 	plan.LastError = ""
+	enableNetTicketStatusPush(plan)
 	storeName := DefaultString(plan.StoreName, plan.StoreID)
 	storeAddress := ""
 	if info, err := client.GetStoreInfo(ctx, plan.StoreID); err == nil {
@@ -252,6 +264,137 @@ func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketP
 
 func netTicketLooksSuccessful(ticket ReservationRecord) bool {
 	return strings.TrimSpace(ticket.Number) != "" || ticket.TicketID != 0
+}
+
+func normalizeNetTicketStatusPush(plan *NetTicketPlan) {
+	if !plan.StatusPushEnabled {
+		return
+	}
+	if plan.StatusPushMinutes <= 0 {
+		plan.StatusPushMinutes = netTicketStatusPushDefaultMinutes
+	}
+	if plan.StatusPushMinutes < netTicketStatusPushMinMinutes {
+		plan.StatusPushMinutes = netTicketStatusPushMinMinutes
+	}
+}
+
+func enableNetTicketStatusPush(plan *NetTicketPlan) {
+	plan.StatusPushEnabled = true
+	normalizeNetTicketStatusPush(plan)
+}
+
+func clearNetTicketStatusPush(plan *NetTicketPlan) {
+	plan.StatusPushEnabled = false
+	plan.LastStatusPushAt = ""
+	plan.LastStatusText = ""
+}
+
+func netTicketTickStatusMonitor(ctx context.Context, plan NetTicketPlan, now time.Time) {
+	if !shouldMonitorNetTicketStatus(plan, now) || !netTicketStatusPushDue(plan, now) {
+		return
+	}
+	updated := plan
+	ticket := ReservationRecord{}
+	if client := currentAuthedClient(); client != nil {
+		if current, err := client.GetNetTicketStatus(ctx); err == nil && netTicketLooksSuccessful(current) && current.Kind != "reservation" {
+			ticket = current
+			if strings.TrimSpace(current.Number) != "" {
+				updated.Number = current.Number
+			}
+			if current.TicketID != 0 {
+				updated.TicketID = current.TicketID
+			}
+			if strings.TrimSpace(current.StoreID) != "" {
+				updated.StoreID = current.StoreID
+			}
+			if strings.TrimSpace(current.StoreName) != "" {
+				updated.StoreName = current.StoreName
+			}
+		}
+	}
+	panel, _ := buildQueueLivePanel(ctx, updated.StoreID, now)
+	title, body := formatNetTicketStatusPush(updated, ticket, panel)
+	if strings.TrimSpace(body) == "" {
+		return
+	}
+	sendQueueAlert(ctx, title, body)
+	updated.LastStatusPushAt = now.Format(time.RFC3339)
+	updated.LastStatusText = body
+	_ = SaveNetTicketPlan(updated)
+}
+
+func shouldMonitorNetTicketStatus(plan NetTicketPlan, now time.Time) bool {
+	if !plan.Enabled || !plan.StatusPushEnabled || strings.TrimSpace(plan.StoreID) == "" {
+		return false
+	}
+	if plan.Status != "success" && plan.Status != "issued_unknown" {
+		return false
+	}
+	if strings.TrimSpace(plan.FiredAt) == "" {
+		return true
+	}
+	firedAt, ok := parseRFC3339Local(plan.FiredAt)
+	return !ok || now.Sub(firedAt) <= netTicketStatusMonitorMaxAge
+}
+
+func netTicketStatusPushDue(plan NetTicketPlan, now time.Time) bool {
+	normalizeNetTicketStatusPush(&plan)
+	if strings.TrimSpace(plan.LastStatusPushAt) == "" {
+		return true
+	}
+	last, ok := parseRFC3339Local(plan.LastStatusPushAt)
+	if !ok {
+		return true
+	}
+	return now.Sub(last) >= time.Duration(plan.StatusPushMinutes)*time.Minute
+}
+
+func formatNetTicketStatusPush(plan NetTicketPlan, ticket ReservationRecord, panel QueueLivePanel) (string, string) {
+	number := strings.TrimSpace(DefaultString(ticket.Number, plan.Number))
+	storeName := strings.TrimSpace(DefaultString(panel.StoreName, DefaultString(plan.StoreName, plan.StoreID)))
+	parts := []string{}
+	if number != "" {
+		parts = append(parts, "你的号 "+number)
+	} else {
+		parts = append(parts, "本地号码未知，请在 PC 端点“恢复当前排队号”")
+	}
+	called := panel.CalledNo
+	if called > 0 {
+		parts = append(parts, "当前叫号 "+strconv.Itoa(called))
+		if n, ok := parseTicketNumber(number); ok {
+			diff := n - called
+			if diff >= 0 {
+				parts = append(parts, "还差约 "+strconv.Itoa(diff)+" 桌")
+			} else {
+				parts = append(parts, "可能已过号 "+strconv.Itoa(-diff)+" 桌")
+			}
+		}
+	}
+	if panel.WaitGroups > 0 {
+		parts = append(parts, "门店在等 "+strconv.Itoa(panel.WaitGroups)+" 桌")
+	}
+	if panel.EtaMinutes != nil {
+		parts = append(parts, "预计约 "+strconv.Itoa(*panel.EtaMinutes)+" 分钟")
+	} else if panel.ServerWaitMin > 0 {
+		parts = append(parts, "接口预估约 "+strconv.Itoa(panel.ServerWaitMin)+" 分钟")
+	}
+	if len(parts) == 0 {
+		return "", ""
+	}
+	title := "📍 排队状态"
+	if numberInt, ok := parseTicketNumber(number); ok && called > 0 && numberInt-called <= 15 {
+		title = "🔔 快叫到你了"
+	}
+	return title, storeName + "：" + strings.Join(parts, "；")
+}
+
+func parseTicketNumber(raw string) (int, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(raw)
+	return n, err == nil
 }
 
 // reserveNetTicketFire 用独占创建的锁文件占位，返回 true 表示本进程抢到了今天的取号执行权。

@@ -628,14 +628,15 @@ function renderNetTicketStatus(p){
  const store=esc(p.store_name||p.store_id||''),tt=p.target_time?netTimeDisp(p.target_time):'';
  if(!p.enabled){box.innerHTML='<span class="mu">选门店和时间，点「启用定时取号」即可到点自动取号；取到的号可在「我的预约」取消。</span>';return}
  switch(p.status){
-  case 'success':box.innerHTML='<b>🎫 已自动取号 '+esc(p.number||'(详见我的预约)')+'</b><div class="mu mt8">'+store+' · 去「抢预约 → 我的预约」可取消。</div>';break;
-  case 'issued_unknown':box.innerHTML='<b>⚠️ 官方提示已经发过号，但本地号码未知</b><div class="mu mt8">'+store+' '+tt+'：'+esc(p.last_error||'不要重复取号，请打开 PC 微信寿司郎小程序查看排队号。')+'<br>如果 PC 微信也看不到，请开启“设置 → 接口调试”，再进入小程序排队页让我看接口记录。</div>';break;
+  case 'success':box.innerHTML='<b>🎫 已自动取号 '+esc(p.number||'(详见我的预约)')+'</b><div class="mu mt8">'+store+' · 去「抢预约 → 我的预约」可取消。'+ntPushText(p)+'</div>';break;
+  case 'issued_unknown':box.innerHTML='<b>⚠️ 官方提示已经发过号，但本地号码未知</b><div class="mu mt8">'+store+' '+tt+'：'+esc(p.last_error||'不要重复取号，请打开 PC 微信寿司郎小程序查看排队号。')+'<br>如果 PC 微信也看不到，请开启“设置 → 接口调试”，再进入小程序排队页让我看接口记录。'+ntPushText(p)+'</div>';break;
   case 'retrying':box.innerHTML='<b>⏳ 官方接口暂时失败，窗口内继续重试</b><div class="mu mt8">'+store+' '+tt+'：'+esc(p.last_error||'官方临时异常')+'</div>';break;
   case 'error':box.innerHTML='<b>⚠️ 取号失败</b><div class="mu mt8">'+store+' '+tt+'：'+esc(p.last_error||'未知错误')+'<br>改时间后重新启用可重试。</div>';break;
   case 'expired':box.innerHTML='<b>⏰ 未在窗口内取到号</b><div class="mu mt8">'+store+' '+tt+'：超时已放弃，可重新启用。</div>';break;
   default:box.innerHTML='<b>⏳ 已设定：'+tt+' 自动取号</b><div class="mu mt8">'+store+' · 到点(约 '+tt+')自动远程取号并推送。保持本应用或后台收集运行即可。</div>';
  }
 }
+function ntPushText(p){if(!p.status_push_enabled)return'';const at=p.last_status_push_at?new Date(p.last_status_push_at).toLocaleTimeString():'等待首次推送';return'<br>手机状态推送：每 '+esc(p.status_push_minutes||10)+' 分钟 · '+esc(at)}
 async function saveNetTicketPlan(enabled){const sel=el('ntStore'),tEl=el('ntTime'),modeEl=el('ntMode'),store=sel?sel.value:'',mode=modeEl?modeEl.value:'time',t=tEl?tEl.value:'';if(enabled){if(!store){alert('请先选门店');return}if(mode==='time'&&!t){alert('请填取号时间');return}}const sn=(sel&&sel.selectedOptions[0])?sel.selectedOptions[0].textContent:'',tt=t?t.replace(':',''):'';try{const p=await(await fetch('/api/queue/ticket/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled,store:store,store_name:sn,trigger_mode:mode,target_time:tt})})).json();if(p.error){alert(p.error);return}ntPlan=p;renderNetTicketStatus(p);alert(enabled?(mode==='on_open'?'已启用：门店一开放线上取号就自动取号':('已启用定时取号：'+netTimeDisp(tt)+' 自动取号')):'已取消取号计划')}catch(e){alert('保存失败')}}
 async function recoverNetTicketStatus(){try{const d=await safeFetch('/api/queue/ticket/status',null,12000);const t=d.ticket||{},p=d.plan||{};ntPlan=p;renderNetTicketStatus(p);lR();alert('已恢复当前排队号：'+(t.number||p.number||'(详见我的预约)'))}catch(e){alert('恢复失败：'+String(e.message||e))}}
 async function cancelNetTicket(){if(!confirm('取消当前排队号？取消后不可恢复。'))return;try{const d=await safeFetch('/api/queue/ticket/cancel',{method:'POST'});if(d.error){alert('取消失败：'+d.error);return}alert('已取消排队号');await loadNetTicketPlan();if(typeof lR==='function')lR()}catch(e){alert('取消失败：'+String(e.message||e))}}
