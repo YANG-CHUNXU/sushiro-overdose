@@ -6,6 +6,8 @@
 
 **双击运行，独立应用窗口操作，不需要任何编程知识。**
 
+**最新版本：[v2.9.0](https://github.com/Ryujoxys/sushiro-overdose/releases/latest)**
+
 ---
 
 ## 下载安装
@@ -30,7 +32,7 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 
 **方式 C：手动下载 .exe**
 
-从 [GitHub Releases](https://github.com/Ryujoxys/sushiro-overdose/releases) 下载 `Sushiro-Overdose-*-windows-amd64.exe`，双击即可。ARM 设备下载 `Sushiro-Overdose-*-windows-arm64.exe`。
+从 [GitHub Releases](https://github.com/Ryujoxys/sushiro-overdose/releases/latest) 下载 `Sushiro-Overdose-2.9.0-windows-amd64.exe`，双击即可。ARM 设备下载 `Sushiro-Overdose-2.9.0-windows-arm64.exe`。
 
 > Windows 注意事项：
 > - 首次运行 SmartScreen 可能弹窗提示「Windows 已保护你的电脑」，点击「更多信息」→「仍要运行」即可。
@@ -43,8 +45,8 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 
 | 平台 | 下载文件 | 使用方式 |
 |------|---------|---------|
-| **macOS** | `Sushiro-Overdose-*-macOS.dmg` | 双击打开 DMG，将 App 拖到 Applications 后运行，独立窗口优先 |
-| **Linux** | `sushiro-overdose_*_linux_amd64.tar.gz` | 解压后终端运行 |
+| **macOS** | `Sushiro-Overdose-2.9.0-macOS.dmg` | 双击打开 DMG，将 App 拖到 Applications 后运行，独立窗口优先 |
+| **Linux** | `sushiro-overdose_2.9.0_linux_amd64.tar.gz` | 解压后终端运行 |
 
 > macOS 注意事项：当前 Release 默认未签名/未公证。首次打开如果提示无法验证开发者，请在「系统设置 → 隐私与安全性」中允许打开，或右键 App 选择「打开」。
 
@@ -234,8 +236,8 @@ go vet ./...                # 静态检查
 ### 发布新版本
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v2.9.0
+git push origin v2.9.0
 # GitHub Actions 自动构建所有平台并发布 Release
 ```
 
