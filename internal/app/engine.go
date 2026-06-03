@@ -222,6 +222,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	savedForDiscovery := false
 
 	for {
 		select {
@@ -233,6 +234,20 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 			bus.publish("engine", mustJSON(e.GetState()))
 			if tokens.IsComplete() {
 				prefs := LoadPreferences()
+				// 接口发现调试开启时：抓到认证先存好，但保持代理运行，让用户继续在
+				// 小程序里点想记录的接口（如「排队取号」），手动「停止」前不拆代理。
+				// 否则代理会在认证一抓全就关闭，后续接口根本来不及记录。
+				if APIDiscoveryEnabled() {
+					if !savedForDiscovery {
+						if err := SaveLocalConfig(tokens); err == nil {
+							setWebSettings(tokens.ToSettingsWithPrefs(prefs))
+						}
+						savedForDiscovery = true
+						e.addLog("认证已抓到并保存；接口发现调试开启中——请在小程序里点你想记录的接口（如「排队取号」），完成后点「停止」。")
+						e.setState(EngineCapturing, "接口发现调试中：认证已抓到，代理保持运行。请在小程序里操作要记录的接口，记录完点「停止」。")
+					}
+					continue
+				}
 				// 自检只作诊断，不拦保存：抓到完整认证就落盘并完成捕获，
 				// 自检结果仅决定提示语。避免基础接口偶发失败/被拒时把用户卡死。
 				e.setState(EngineCapturing, "已抓到认证参数，正在自检基础接口...")
