@@ -63,6 +63,7 @@ main.go (默认启动 Web UI)
 | `web_calendar.go` | 日历/门店 API |
 | `web_engine.go` | 状态、预约、引擎控制、洞察 API |
 | `web_preferences.go` | 偏好、通知、repair/uninstall API |
+| `auth_import.go` | 手动导入认证 API：解析手机抓包导出的 JSON/curl/raw headers 并保存认证参数 |
 | `web_sniper.go` | Web 狙击计划 API |
 | `web_sampling.go` | Web 信息收集 API |
 | `mobile_auth_capture.go` | 手机认证捕获 API：局域网引导页 + 手机代理捕获真实微信认证参数 |
@@ -206,6 +207,7 @@ main.go (默认启动 Web UI)
 | GET | `/api/queue/areas` | 官方区域列表 |
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
+| POST | `/api/auth/import` | 手动导入认证参数，支持 JSON、curl、raw headers |
 | GET/POST | `/api/mobile-ua` | 读取/手动保存移动端 UA |
 | POST | `/api/mobile-ua/capture/start` | 启动手机扫码 UA 采集页 |
 | POST | `/api/mobile-ua/capture/stop` | 停止手机扫码 UA 采集 |
