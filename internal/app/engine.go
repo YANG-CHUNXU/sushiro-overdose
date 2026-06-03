@@ -222,7 +222,6 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	lastProbeSignature := ""
 
 	for {
 		select {
@@ -233,27 +232,26 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 		case <-ticker.C:
 			bus.publish("engine", mustJSON(e.GetState()))
 			if tokens.IsComplete() {
-				signature := tokens.CaptureSignature()
-				if signature == lastProbeSignature {
-					continue
-				}
-				lastProbeSignature = signature
 				prefs := LoadPreferences()
+				// 自检只作诊断，不拦保存：抓到完整认证就落盘并完成捕获，
+				// 自检结果仅决定提示语。避免基础接口偶发失败/被拒时把用户卡死。
 				e.setState(EngineCapturing, "已抓到认证参数，正在自检基础接口...")
 				report := runAuthProbeWithTokens(ctx, "", tokens, prefs)
-				if !report.OK {
-					e.addLogLevel("已抓到认证参数，但基础接口自检未通过: "+authProbeFailureSummary(report), "warn")
-					e.setState(EngineCapturing, "已抓到认证参数，但基础接口自检未通过；请继续在小程序里点一次排队/预约，或查看接口调试记录。")
-					continue
-				}
 				if err := SaveLocalConfig(tokens); err != nil {
 					e.addLogLevel("保存配置失败: "+err.Error(), "error")
-				} else {
-					e.addLog("认证参数已捕获、基础接口自检通过并保存！")
-					setWebSettings(tokens.ToSettingsWithPrefs(prefs))
+					e.cleanupProxy()
+					e.setState(EngineError, "认证参数保存失败: "+err.Error())
+					return
 				}
+				setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 				e.cleanupProxy()
-				e.setState(EngineIdle, "认证参数捕获完成；即使小程序仍显示服务器出错，也不影响本工具使用。")
+				if report.OK {
+					e.addLog("认证参数已捕获、基础接口自检通过并保存！")
+					e.setState(EngineIdle, "认证参数捕获完成！")
+				} else {
+					e.addLogLevel("认证参数已捕获并保存；基础接口自检未通过（"+authProbeFailureSummary(report)+"），可直接尝试使用，如不可用再重新捕获。", "warn")
+					e.setState(EngineIdle, "认证参数已保存；基础接口自检未通过，但可直接尝试使用。即使小程序显示服务器出错也不影响。")
+				}
 
 				tokens.Lock()
 				if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {
