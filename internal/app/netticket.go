@@ -29,11 +29,11 @@ type NetTicketPlan struct {
 	TriggerMode string `json:"trigger_mode,omitempty"` // "time"(默认到点) / "on_open"(一开放就取号)
 	TargetTime  string `json:"target_time"`            // "HHMM"，仅 time 模式使用
 	Status      string `json:"status"`                 // idle/armed/success/error/expired
-	Number     string `json:"number,omitempty"`
-	TicketID   int64  `json:"ticket_id,omitempty"`
-	FiredDate  string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
-	FiredAt    string `json:"fired_at,omitempty"`
-	LastError  string `json:"last_error,omitempty"`
+	Number      string `json:"number,omitempty"`
+	TicketID    int64  `json:"ticket_id,omitempty"`
+	FiredDate   string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
+	FiredAt     string `json:"fired_at,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
 }
 
 func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
