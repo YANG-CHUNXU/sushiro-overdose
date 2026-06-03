@@ -576,6 +576,9 @@ func samplingBlockedReason() string {
 		}
 		return "另一个主流程正在运行 (" + status + ")，已跳过本轮采样"
 	}
+	if netTicketIssuedToday(time.Now()) {
+		return "今天已经取到排队号，已停止本轮采样，避免影响手机端查看排队信息"
+	}
 	if isMainFlowRunning() {
 		return "主流程正在运行，已跳过本轮采样"
 	}
@@ -583,6 +586,28 @@ func samplingBlockedReason() string {
 		return "后台抢号进程正在运行，已跳过本轮采样"
 	}
 	return ""
+}
+
+func netTicketIssuedToday(now time.Time) bool {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	plan := LoadNetTicketPlan()
+	if !plan.Enabled {
+		return false
+	}
+	if plan.Status != "success" && plan.Status != "issued_unknown" {
+		return false
+	}
+	today := now.Format("2006-01-02")
+	if strings.TrimSpace(plan.FiredDate) == today {
+		return true
+	}
+	if strings.TrimSpace(plan.FiredAt) == "" {
+		return false
+	}
+	firedAt, ok := parseRFC3339Local(plan.FiredAt)
+	return ok && firedAt.Format("2006-01-02") == today
 }
 
 func pauseSamplingForMainFlow() {
