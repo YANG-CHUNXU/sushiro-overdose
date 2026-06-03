@@ -382,6 +382,16 @@ func handleEngineStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "message": "已停止"})
 }
 
+// handleEngineReset 重置抓包状态：断开代理、清残留、回到 idle，便于手动重新连接。
+func handleEngineReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	engine.ResetCapture()
+	writeJSON(w, map[string]any{"ok": true, "engine": engine.GetState()})
+}
+
 func handleEngineLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, engine.GetLogs())
 }

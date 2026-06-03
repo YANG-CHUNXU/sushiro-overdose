@@ -35,6 +35,87 @@ type QueueBaselineRecord struct {
 	OnlineOpen        bool   `json:"online_open"`
 }
 
+// QueueBaselineExport 是远端公开「全国基准」JSON 的协议结构。它只包含门店维度
+// 和聚合后的半小时基准，不包含用户票号、手机号、认证参数或个人取号记录。
+type QueueBaselineExport struct {
+	Version       int                   `json:"version"`
+	GeneratedAt   string                `json:"generated_at"`
+	Source        string                `json:"source"`
+	BucketMinutes int                   `json:"bucket_minutes"`
+	DateTypes     []string              `json:"date_types"`
+	Stores        []QueueBaselineStore  `json:"stores"`
+	Latest        []QueueBaselineLatest `json:"latest,omitempty"`
+	Rollups       []QueueBaselineRollup `json:"rollups"`
+	Stats         QueueBaselineStats    `json:"stats"`
+}
+
+type QueueBaselineStats struct {
+	StoreCount      int    `json:"store_count"`
+	LatestCount     int    `json:"latest_count,omitempty"`
+	RollupCount     int    `json:"rollup_count"`
+	SourceUpdatedAt string `json:"source_updated_at,omitempty"`
+}
+
+type QueueBaselineRemoteStatus struct {
+	Configured      bool   `json:"configured"`
+	Used            bool   `json:"used"`
+	DatabaseURL     string `json:"database_url,omitempty"`
+	GeneratedAt     string `json:"generated_at,omitempty"`
+	SourceUpdatedAt string `json:"source_updated_at,omitempty"`
+	StoreCount      int    `json:"store_count,omitempty"`
+	LatestCount     int    `json:"latest_count,omitempty"`
+	RollupCount     int    `json:"rollup_count,omitempty"`
+	LastError       string `json:"last_error,omitempty"`
+}
+
+type QueueBaselineStore struct {
+	StoreID          int      `json:"store_id"`
+	Name             string   `json:"name"`
+	City             string   `json:"city,omitempty"`
+	Area             string   `json:"area,omitempty"`
+	Address          string   `json:"address,omitempty"`
+	Latitude         *float64 `json:"latitude,omitempty"`
+	Longitude        *float64 `json:"longitude,omitempty"`
+	OpenDate         string   `json:"open_date,omitempty"`
+	TablesCapacity   int      `json:"tables_capacity,omitempty"`
+	CountersCapacity int      `json:"counters_capacity,omitempty"`
+	LastSeenAt       string   `json:"last_seen_at,omitempty"`
+}
+
+type QueueBaselineLatest struct {
+	StoreID           int    `json:"store_id"`
+	CollectedAt       string `json:"collected_at"`
+	Name              string `json:"name"`
+	City              string `json:"city,omitempty"`
+	Area              string `json:"area,omitempty"`
+	WaitMinutes       int    `json:"wait_minutes"`
+	GroupQueuesCount  int    `json:"group_queues_count"`
+	StoreStatus       string `json:"store_status"`
+	NetTicketStatus   string `json:"net_ticket_status"`
+	ReservationStatus string `json:"reservation_status,omitempty"`
+	OnlineOpen        bool   `json:"online_open"`
+	WaitTimeCounter   int    `json:"wait_time_counter,omitempty"`
+	WaitTimeCap       int    `json:"wait_time_cap,omitempty"`
+}
+
+type QueueBaselineRollup struct {
+	StoreID            int      `json:"store_id"`
+	DateType           string   `json:"date_type"`
+	Weekday            int      `json:"weekday"`
+	TimeBucket         string   `json:"time_bucket"`
+	SampleCount        int      `json:"sample_count"`
+	OpenRate           float64  `json:"open_rate"`
+	OnlineOpenRate     float64  `json:"online_open_rate"`
+	BusyRate           float64  `json:"busy_rate"`
+	WaitTypicalMinutes *float64 `json:"wait_typical_minutes,omitempty"`
+	WaitSafeMinutes    *float64 `json:"wait_safe_minutes,omitempty"`
+	WaitMaxMinutes     int      `json:"wait_max_minutes,omitempty"`
+	QueueGroupsTypical *float64 `json:"queue_groups_typical,omitempty"`
+	QueueGroupsSafe    *float64 `json:"queue_groups_safe,omitempty"`
+	Confidence         string   `json:"confidence"`
+	UpdatedAt          string   `json:"updated_at"`
+}
+
 // QueueBaselineConfig 控制「全国门店基准采集」：周期性快照全部门店的实时
 // 等位/状态并落盘，作为基准数据。走公开接口，无需认证。
 type QueueBaselineConfig struct {
@@ -190,7 +271,12 @@ func appendQueueBaselineRecords(records []QueueBaselineRecord) error {
 func handleQueueBaseline(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, LoadQueueBaselineConfig())
+		cfg := LoadQueueBaselineConfig()
+		writeJSON(w, map[string]any{
+			"enabled":          cfg.Enabled,
+			"interval_minutes": cfg.IntervalMinutes,
+			"remote":           queueBaselineRemoteStatusFromConfig(loadQueueBaselineTursoConfig()),
+		})
 	case http.MethodPost:
 		var body QueueBaselineConfig
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

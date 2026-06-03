@@ -77,8 +77,27 @@ func TestQueueTrendDateTypeUsesLocalHolidayOverrides(t *testing.T) {
 	if got := queueTrendDateType(holiday, map[string]bool{"2026-05-01": true}, nil); got != "holiday" {
 		t.Fatalf("holiday type = %s, want holiday", got)
 	}
-	if got := queueTrendDateType(workday, nil, map[string]bool{"2026-05-02": true}); got != "weekday" {
-		t.Fatalf("adjusted workday type = %s, want weekday", got)
+	if got := queueTrendDateType(workday, nil, map[string]bool{"2026-05-02": true}); got != "workday" {
+		t.Fatalf("adjusted workday type = %s, want workday", got)
+	}
+}
+
+func TestQueueTrendDateTypeUsesWeekendWindow(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	cases := []struct {
+		at   time.Time
+		want string
+	}{
+		{time.Date(2026, 6, 5, 16, 29, 59, 0, loc), "weekday"},
+		{time.Date(2026, 6, 5, 16, 30, 0, 0, loc), "weekend"},
+		{time.Date(2026, 6, 6, 12, 0, 0, 0, loc), "weekend"},
+		{time.Date(2026, 6, 7, 21, 59, 59, 0, loc), "weekend"},
+		{time.Date(2026, 6, 7, 22, 0, 0, 0, loc), "weekday"},
+	}
+	for _, c := range cases {
+		if got := queueTrendDateType(c.at, nil, nil); got != c.want {
+			t.Fatalf("queueTrendDateType(%s) = %s, want %s", c.at.Format(time.RFC3339), got, c.want)
+		}
 	}
 }
 
@@ -121,6 +140,47 @@ func TestQueueTrendGlobalPassedUsesForwardObservationDelta(t *testing.T) {
 	}
 	if points[0].GlobalPassed != 11 || summary.GlobalPassedTotal != 11 {
 		t.Fatalf("global passed = point %d summary %d, want 11", points[0].GlobalPassed, summary.GlobalPassedTotal)
+	}
+}
+
+func TestQueueBaselineRollupsMergeIntoTrend(t *testing.T) {
+	query := normalizeQueueTrendQuery(QueueTrendQuery{
+		StoreIDs:      []string{"3015"},
+		DateType:      "weekend",
+		From:          "2026-06-06",
+		To:            "2026-06-06",
+		Start:         "18:00",
+		End:           "20:00",
+		BucketMinutes: 60,
+	}, time.Date(2026, 6, 6, 20, 0, 0, 0, time.FixedZone("CST", 8*3600)))
+	waitA, waitB, safe := 30.0, 50.0, 70.0
+	series := map[string]*queueTrendAccumulator{}
+	summary := addQueueBaselineToTrend(series, QueueTrendSummary{}, query, QueueBaselineExport{
+		Stats: QueueBaselineStats{SourceUpdatedAt: "2026-06-03T22:30:00+08:00"},
+		Stores: []QueueBaselineStore{
+			{StoreID: 3015, Name: "深圳店"},
+		},
+		Rollups: []QueueBaselineRollup{
+			{StoreID: 3015, DateType: "weekend", Weekday: 6, TimeBucket: "18:00", SampleCount: 2, WaitTypicalMinutes: &waitA, WaitSafeMinutes: &safe, BusyRate: 0.5, OnlineOpenRate: 1},
+			{StoreID: 3015, DateType: "weekend", Weekday: 6, TimeBucket: "18:30", SampleCount: 2, WaitTypicalMinutes: &waitB, WaitSafeMinutes: &safe, BusyRate: 1, OnlineOpenRate: 0.5},
+		},
+	}, map[string]string{}, stringSet([]string{"3015"}))
+	points := finalizeQueueTrendPoints(series)
+	if len(points) != 1 {
+		t.Fatalf("points len = %d, want 1", len(points))
+	}
+	point := points[0]
+	if point.Bucket != "18:00" || point.BaselineSamples != 4 {
+		t.Fatalf("unexpected point bucket/samples: %+v", point)
+	}
+	if point.WaitP50Minutes == nil || *point.WaitP50Minutes != 40 {
+		t.Fatalf("baseline p50 = %v, want 40", point.WaitP50Minutes)
+	}
+	if point.OnlineOpenRate == nil || *point.OnlineOpenRate != 0.75 {
+		t.Fatalf("online rate = %v, want 0.75", point.OnlineOpenRate)
+	}
+	if summary.BaselineSamples != 4 || summary.BaselineRecords != 2 || summary.BaselineUpdatedAt == "" {
+		t.Fatalf("unexpected summary: %+v", summary)
 	}
 }
 

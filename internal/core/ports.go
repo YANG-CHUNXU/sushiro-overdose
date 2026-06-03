@@ -3,12 +3,17 @@ package core
 import (
 	"fmt"
 	"net"
+	"strconv"
 )
 
 func ListenOnAvailableLocalPort(preferred, attempts int) (net.Listener, int, error) {
+	return ListenOnAvailableHostPort("127.0.0.1", preferred, attempts)
+}
+
+func ListenOnAvailableHostPort(host string, preferred, attempts int) (net.Listener, int, error) {
 	var lastErr error
 	for port := preferred; port < preferred+attempts; port++ {
-		ln, err := listenLocalPort(port)
+		ln, err := listenHostPort(host, port)
 		if err == nil {
 			return ln, port, nil
 		}
@@ -30,5 +35,12 @@ func FirstAvailableLocalPort(preferred, attempts int) (int, bool) {
 }
 
 func listenLocalPort(port int) (net.Listener, error) {
-	return net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	return listenHostPort("127.0.0.1", port)
+}
+
+func listenHostPort(host string, port int) (net.Listener, error) {
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 }

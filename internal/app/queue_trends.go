@@ -6,6 +6,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -69,7 +70,9 @@ type QueueTrendResponse struct {
 	Series          []QueueTrendPoint          `json:"series"`
 	Recommendations []QueueTrendRecommendation `json:"recommendations"`
 	Stores          []QueueTrendStore          `json:"stores"`
+	Latest          []QueueBaselineLatest      `json:"latest,omitempty"`
 	Sampling        QueueSamplingStatus        `json:"sampling"`
+	Baseline        QueueBaselineRemoteStatus  `json:"baseline"`
 	Scope           QueueTrendScope            `json:"scope"`
 	Warnings        []string                   `json:"warnings,omitempty"`
 }
@@ -81,27 +84,37 @@ type QueueTrendSummary struct {
 	GlobalSamples      int    `json:"global_samples"`
 	ActualPassedTotal  int    `json:"actual_passed_total"`
 	GlobalPassedTotal  int    `json:"global_passed_total"`
+	BaselineRecords    int    `json:"baseline_records"`
+	BaselineSamples    int    `json:"baseline_samples"`
 	LastObservationAt  string `json:"last_observation_at,omitempty"`
 	LastSessionAt      string `json:"last_session_at,omitempty"`
+	BaselineUpdatedAt  string `json:"baseline_updated_at,omitempty"`
 }
 
 type QueueTrendPoint struct {
-	StoreID            string   `json:"store_id"`
-	StoreName          string   `json:"store_name"`
-	DateType           string   `json:"date_type"`
-	DateTypeName       string   `json:"date_type_name"`
-	Bucket             string   `json:"bucket"`
-	ActualPassed       int      `json:"actual_passed"`
-	GlobalPassed       int      `json:"global_passed"`
-	ActualSamples      int      `json:"actual_samples"`
-	GlobalSamples      int      `json:"global_samples"`
-	ObservationSamples int      `json:"observation_samples"`
-	SessionSamples     int      `json:"session_samples"`
-	WaitP50Minutes     *float64 `json:"wait_p50_minutes,omitempty"`
-	WaitP80Minutes     *float64 `json:"wait_p80_minutes,omitempty"`
-	MissedRate         float64  `json:"missed_rate"`
-	Confidence         string   `json:"confidence"`
-	LastObservationAt  string   `json:"last_observation_at,omitempty"`
+	StoreID             string   `json:"store_id"`
+	StoreName           string   `json:"store_name"`
+	DateType            string   `json:"date_type"`
+	DateTypeName        string   `json:"date_type_name"`
+	Bucket              string   `json:"bucket"`
+	ActualPassed        int      `json:"actual_passed"`
+	GlobalPassed        int      `json:"global_passed"`
+	ActualSamples       int      `json:"actual_samples"`
+	GlobalSamples       int      `json:"global_samples"`
+	ObservationSamples  int      `json:"observation_samples"`
+	SessionSamples      int      `json:"session_samples"`
+	BaselineSamples     int      `json:"baseline_samples"`
+	WaitP50Minutes      *float64 `json:"wait_p50_minutes,omitempty"`
+	WaitP80Minutes      *float64 `json:"wait_p80_minutes,omitempty"`
+	BaselineWaitMinutes *float64 `json:"baseline_wait_minutes,omitempty"`
+	BaselineSafeMinutes *float64 `json:"baseline_safe_minutes,omitempty"`
+	BusyRate            *float64 `json:"busy_rate,omitempty"`
+	OnlineOpenRate      *float64 `json:"online_open_rate,omitempty"`
+	QueueGroupsTypical  *float64 `json:"queue_groups_typical,omitempty"`
+	QueueGroupsSafe     *float64 `json:"queue_groups_safe,omitempty"`
+	MissedRate          float64  `json:"missed_rate"`
+	Confidence          string   `json:"confidence"`
+	LastObservationAt   string   `json:"last_observation_at,omitempty"`
 }
 
 type QueueTrendRecommendation struct {
@@ -170,6 +183,22 @@ type queueTrendAccumulator struct {
 	missed         int
 	sessionTotal   int
 	lastObservedAt time.Time
+	baseline       queueBaselineWeightedAccumulator
+}
+
+type queueBaselineWeightedAccumulator struct {
+	waitTypicalSum  float64
+	waitTypicalN    int
+	waitSafeSum     float64
+	waitSafeN       int
+	busyRateSum     float64
+	busyRateN       int
+	onlineRateSum   float64
+	onlineRateN     int
+	queueTypicalSum float64
+	queueTypicalN   int
+	queueSafeSum    float64
+	queueSafeN      int
 }
 
 type queueLocalBucket struct {
@@ -327,6 +356,10 @@ func isQueueOnlineOpen(store StoreInfo) bool {
 }
 
 func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
+	return BuildQueueTrendsWithContext(context.Background(), query, now)
+}
+
+func BuildQueueTrendsWithContext(ctx context.Context, query QueueTrendQuery, now time.Time) QueueTrendResponse {
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -368,13 +401,30 @@ func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
 
 	summary = addQueueObservationsToTrend(series, summary, query, observations, storeNames, storeFilter, holidays, workdays)
 
+	baseline, baselineStatus, baselineErr := loadRemoteQueueBaselineCached(ctx, now)
+	if baselineStatus.Used {
+		summary = addQueueBaselineToTrend(series, summary, query, baseline, storeNames, storeFilter)
+	}
+	latest := filterQueueBaselineLatest(baseline.Latest, storeFilter)
 	points := finalizeQueueTrendPoints(series)
 	warnings := queueTrendWarnings(query, holidayConfigured, summary)
+	if baselineErr != nil {
+		warnings = append(warnings, "全国基准数据库连接失败，已只使用本机数据。")
+	}
 	stores := queueTrendStores(storeNames, query.StoreIDs, points)
 	scope := QueueTrendScope{
 		Mode:       "local",
 		StoreCount: len(stores),
 		Message:    "选择你关心的门店持续收集，预测会按门店分别生成。",
+	}
+	if baselineStatus.Used {
+		if summary.ObservationRecords == 0 && summary.SessionRecords == 0 {
+			scope.Mode = "baseline"
+			scope.Message = "当前使用 Turso 全国基准数据；无需本机认证也可以先看门店时段基准。"
+		} else {
+			scope.Mode = "hybrid"
+			scope.Message = "当前混合使用 Turso 全国基准和本机真实数据。"
+		}
 	}
 	return QueueTrendResponse{
 		GeneratedAt:     now.Format(time.RFC3339),
@@ -383,7 +433,9 @@ func BuildQueueTrends(query QueueTrendQuery, now time.Time) QueueTrendResponse {
 		Series:          points,
 		Recommendations: BuildQueueTrendRecommendations(points, 5),
 		Stores:          stores,
+		Latest:          latest,
 		Sampling:        buildQueueSamplingStatus(now, summary),
+		Baseline:        baselineStatus,
 		Scope:           scope,
 		Warnings:        warnings,
 	}
@@ -526,6 +578,84 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 	return summary
 }
 
+func addQueueBaselineToTrend(series map[string]*queueTrendAccumulator, summary QueueTrendSummary, query QueueTrendQuery, baseline QueueBaselineExport, storeNames map[string]string, storeFilter map[string]bool) QueueTrendSummary {
+	for _, store := range baseline.Stores {
+		storeID := strconv.Itoa(store.StoreID)
+		if storeID == "" {
+			continue
+		}
+		name := strings.TrimSpace(store.Name)
+		if name == "" {
+			name = storeID
+		}
+		if _, exists := storeNames[storeID]; !exists {
+			storeNames[storeID] = name
+		}
+	}
+	if baseline.Stats.SourceUpdatedAt != "" {
+		summary.BaselineUpdatedAt = baseline.Stats.SourceUpdatedAt
+	}
+	for _, rollup := range baseline.Rollups {
+		storeID := strconv.Itoa(rollup.StoreID)
+		if storeID == "" || rollup.SampleCount <= 0 {
+			continue
+		}
+		if len(storeFilter) > 0 && !storeFilter[storeID] {
+			continue
+		}
+		dateType := strings.ToLower(strings.TrimSpace(rollup.DateType))
+		if query.DateType != "all" && query.DateType != dateType {
+			continue
+		}
+		if !queueTrendBucketInRange(rollup.TimeBucket, query.Start, query.End) {
+			continue
+		}
+		bucket := queueBaselineBucketForQuery(rollup.TimeBucket, query.BucketMinutes)
+		acc := queueTrendAcc(series, storeID, storeNames[storeID], dateType, bucket)
+		samples := rollup.SampleCount
+		acc.point.BaselineSamples += samples
+		summary.BaselineRecords++
+		summary.BaselineSamples += samples
+		if rollup.WaitTypicalMinutes != nil {
+			acc.baseline.waitTypicalSum += *rollup.WaitTypicalMinutes * float64(samples)
+			acc.baseline.waitTypicalN += samples
+		}
+		if rollup.WaitSafeMinutes != nil {
+			acc.baseline.waitSafeSum += *rollup.WaitSafeMinutes * float64(samples)
+			acc.baseline.waitSafeN += samples
+		}
+		acc.baseline.busyRateSum += rollup.BusyRate * float64(samples)
+		acc.baseline.busyRateN += samples
+		acc.baseline.onlineRateSum += rollup.OnlineOpenRate * float64(samples)
+		acc.baseline.onlineRateN += samples
+		if rollup.QueueGroupsTypical != nil {
+			acc.baseline.queueTypicalSum += *rollup.QueueGroupsTypical * float64(samples)
+			acc.baseline.queueTypicalN += samples
+		}
+		if rollup.QueueGroupsSafe != nil {
+			acc.baseline.queueSafeSum += *rollup.QueueGroupsSafe * float64(samples)
+			acc.baseline.queueSafeN += samples
+		}
+	}
+	return summary
+}
+
+func filterQueueBaselineLatest(latest []QueueBaselineLatest, storeFilter map[string]bool) []QueueBaselineLatest {
+	if len(latest) == 0 {
+		return nil
+	}
+	if len(storeFilter) == 0 {
+		return latest
+	}
+	out := make([]QueueBaselineLatest, 0, len(storeFilter))
+	for _, item := range latest {
+		if storeFilter[strconv.Itoa(item.StoreID)] {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func normalizeQueueTrendQuery(query QueueTrendQuery, now time.Time) QueueTrendQuery {
 	query.StoreIDs = UniqueNonEmptyStrings(query.StoreIDs)
 	query.DateType = strings.ToLower(strings.TrimSpace(query.DateType))
@@ -533,7 +663,7 @@ func normalizeQueueTrendQuery(query QueueTrendQuery, now time.Time) QueueTrendQu
 		query.DateType = "all"
 	}
 	switch query.DateType {
-	case "all", "weekday", "weekend", "holiday":
+	case "all", "weekday", "workday", "weekend", "holiday":
 	default:
 		query.DateType = "all"
 	}
@@ -600,6 +730,35 @@ func queueTrendTimeInRange(at time.Time, startRaw, endRaw string) bool {
 	return current >= start || current < end
 }
 
+func queueTrendBucketInRange(bucket, startRaw, endRaw string) bool {
+	seconds := ParseTimeSeconds(compactTrendTime(bucket))
+	if seconds < 0 {
+		return false
+	}
+	start := ParseTimeSeconds(compactTrendTime(startRaw))
+	end := ParseTimeSeconds(compactTrendTime(endRaw))
+	if start < 0 || end < 0 || start == end {
+		return true
+	}
+	if start < end {
+		return seconds >= start && seconds < end
+	}
+	return seconds >= start || seconds < end
+}
+
+func queueBaselineBucketForQuery(bucket string, minutes int) string {
+	seconds := ParseTimeSeconds(compactTrendTime(bucket))
+	if seconds < 0 {
+		return strings.TrimSpace(bucket)
+	}
+	hour := seconds / 3600
+	minute := (seconds % 3600) / 60
+	if minutes == 60 {
+		minute = 0
+	}
+	return fmt.Sprintf("%02d:%02d", hour, minute)
+}
+
 func queueTrendAcc(series map[string]*queueTrendAccumulator, storeID, storeName, dateType, bucket string) *queueTrendAccumulator {
 	key := strings.Join([]string{storeID, dateType, bucket}, "|")
 	acc := series[key]
@@ -627,6 +786,30 @@ func finalizeQueueTrendPoints(series map[string]*queueTrendAccumulator) []QueueT
 		point := acc.point
 		point.WaitP50Minutes = floatPtr(queueQuantile(acc.waits, 0.50))
 		point.WaitP80Minutes = floatPtr(queueQuantile(acc.waits, 0.80))
+		if acc.baseline.waitTypicalN > 0 {
+			point.BaselineWaitMinutes = floatPtr(acc.baseline.waitTypicalSum / float64(acc.baseline.waitTypicalN))
+			if point.WaitP50Minutes == nil {
+				point.WaitP50Minutes = cloneFloatPtr(point.BaselineWaitMinutes)
+			}
+		}
+		if acc.baseline.waitSafeN > 0 {
+			point.BaselineSafeMinutes = floatPtr(acc.baseline.waitSafeSum / float64(acc.baseline.waitSafeN))
+			if point.WaitP80Minutes == nil {
+				point.WaitP80Minutes = cloneFloatPtr(point.BaselineSafeMinutes)
+			}
+		}
+		if acc.baseline.busyRateN > 0 {
+			point.BusyRate = floatPtr(acc.baseline.busyRateSum / float64(acc.baseline.busyRateN))
+		}
+		if acc.baseline.onlineRateN > 0 {
+			point.OnlineOpenRate = floatPtr(acc.baseline.onlineRateSum / float64(acc.baseline.onlineRateN))
+		}
+		if acc.baseline.queueTypicalN > 0 {
+			point.QueueGroupsTypical = floatPtr(acc.baseline.queueTypicalSum / float64(acc.baseline.queueTypicalN))
+		}
+		if acc.baseline.queueSafeN > 0 {
+			point.QueueGroupsSafe = floatPtr(acc.baseline.queueSafeSum / float64(acc.baseline.queueSafeN))
+		}
 		if acc.sessionTotal > 0 {
 			point.MissedRate = float64(acc.missed) / float64(acc.sessionTotal)
 		}
@@ -650,7 +833,7 @@ func finalizeQueueTrendPoints(series map[string]*queueTrendAccumulator) []QueueT
 }
 
 func queueTrendConfidence(point QueueTrendPoint) string {
-	samples := point.ActualSamples + point.GlobalSamples + point.ObservationSamples
+	samples := point.ActualSamples + point.GlobalSamples + point.ObservationSamples + point.BaselineSamples
 	switch {
 	case samples >= 12:
 		return "high"
@@ -669,7 +852,7 @@ func BuildQueueTrendRecommendations(points []QueueTrendPoint, limit int) []Queue
 	}
 	recommendations := make([]QueueTrendRecommendation, 0, len(points))
 	for _, point := range points {
-		samples := point.ActualSamples + point.GlobalSamples + point.ObservationSamples
+		samples := point.ActualSamples + point.GlobalSamples + point.ObservationSamples + point.BaselineSamples
 		if samples == 0 {
 			continue
 		}
@@ -680,6 +863,9 @@ func BuildQueueTrendRecommendations(points []QueueTrendPoint, limit int) []Queue
 		}
 		if point.GlobalSamples > 0 {
 			score += 4
+		}
+		if point.BaselineSamples > 0 && point.ActualSamples == 0 && point.GlobalSamples == 0 {
+			score += 3
 		}
 		if point.WaitP50Minutes != nil {
 			score += math.Max(0, 45-math.Min(*point.WaitP50Minutes, 90)) * 0.8
@@ -758,6 +944,12 @@ func queueRecommendationReason(point QueueTrendPoint) string {
 	if point.GlobalPassed > 0 {
 		parts = append(parts, fmt.Sprintf("公开叫号推进 %d 号", point.GlobalPassed))
 	}
+	if point.BaselineSamples > 0 {
+		parts = append(parts, fmt.Sprintf("全国基准 %d 个样本", point.BaselineSamples))
+	}
+	if point.OnlineOpenRate != nil {
+		parts = append(parts, fmt.Sprintf("远程取号开放率约 %d%%", int(math.Round(*point.OnlineOpenRate*100))))
+	}
 	if point.MissedRate >= 0.25 {
 		parts = append(parts, "过号风险偏高，注意签到时间")
 	}
@@ -783,14 +975,16 @@ func queueTrendWarnings(query QueueTrendQuery, holidayConfigured bool, summary Q
 	if query.DateType == "holiday" && !holidayConfigured {
 		warnings = append(warnings, "要单独看节假日，可在 ~/.sushiro/holidays.json 写入 holidays/workdays 日期列表。")
 	}
-	if summary.ObservationRecords == 0 && summary.SessionRecords == 0 {
+	if summary.ObservationRecords == 0 && summary.SessionRecords == 0 && summary.BaselineSamples == 0 {
 		warnings = append(warnings, "还没有足够数据，先开启信息收集并选择关心的门店。")
 	}
-	if summary.GlobalSamples == 0 {
+	if summary.GlobalSamples == 0 && summary.BaselineSamples == 0 {
 		warnings = append(warnings, "公开叫号推进还不够，保持信息收集会补齐折线。")
 	}
-	if summary.ActualSamples == 0 {
+	if summary.ActualSamples == 0 && summary.BaselineSamples == 0 {
 		warnings = append(warnings, "真实取号样本还不够，到店取号后记录叫到号会让预测更准。")
+	} else if summary.ActualSamples == 0 && summary.BaselineSamples > 0 {
+		warnings = append(warnings, "当前推荐主要来自全国基准；真实取号样本会进一步修正过号风险。")
 	}
 	return warnings
 }
@@ -1040,21 +1234,37 @@ func queueTrendStores(names map[string]string, queryStores []string, points []Qu
 func queueTrendDateType(at time.Time, holidays, workdays map[string]bool) string {
 	key := at.Format("2006-01-02")
 	if workdays[key] {
-		return "weekday"
+		return "workday"
 	}
 	if holidays[key] {
 		return "holiday"
 	}
-	if at.Weekday() == time.Saturday || at.Weekday() == time.Sunday {
+	if queueTrendWeekendWindow(at) {
 		return "weekend"
 	}
 	return "weekday"
+}
+
+func queueTrendWeekendWindow(at time.Time) bool {
+	seconds := at.Hour()*3600 + at.Minute()*60 + at.Second()
+	switch at.Weekday() {
+	case time.Friday:
+		return seconds >= 16*3600+30*60
+	case time.Saturday:
+		return true
+	case time.Sunday:
+		return seconds < 22*3600
+	default:
+		return false
+	}
 }
 
 func queueTrendDateTypeName(dateType string) string {
 	switch dateType {
 	case "weekday":
 		return "工作日"
+	case "workday":
+		return "调休工作日"
 	case "weekend":
 		return "周末"
 	case "holiday":
@@ -1068,10 +1278,12 @@ func queueTrendDateTypeRank(dateType string) int {
 	switch dateType {
 	case "weekday":
 		return 1
-	case "weekend":
+	case "workday":
 		return 2
-	case "holiday":
+	case "weekend":
 		return 3
+	case "holiday":
+		return 4
 	default:
 		return 9
 	}

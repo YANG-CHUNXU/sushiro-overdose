@@ -77,6 +77,9 @@ func cmdWeb() {
 	mux.HandleFunc("/api/mobile-ua", handleMobileUA)
 	mux.HandleFunc("/api/mobile-ua/capture/start", handleMobileUACaptureStart)
 	mux.HandleFunc("/api/mobile-ua/capture/stop", handleMobileUACaptureStop)
+	mux.HandleFunc("/api/mobile-auth", handleMobileAuth)
+	mux.HandleFunc("/api/mobile-auth/start", handleMobileAuthStart)
+	mux.HandleFunc("/api/mobile-auth/stop", handleMobileAuthStop)
 	mux.HandleFunc("/api/discovery", handleDiscoveryConfig)
 	mux.HandleFunc("/api/discovery/records", handleDiscoveryRecords)
 	mux.HandleFunc("/api/discovery/clear", handleDiscoveryClear)
@@ -90,6 +93,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/engine/capture", handleEngineCapture)
 	mux.HandleFunc("/api/engine/booking", handleEngineBooking)
 	mux.HandleFunc("/api/engine/stop", handleEngineStop)
+	mux.HandleFunc("/api/engine/reset", handleEngineReset)
 	mux.HandleFunc("/api/engine/logs", handleEngineLogs)
 
 	// Sniper
@@ -133,6 +137,7 @@ func cmdWeb() {
 		engine.Stop()
 		sampler.Stop()
 		mobileUACapture.stop()
+		mobileAuthCapture.stop("")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		server.Shutdown(shutdownCtx)

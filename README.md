@@ -6,8 +6,6 @@
 
 **双击运行，独立应用窗口操作，不需要任何编程知识。**
 
-**最新版本：[v2.9.0](https://github.com/Ryujoxys/sushiro-overdose/releases/latest)**
-
 ---
 
 ## 下载安装
@@ -32,7 +30,7 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 
 **方式 C：手动下载 .exe**
 
-从 [GitHub Releases](https://github.com/Ryujoxys/sushiro-overdose/releases/latest) 下载 `Sushiro-Overdose-2.9.0-windows-amd64.exe`，双击即可。ARM 设备下载 `Sushiro-Overdose-2.9.0-windows-arm64.exe`。
+从 [GitHub Releases](https://github.com/Ryujoxys/sushiro-overdose/releases/latest) 下载 `Sushiro-Overdose-*-windows-amd64.exe`，双击即可。ARM 设备下载 `Sushiro-Overdose-*-windows-arm64.exe`。
 
 > Windows 注意事项：
 > - 首次运行 SmartScreen 可能弹窗提示「Windows 已保护你的电脑」，点击「更多信息」→「仍要运行」即可。
@@ -45,8 +43,8 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 
 | 平台 | 下载文件 | 使用方式 |
 |------|---------|---------|
-| **macOS** | `Sushiro-Overdose-2.9.0-macOS.dmg` | 双击打开 DMG，将 App 拖到 Applications 后运行，独立窗口优先 |
-| **Linux** | `sushiro-overdose_2.9.0_linux_amd64.tar.gz` | 解压后终端运行 |
+| **macOS** | `Sushiro-Overdose-*-macOS.dmg` | 双击打开 DMG，将 App 拖到 Applications 后运行，独立窗口优先 |
+| **Linux** | `sushiro-overdose_*_linux_amd64.tar.gz` | 解压后终端运行 |
 
 > macOS 注意事项：当前 Release 默认未签名/未公证。首次打开如果提示无法验证开发者，请在「系统设置 → 隐私与安全性」中允许打开，或右键 App 选择「打开」。
 
@@ -74,12 +72,12 @@ go build -o sushiro .       # macOS / Linux
 
 1. **运行程序** → 自动打开独立应用窗口（无法打开时回退浏览器）
 2. **设置向导** → 安装证书（按提示确认即可）
-3. **捕获参数** → 在 PC 微信中打开寿司郎小程序，进行一次排队/预约操作
+3. **捕获参数** → 优先在 PC 微信中打开寿司郎小程序，进行一次排队/预约操作；Windows PC 微信一直网络错误时，改用「设置 → 手机认证捕获」
 4. **信息收集** → 先选择关心的门店和时间窗，积累到店预测数据
 5. **设置预约优先级** → 选择人数、桌型、目标时段、门店顺序
 6. **开始抢号** → 点击「开始抢号」按钮
 
-> **注意：** 必须使用 **PC 版微信** 中的小程序，手机端无效。
+> **Windows 备用认证：** 如果 PC 微信打开寿司郎小程序一直网络错误，可在「设置」页点击「启动手机捕获」。手机微信扫码打开引导页，安装并信任 CA，把手机 Wi-Fi HTTP 代理指向电脑显示的 IP 和端口，再用手机打开寿司郎小程序点门店/排队/预约/我的页面。捕获完成后程序会保存 `X-App-Code`、查询认证、预约认证、User-Agent、Referer、微信 ID、手机号和门店，并自动停止电脑端捕获服务；请立刻关闭手机 Wi-Fi 代理。
 
 ### 日常使用
 

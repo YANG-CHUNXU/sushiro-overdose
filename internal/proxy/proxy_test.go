@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/Ryujoxys/sushiro-overdose/internal/core"
 )
 
 func TestBufferedConnReadsDataAlreadyBufferedAfterConnect(t *testing.T) {
@@ -106,6 +109,27 @@ func TestProxyUpstreamTransportAllowsHTTP2Upstream(t *testing.T) {
 	got := strings.Join(tr.TLSClientConfig.NextProtos, ",")
 	if !strings.Contains(got, "h2") || !strings.Contains(got, "http/1.1") {
 		t.Fatalf("NextProtos = %q, want h2 and http/1.1", got)
+	}
+}
+
+func TestStartProxyWithOptionsCanDisableRequestPatching(t *testing.T) {
+	ps, err := StartProxyWithOptions(tls.Certificate{}, nil, core.NewCapturedTokens(), ProxyOptions{
+		ListenHost:    "127.0.0.1",
+		PatchRequests: false,
+	})
+	if err != nil {
+		t.Fatalf("StartProxyWithOptions() error = %v", err)
+	}
+	defer ps.Close()
+
+	if ps.patchRequests {
+		t.Fatal("patchRequests = true, want false")
+	}
+	if ps.listenHost != "127.0.0.1" {
+		t.Fatalf("listenHost = %q, want 127.0.0.1", ps.listenHost)
+	}
+	if ps.Port() == 0 {
+		t.Fatal("Port() = 0")
 	}
 }
 

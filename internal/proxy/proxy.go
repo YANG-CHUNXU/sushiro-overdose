@@ -47,16 +47,23 @@ func shouldBufferSushiroAPIResponse(target *url.URL) bool {
 // ---- MITM Proxy Server ----
 
 type ProxyServer struct {
-	listener  net.Listener
-	port      int
-	done      chan struct{}
-	caCert    tls.Certificate
-	caKey     *rsa.PrivateKey
-	tokens    *CapturedTokens
-	transport *http.Transport
-	logf      func(string)
-	traceMu   sync.Mutex
-	seenHosts map[string]struct{}
+	listener      net.Listener
+	port          int
+	listenHost    string
+	done          chan struct{}
+	caCert        tls.Certificate
+	caKey         *rsa.PrivateKey
+	tokens        *CapturedTokens
+	transport     *http.Transport
+	logf          func(string)
+	traceMu       sync.Mutex
+	seenHosts     map[string]struct{}
+	patchRequests bool
+}
+
+type ProxyOptions struct {
+	ListenHost    string
+	PatchRequests bool
 }
 
 type BufferedConn struct {
@@ -69,7 +76,25 @@ func (c *BufferedConn) Read(p []byte) (int, error) {
 }
 
 func StartProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, logger ...func(string)) (*ProxyServer, error) {
-	listener, port, err := ListenOnAvailableLocalPort(ProxyPort, ProxyPortSearchLimit)
+	return StartProxyWithOptions(caCert, caKey, tokens, ProxyOptions{
+		ListenHost:    "127.0.0.1",
+		PatchRequests: true,
+	}, logger...)
+}
+
+func StartMobileCaptureProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, logger ...func(string)) (*ProxyServer, error) {
+	return StartProxyWithOptions(caCert, caKey, tokens, ProxyOptions{
+		ListenHost:    "0.0.0.0",
+		PatchRequests: false,
+	}, logger...)
+}
+
+func StartProxyWithOptions(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedTokens, options ProxyOptions, logger ...func(string)) (*ProxyServer, error) {
+	listenHost := strings.TrimSpace(options.ListenHost)
+	if listenHost == "" {
+		listenHost = "127.0.0.1"
+	}
+	listener, port, err := ListenOnAvailableHostPort(listenHost, ProxyPort, ProxyPortSearchLimit)
 	if err != nil {
 		return nil, fmt.Errorf("listen on %d-%d: %w", ProxyPort, ProxyPort+ProxyPortSearchLimit-1, err)
 	}
@@ -79,15 +104,17 @@ func StartProxy(caCert tls.Certificate, caKey *rsa.PrivateKey, tokens *CapturedT
 	}
 
 	ps := &ProxyServer{
-		listener:  listener,
-		port:      port,
-		done:      make(chan struct{}),
-		caCert:    caCert,
-		caKey:     caKey,
-		tokens:    tokens,
-		transport: newProxyUpstreamTransport(),
-		logf:      logf,
-		seenHosts: map[string]struct{}{},
+		listener:      listener,
+		port:          port,
+		listenHost:    listenHost,
+		done:          make(chan struct{}),
+		caCert:        caCert,
+		caKey:         caKey,
+		tokens:        tokens,
+		transport:     newProxyUpstreamTransport(),
+		logf:          logf,
+		seenHosts:     map[string]struct{}{},
+		patchRequests: options.PatchRequests,
 	}
 
 	go ps.serve()
@@ -269,9 +296,12 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 		requestHeaderKeys := APIDiscoveryHeaderKeys(req.Header)
 		requestBodyKeys := APIDiscoveryPayloadKeys(bodyBytes)
 		requestBodyFields := APIDiscoveryPayloadFieldKinds(bodyBytes)
-		bodyBytes, patches := patchSushiroRequestForForward(req, bodyBytes)
-		if len(patches) > 0 {
-			ps.addLog(fmt.Sprintf("MITM request patched for mobile compatibility: %s %s (%s)", req.Method, sanitizedProxyURL(requestURLForTrace(req, "https", hostPort)), strings.Join(patches, ", ")))
+		if ps.patchRequests {
+			var patches []string
+			bodyBytes, patches = patchSushiroRequestForForward(req, bodyBytes)
+			if len(patches) > 0 {
+				ps.addLog(fmt.Sprintf("MITM request patched for mobile compatibility: %s %s (%s)", req.Method, sanitizedProxyURL(requestURLForTrace(req, "https", hostPort)), strings.Join(patches, ", ")))
+			}
 		}
 
 		// Capture tokens

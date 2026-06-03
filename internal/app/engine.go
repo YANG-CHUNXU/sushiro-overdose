@@ -85,21 +85,25 @@ func (e *BookingEngine) GetState() EngineState {
 }
 
 func (e *BookingEngine) captureStatus() *CaptureStatusJSON {
-	if e.tokens == nil {
+	return captureStatusForTokens(e.tokens)
+}
+
+func captureStatusForTokens(tokens *CapturedTokens) *CaptureStatusJSON {
+	if tokens == nil {
 		return nil
 	}
-	e.tokens.Lock()
-	defer e.tokens.Unlock()
+	tokens.Lock()
+	defer tokens.Unlock()
 	return &CaptureStatusJSON{
-		XAppCode:        e.tokens.XAppCode != "",
-		QueryAuth:       e.tokens.QueryAuth != "",
-		ReservationAuth: e.tokens.ReservationAuth != "",
-		UserAgent:       e.tokens.UserAgent != "",
-		Referer:         e.tokens.Referer != "",
-		WechatID:        e.tokens.WechatID != "",
-		PhoneNumber:     e.tokens.PhoneNumber != "",
-		StoreIDs:        len(e.tokens.StoreIDs) > 0,
-		Complete:        e.tokens.IsCompleteUnlocked(),
+		XAppCode:        tokens.XAppCode != "",
+		QueryAuth:       tokens.QueryAuth != "",
+		ReservationAuth: tokens.ReservationAuth != "",
+		UserAgent:       tokens.UserAgent != "",
+		Referer:         tokens.Referer != "",
+		WechatID:        tokens.WechatID != "",
+		PhoneNumber:     tokens.PhoneNumber != "",
+		StoreIDs:        len(tokens.StoreIDs) > 0,
+		Complete:        tokens.IsCompleteUnlocked(),
 	}
 }
 
@@ -289,6 +293,23 @@ func (e *BookingEngine) cleanupProxy() {
 	e.mu.Unlock()
 	ClearSystemProxy()
 	markProxyInactive()
+}
+
+// ResetCapture 强制停止当前抓包/运行、关闭代理并清理系统代理残留，把引擎重置回
+// idle。抓到认证后会自动断连，状态可能卡在 capturing（尤其接口发现保持连接时），
+// 导致「获取认证」被 isRunningLocked 挡住而连不回来；重置后即可手动重新连接抓包。
+func (e *BookingEngine) ResetCapture() {
+	e.mu.Lock()
+	cancel := e.cancel
+	e.cancel = nil
+	e.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	e.cleanupProxy()
+	checkStaleProxy()
+	e.setState(EngineIdle, "已重置抓包状态，可点「获取认证」手动重新连接")
+	e.addLog("已重置抓包状态：代理已断开并清理，点「获取认证」可重新连接抓包。")
 }
 
 // StartBooking begins the automated booking loop.

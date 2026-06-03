@@ -65,6 +65,7 @@ main.go (默认启动 Web UI)
 | `web_preferences.go` | 偏好、通知、repair/uninstall API |
 | `web_sniper.go` | Web 狙击计划 API |
 | `web_sampling.go` | Web 信息收集 API |
+| `mobile_auth_capture.go` | 手机认证捕获 API：局域网引导页 + 手机代理捕获真实微信认证参数 |
 | `web_queue_trends.go` | 本地到店预测 API |
 | `web_queue_live.go` | 实时排队 API（公开门店等位/区域/单店详情） |
 | `web_events.go` | SSE 事件总线 |
@@ -159,6 +160,7 @@ main.go (默认启动 Web UI)
 ```
 ~/.sushiro/
 ├── config.json          认证参数（X-App-Code, Authorization 等）
+├── mobile_ua.json       手机微信 User-Agent（手机认证捕获/扫码采集后写入）
 ├── preferences.json     用户偏好（人数/桌型/目标时段/优先级）
 ├── notify.json          通知渠道配置
 ├── stores.json          门店昵称
@@ -204,6 +206,12 @@ main.go (默认启动 Web UI)
 | GET | `/api/queue/areas` | 官方区域列表 |
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
+| GET/POST | `/api/mobile-ua` | 读取/手动保存移动端 UA |
+| POST | `/api/mobile-ua/capture/start` | 启动手机扫码 UA 采集页 |
+| POST | `/api/mobile-ua/capture/stop` | 停止手机扫码 UA 采集 |
+| GET | `/api/mobile-auth` | 手机认证捕获状态、二维码、局域网引导链接与字段完成度 |
+| POST | `/api/mobile-auth/start` | 启动手机认证捕获：监听局域网代理，只捕获寿司郎认证参数，不修改 Windows 系统代理 |
+| POST | `/api/mobile-auth/stop` | 停止手机认证捕获 |
 | GET | `/api/diagnostics` | 只读、脱敏的本机诊断信息 |
 | GET | `/api/update` | 检查 GitHub 最新 Release |
 | POST | `/api/notifications/test` | 发送通知渠道测试 |

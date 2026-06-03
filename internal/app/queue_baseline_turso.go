@@ -1,0 +1,496 @@
+package app
+
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	neturl "net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	queueBaselineTursoURLEnv       = "SUSHIRO_BASELINE_TURSO_URL"
+	queueBaselineTursoTokenEnv     = "SUSHIRO_BASELINE_TURSO_TOKEN"
+	queueBaselineTursoFallbackURL  = "TURSO_DATABASE_URL"
+	queueBaselineTursoFallbackAuth = "TURSO_AUTH_TOKEN"
+	queueBaselineRemoteConfigFile  = "queue_baseline_remote.json"
+	queueBaselineTursoTimeout      = 12 * time.Second
+	queueBaselineRemoteCacheTTL    = 15 * time.Minute
+)
+
+type QueueBaselineRemoteConfig struct {
+	DatabaseURL string `json:"database_url"`
+	AuthToken   string `json:"auth_token"`
+}
+
+type queueBaselineTursoConfig struct {
+	DatabaseURL string
+	AuthToken   string
+}
+
+type queueBaselineRemoteCacheEntry struct {
+	key      string
+	loadedAt time.Time
+	export   QueueBaselineExport
+}
+
+var queueBaselineRemoteCache struct {
+	sync.Mutex
+	entry queueBaselineRemoteCacheEntry
+}
+
+func queueBaselineRemoteConfigPath() string {
+	return filepath.Join(AppDirPath(), queueBaselineRemoteConfigFile)
+}
+
+func LoadQueueBaselineRemoteConfig() QueueBaselineRemoteConfig {
+	var cfg QueueBaselineRemoteConfig
+	if data, err := os.ReadFile(queueBaselineRemoteConfigPath()); err == nil {
+		_ = json.Unmarshal(data, &cfg)
+	}
+	if value := strings.TrimSpace(os.Getenv(queueBaselineTursoURLEnv)); value != "" {
+		cfg.DatabaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv(queueBaselineTursoTokenEnv)); value != "" {
+		cfg.AuthToken = value
+	}
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		cfg.DatabaseURL = strings.TrimSpace(os.Getenv(queueBaselineTursoFallbackURL))
+	}
+	if strings.TrimSpace(cfg.AuthToken) == "" {
+		cfg.AuthToken = strings.TrimSpace(os.Getenv(queueBaselineTursoFallbackAuth))
+	}
+	cfg.DatabaseURL = strings.TrimSpace(cfg.DatabaseURL)
+	cfg.AuthToken = strings.TrimSpace(cfg.AuthToken)
+	return cfg
+}
+
+func SaveQueueBaselineRemoteConfig(cfg QueueBaselineRemoteConfig) error {
+	cfg.DatabaseURL = strings.TrimSpace(cfg.DatabaseURL)
+	cfg.AuthToken = strings.TrimSpace(cfg.AuthToken)
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(queueBaselineRemoteConfigPath(), data, 0o600)
+}
+
+func loadQueueBaselineTursoConfig() queueBaselineTursoConfig {
+	cfg := LoadQueueBaselineRemoteConfig()
+	return queueBaselineTursoConfig{DatabaseURL: cfg.DatabaseURL, AuthToken: cfg.AuthToken}
+}
+
+func (c queueBaselineTursoConfig) configured() bool {
+	return strings.TrimSpace(c.DatabaseURL) != "" && strings.TrimSpace(c.AuthToken) != ""
+}
+
+func (c queueBaselineTursoConfig) cacheKey() string {
+	return strings.TrimSpace(c.DatabaseURL) + "\x00" + strings.TrimSpace(c.AuthToken)
+}
+
+func queueBaselineRemoteStatusFromConfig(cfg queueBaselineTursoConfig) QueueBaselineRemoteStatus {
+	return QueueBaselineRemoteStatus{
+		Configured:  cfg.configured(),
+		DatabaseURL: redactQueueBaselineDatabaseURL(cfg.DatabaseURL),
+	}
+}
+
+func loadRemoteQueueBaselineCached(ctx context.Context, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	cfg := loadQueueBaselineTursoConfig()
+	status := queueBaselineRemoteStatusFromConfig(cfg)
+	if !cfg.configured() {
+		return QueueBaselineExport{}, status, nil
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	key := cfg.cacheKey()
+	queueBaselineRemoteCache.Lock()
+	entry := queueBaselineRemoteCache.entry
+	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
+		queueBaselineRemoteCache.Unlock()
+		status.Used = true
+		status.GeneratedAt = entry.export.GeneratedAt
+		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
+		status.StoreCount = entry.export.Stats.StoreCount
+		status.LatestCount = entry.export.Stats.LatestCount
+		status.RollupCount = entry.export.Stats.RollupCount
+		return entry.export, status, nil
+	}
+	queueBaselineRemoteCache.Unlock()
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, queueBaselineTursoTimeout)
+	defer cancel()
+	export, err := fetchQueueBaselineFromTurso(timeoutCtx, cfg, now)
+	if err != nil {
+		status.LastError = err.Error()
+		return QueueBaselineExport{}, status, err
+	}
+
+	queueBaselineRemoteCache.Lock()
+	queueBaselineRemoteCache.entry = queueBaselineRemoteCacheEntry{
+		key:      key,
+		loadedAt: now,
+		export:   export,
+	}
+	queueBaselineRemoteCache.Unlock()
+
+	status.Used = true
+	status.GeneratedAt = export.GeneratedAt
+	status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+	status.StoreCount = export.Stats.StoreCount
+	status.LatestCount = export.Stats.LatestCount
+	status.RollupCount = export.Stats.RollupCount
+	return export, status, nil
+}
+
+func fetchQueueBaselineFromTurso(ctx context.Context, cfg queueBaselineTursoConfig, now time.Time) (QueueBaselineExport, error) {
+	stores, err := fetchQueueBaselineStores(ctx, cfg)
+	if err != nil {
+		return QueueBaselineExport{}, err
+	}
+	latest, latestUpdatedAt, err := fetchQueueBaselineLatest(ctx, cfg)
+	if err != nil {
+		return QueueBaselineExport{}, err
+	}
+	rollups, sourceUpdatedAt, err := fetchQueueBaselineRollups(ctx, cfg)
+	if err != nil {
+		return QueueBaselineExport{}, err
+	}
+	if latestUpdatedAt > sourceUpdatedAt {
+		sourceUpdatedAt = latestUpdatedAt
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return QueueBaselineExport{
+		Version:       1,
+		GeneratedAt:   now.Format(time.RFC3339),
+		Source:        "turso",
+		BucketMinutes: 30,
+		DateTypes:     []string{"weekday", "workday", "weekend", "holiday"},
+		Stores:        stores,
+		Latest:        latest,
+		Rollups:       rollups,
+		Stats: QueueBaselineStats{
+			StoreCount:      len(stores),
+			LatestCount:     len(latest),
+			RollupCount:     len(rollups),
+			SourceUpdatedAt: sourceUpdatedAt,
+		},
+	}, nil
+}
+
+func fetchQueueBaselineStores(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineStore, error) {
+	result, err := tursoQuery(ctx, cfg, `SELECT
+		store_id, name, city, area, address, latitude, longitude, open_date,
+		tables_capacity, counters_capacity, last_seen_at
+	FROM store_dimension
+	WHERE is_active = 1
+	ORDER BY store_id`)
+	if err != nil {
+		return nil, fmt.Errorf("查询全国基准门店失败: %w", err)
+	}
+	out := make([]QueueBaselineStore, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if len(row) < 11 {
+			continue
+		}
+		out = append(out, QueueBaselineStore{
+			StoreID:          tursoInt(row[0]),
+			Name:             tursoString(row[1]),
+			City:             tursoString(row[2]),
+			Area:             tursoString(row[3]),
+			Address:          tursoString(row[4]),
+			Latitude:         tursoFloatPtr(row[5]),
+			Longitude:        tursoFloatPtr(row[6]),
+			OpenDate:         tursoString(row[7]),
+			TablesCapacity:   tursoInt(row[8]),
+			CountersCapacity: tursoInt(row[9]),
+			LastSeenAt:       tursoString(row[10]),
+		})
+	}
+	return out, nil
+}
+
+func fetchQueueBaselineLatest(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineLatest, string, error) {
+	result, err := tursoQuery(ctx, cfg, `SELECT
+		store_id, collected_at, name, city, area, wait_minutes, group_queues_count,
+		store_status, net_ticket_status, reservation_status, online_open,
+		wait_time_counter, wait_time_cap
+	FROM store_latest
+	ORDER BY store_id`)
+	if err != nil {
+		return nil, "", fmt.Errorf("查询当前门店排队失败: %w", err)
+	}
+	out := make([]QueueBaselineLatest, 0, len(result.Rows))
+	sourceUpdatedAt := ""
+	for _, row := range result.Rows {
+		if len(row) < 13 {
+			continue
+		}
+		latest := QueueBaselineLatest{
+			StoreID:           tursoInt(row[0]),
+			CollectedAt:       tursoString(row[1]),
+			Name:              tursoString(row[2]),
+			City:              tursoString(row[3]),
+			Area:              tursoString(row[4]),
+			WaitMinutes:       tursoInt(row[5]),
+			GroupQueuesCount:  tursoInt(row[6]),
+			StoreStatus:       tursoString(row[7]),
+			NetTicketStatus:   tursoString(row[8]),
+			ReservationStatus: tursoString(row[9]),
+			OnlineOpen:        tursoInt(row[10]) > 0,
+			WaitTimeCounter:   tursoInt(row[11]),
+			WaitTimeCap:       tursoInt(row[12]),
+		}
+		if latest.CollectedAt > sourceUpdatedAt {
+			sourceUpdatedAt = latest.CollectedAt
+		}
+		out = append(out, latest)
+	}
+	return out, sourceUpdatedAt, nil
+}
+
+func fetchQueueBaselineRollups(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineRollup, string, error) {
+	result, err := tursoQuery(ctx, cfg, `SELECT
+		store_id, date_type, weekday, time_bucket, sample_count, open_rate,
+		online_open_rate, busy_rate, wait_typical_minutes, wait_safe_minutes,
+		wait_max_minutes, queue_groups_typical, queue_groups_safe, confidence, updated_at
+	FROM store_bucket_rollups
+	ORDER BY store_id, date_type, weekday, time_bucket`)
+	if err != nil {
+		return nil, "", fmt.Errorf("查询全国基准聚合失败: %w", err)
+	}
+	out := make([]QueueBaselineRollup, 0, len(result.Rows))
+	sourceUpdatedAt := ""
+	for _, row := range result.Rows {
+		if len(row) < 15 {
+			continue
+		}
+		rollup := QueueBaselineRollup{
+			StoreID:            tursoInt(row[0]),
+			DateType:           tursoString(row[1]),
+			Weekday:            tursoInt(row[2]),
+			TimeBucket:         tursoString(row[3]),
+			SampleCount:        tursoInt(row[4]),
+			OpenRate:           tursoFloat(row[5]),
+			OnlineOpenRate:     tursoFloat(row[6]),
+			BusyRate:           tursoFloat(row[7]),
+			WaitTypicalMinutes: tursoFloatPtr(row[8]),
+			WaitSafeMinutes:    tursoFloatPtr(row[9]),
+			WaitMaxMinutes:     tursoInt(row[10]),
+			QueueGroupsTypical: tursoFloatPtr(row[11]),
+			QueueGroupsSafe:    tursoFloatPtr(row[12]),
+			Confidence:         tursoString(row[13]),
+			UpdatedAt:          tursoString(row[14]),
+		}
+		if rollup.UpdatedAt > sourceUpdatedAt {
+			sourceUpdatedAt = rollup.UpdatedAt
+		}
+		out = append(out, rollup)
+	}
+	return out, sourceUpdatedAt, nil
+}
+
+type tursoPipelineRequest struct {
+	Requests []tursoStreamRequest `json:"requests"`
+}
+
+type tursoStreamRequest struct {
+	Type string    `json:"type"`
+	Stmt tursoStmt `json:"stmt"`
+}
+
+type tursoStmt struct {
+	SQL      *string `json:"sql,omitempty"`
+	WantRows bool    `json:"want_rows"`
+}
+
+type tursoPipelineResponse struct {
+	Results []tursoStreamResult `json:"results"`
+}
+
+type tursoStreamResult struct {
+	Type     string               `json:"type"`
+	Response *tursoStreamResponse `json:"response,omitempty"`
+	Error    *tursoError          `json:"error,omitempty"`
+}
+
+type tursoStreamResponse struct {
+	Type   string              `json:"type"`
+	Result tursoQueryResultRaw `json:"result,omitempty"`
+}
+
+type tursoQueryResultRaw struct {
+	Cols []tursoColumn  `json:"cols"`
+	Rows [][]tursoValue `json:"rows"`
+}
+
+type tursoColumn struct {
+	Name *string `json:"name"`
+	Type *string `json:"decltype"`
+}
+
+type tursoError struct {
+	Message string  `json:"message"`
+	Code    *string `json:"code,omitempty"`
+}
+
+type tursoValue struct {
+	Type  string          `json:"type"`
+	Value json.RawMessage `json:"value,omitempty"`
+}
+
+func tursoQuery(ctx context.Context, cfg queueBaselineTursoConfig, sql string) (tursoQueryResultRaw, error) {
+	pipelineURL, host, err := tursoPipelineURL(cfg.DatabaseURL)
+	if err != nil {
+		return tursoQueryResultRaw{}, err
+	}
+	payload := tursoPipelineRequest{Requests: []tursoStreamRequest{{
+		Type: "execute",
+		Stmt: tursoStmt{SQL: &sql, WantRows: true},
+	}}}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return tursoQueryResultRaw{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pipelineURL, bytes.NewReader(body))
+	if err != nil {
+		return tursoQueryResultRaw{}, err
+	}
+	req.Host = host
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.AuthToken))
+	req.Header.Set("x-libsql-client-version", "sushiro-overdose-queue-baseline")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return tursoQueryResultRaw{}, err
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return tursoQueryResultRaw{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return tursoQueryResultRaw{}, fmt.Errorf("Turso HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	var decoded tursoPipelineResponse
+	if err := json.Unmarshal(respBody, &decoded); err != nil {
+		return tursoQueryResultRaw{}, err
+	}
+	if len(decoded.Results) == 0 {
+		return tursoQueryResultRaw{}, fmt.Errorf("Turso 返回为空")
+	}
+	result := decoded.Results[0]
+	if result.Error != nil {
+		if result.Error.Code != nil {
+			return tursoQueryResultRaw{}, fmt.Errorf("%s: %s", *result.Error.Code, result.Error.Message)
+		}
+		return tursoQueryResultRaw{}, errors.New(result.Error.Message)
+	}
+	if result.Response == nil || result.Response.Type != "execute" {
+		return tursoQueryResultRaw{}, fmt.Errorf("Turso 返回类型异常")
+	}
+	return result.Response.Result, nil
+}
+
+func tursoPipelineURL(rawURL string) (string, string, error) {
+	parsed, err := neturl.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", "", err
+	}
+	if parsed.Scheme == "libsql" {
+		parsed.Scheme = "https"
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return "", "", fmt.Errorf("不支持的 Turso URL scheme: %s", parsed.Scheme)
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	host := parsed.Host
+	pipelineURL, err := neturl.JoinPath(parsed.String(), "/v2/pipeline")
+	if err != nil {
+		return "", "", err
+	}
+	return pipelineURL, host, nil
+}
+
+func tursoString(value tursoValue) string {
+	if value.Type == "null" || len(value.Value) == 0 {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(value.Value, &text); err == nil {
+		return text
+	}
+	return strings.Trim(string(value.Value), `"`)
+}
+
+func tursoInt(value tursoValue) int {
+	if value.Type == "null" || len(value.Value) == 0 {
+		return 0
+	}
+	if value.Type == "integer" || value.Type == "text" {
+		if n, err := strconv.Atoi(tursoString(value)); err == nil {
+			return n
+		}
+	}
+	f := tursoFloat(value)
+	return int(f)
+}
+
+func tursoFloatPtr(value tursoValue) *float64 {
+	if value.Type == "null" || len(value.Value) == 0 {
+		return nil
+	}
+	f := tursoFloat(value)
+	return &f
+}
+
+func tursoFloat(value tursoValue) float64 {
+	if value.Type == "null" || len(value.Value) == 0 {
+		return 0
+	}
+	if value.Type == "integer" || value.Type == "text" {
+		if f, err := strconv.ParseFloat(tursoString(value), 64); err == nil {
+			return f
+		}
+	}
+	var f float64
+	if err := json.Unmarshal(value.Value, &f); err == nil {
+		return f
+	}
+	return 0
+}
+
+func redactQueueBaselineDatabaseURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := neturl.Parse(raw)
+	if err != nil {
+		return "(invalid url)"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
+}

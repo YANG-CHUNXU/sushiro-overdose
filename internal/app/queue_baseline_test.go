@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestQueueLiveStoreOnlineOpen(t *testing.T) {
 	cases := []struct {
@@ -38,5 +41,62 @@ func TestNormalizeQueueBaselineConfig(t *testing.T) {
 		if got.IntervalMinutes != c.want {
 			t.Errorf("NormalizeQueueBaselineConfig(%d) = %d, want %d", c.in, got.IntervalMinutes, c.want)
 		}
+	}
+}
+
+func TestQueueBaselineExportJSONShape(t *testing.T) {
+	data := []byte(`{
+		"version": 1,
+		"generated_at": "2026-06-03T22:30:00+08:00",
+		"source": "sushiro-public-collector",
+		"bucket_minutes": 30,
+		"date_types": ["weekday", "workday", "weekend", "holiday"],
+		"stores": [{"store_id": 3015, "name": "深圳店", "city": "深圳", "area": "南山区"}],
+		"latest": [{
+			"store_id": 3015,
+			"collected_at": "2026-06-03T22:20:00+08:00",
+			"name": "深圳店",
+			"city": "深圳",
+			"area": "南山区",
+			"wait_minutes": 28,
+			"group_queues_count": 24,
+			"store_status": "OPEN",
+			"net_ticket_status": "ONLINE",
+			"reservation_status": "ON",
+			"online_open": true,
+			"wait_time_cap": 180
+		}],
+		"rollups": [{
+			"store_id": 3015,
+			"date_type": "workday",
+			"weekday": 6,
+			"time_bucket": "18:30",
+			"sample_count": 12,
+			"open_rate": 1,
+			"online_open_rate": 0.8,
+			"busy_rate": 0.7,
+			"wait_typical_minutes": 35,
+			"wait_safe_minutes": 50,
+			"wait_max_minutes": 80,
+			"queue_groups_typical": 22,
+			"queue_groups_safe": 38,
+			"confidence": "high",
+			"updated_at": "2026-06-03T22:30:00+08:00"
+		}],
+		"stats": {"store_count": 1, "rollup_count": 1, "source_updated_at": "2026-06-03T22:30:00+08:00"}
+	}`)
+	var got QueueBaselineExport
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != 1 || got.BucketMinutes != 30 || len(got.Stores) != 1 || len(got.Latest) != 1 || len(got.Rollups) != 1 {
+		t.Fatalf("unexpected baseline export: %+v", got)
+	}
+	if got.Latest[0].WaitMinutes != 28 || !got.Latest[0].OnlineOpen {
+		t.Fatalf("unexpected baseline latest: %+v", got.Latest[0])
+	}
+	rollup := got.Rollups[0]
+	if rollup.DateType != "workday" || rollup.WaitTypicalMinutes == nil || *rollup.WaitTypicalMinutes != 35 {
+		t.Fatalf("unexpected baseline rollup: %+v", rollup)
 	}
 }

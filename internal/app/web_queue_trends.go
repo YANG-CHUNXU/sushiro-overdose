@@ -24,7 +24,7 @@ func handleQueueTrends(w http.ResponseWriter, r *http.Request) {
 		End:           q.Get("end"),
 		BucketMinutes: atoiDefault(q.Get("bucket"), 30),
 	}
-	writeJSON(w, BuildQueueTrends(query, time.Now()))
+	writeJSON(w, BuildQueueTrendsWithContext(r.Context(), query, time.Now()))
 }
 
 func queueTrendRequestStores(storeValues []string, storesValue string) []string {
