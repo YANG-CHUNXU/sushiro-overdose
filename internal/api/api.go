@@ -163,10 +163,12 @@ func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, erro
 			Data []ReservationRecord `json:"data"`
 		}
 		if err2 := json.Unmarshal(body, &wrapper); err2 == nil && len(wrapper.Data) > 0 {
+			markReservationRecordsKind(wrapper.Data, "reservation")
 			return wrapper.Data, nil
 		}
 		return nil, fmt.Errorf("reservations response parse error: %w", err)
 	}
+	markReservationRecordsKind(reservations, "reservation")
 	return reservations, nil
 }
 
@@ -254,17 +256,31 @@ func parseReservationRecord(body []byte, label string) (ReservationRecord, error
 		return ReservationRecord{}, fmt.Errorf("%s response is not a JSON object: %w", label, err)
 	}
 	if reservationLooksSuccessful(record) {
+		record = markReservationRecordKind(record, recordKindForLabel(label))
 		return record, nil
 	}
 
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(body, &payload); err == nil {
-		for _, key := range []string{"netTicket", "data", "ticket", "reservation", "reservationTicket", "currentTicket", "current"} {
+		for _, item := range []struct {
+			key  string
+			kind string
+		}{
+			{"netTicket", "net_ticket"},
+			{"reservationTicket", "reservation"},
+			{"reservation", "reservation"},
+			{"data", recordKindForLabel(label)},
+			{"ticket", recordKindForLabel(label)},
+			{"currentTicket", recordKindForLabel(label)},
+			{"current", recordKindForLabel(label)},
+		} {
+			key := item.key
 			raw, ok := payload[key]
 			if !ok || len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 				continue
 			}
 			if nested, ok := parseReservationCandidate(raw); ok {
+				nested = markReservationRecordKind(nested, item.kind)
 				return nested, nil
 			}
 		}
@@ -313,6 +329,30 @@ func parseReservationCandidate(raw json.RawMessage) (ReservationRecord, bool) {
 		return detail, true
 	}
 	return ReservationRecord{}, false
+}
+
+func recordKindForLabel(label string) string {
+	label = strings.ToLower(strings.TrimSpace(label))
+	if strings.Contains(label, "net ticket") {
+		return "net_ticket"
+	}
+	if strings.Contains(label, "reservation") {
+		return "reservation"
+	}
+	return ""
+}
+
+func markReservationRecordKind(record ReservationRecord, kind string) ReservationRecord {
+	if strings.TrimSpace(record.Kind) == "" {
+		record.Kind = kind
+	}
+	return record
+}
+
+func markReservationRecordsKind(records []ReservationRecord, kind string) {
+	for i := range records {
+		records[i] = markReservationRecordKind(records[i], kind)
+	}
 }
 
 func ReservationBusinessError(body []byte) error {

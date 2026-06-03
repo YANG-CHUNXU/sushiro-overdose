@@ -101,6 +101,7 @@ type StoreInfo struct {
 }
 
 type ReservationRecord struct {
+	Kind             string `json:"kind,omitempty"`
 	Status           string `json:"status,omitempty"`
 	Start            string `json:"start,omitempty"`
 	End              string `json:"end,omitempty"`

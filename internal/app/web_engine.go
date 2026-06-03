@@ -61,6 +61,9 @@ func loadReservationsFallback() []ReservationRecord {
 	if strings.TrimSpace(reservation.Status) == "" {
 		reservation.Status = "本地记录"
 	}
+	if strings.TrimSpace(reservation.Kind) == "" {
+		reservation.Kind = "reservation"
+	}
 	return []ReservationRecord{reservation}
 }
 
@@ -116,6 +119,7 @@ func handleLocalReservation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	record := ReservationRecord{
+		Kind:             "reservation",
 		Status:           "本地补录",
 		Number:           number,
 		QueueDate:        date,
@@ -309,17 +313,22 @@ func handleCancelNetTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// handleCancelReservation 取消预约/排队号（按 ticketId，复用 cancelReservation 端点）。
+// handleCancelReservation 只取消预约单。排队号必须走 cancelNetTicket，避免误删未来预约。
 func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	var body struct {
-		TicketID int64 `json:"ticket_id"`
+		TicketID int64  `json:"ticket_id"`
+		Kind     string `json:"kind"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TicketID == 0 {
 		writeError(w, http.StatusBadRequest, "缺少有效的 ticket_id")
+		return
+	}
+	if strings.TrimSpace(body.Kind) != "reservation" {
+		writeError(w, http.StatusBadRequest, "安全保护：此接口只允许取消明确标记为预约的记录；排队号请使用“取消排队号”。")
 		return
 	}
 	refreshWebClient()

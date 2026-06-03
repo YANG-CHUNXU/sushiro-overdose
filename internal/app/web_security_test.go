@@ -5,6 +5,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,35 @@ func TestHandleNotificationTestRequiresConfiguredChannel(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleCancelReservationRequiresReservationKind(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "missing kind is rejected",
+			body: `{"ticket_id":123}`,
+		},
+		{
+			name: "net ticket kind is rejected",
+			body: `{"ticket_id":123,"kind":"net_ticket"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/reservations/cancel", strings.NewReader(tt.body))
+			rr := httptest.NewRecorder()
+
+			handleCancelReservation(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+			}
+		})
 	}
 }
 
