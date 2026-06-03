@@ -241,19 +241,25 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, LoadNetTicketPlan())
 	case http.MethodPost:
 		var body struct {
-			Enabled    bool   `json:"enabled"`
-			Store      string `json:"store"`
-			StoreName  string `json:"store_name"`
-			TargetTime string `json:"target_time"`
+			Enabled     bool   `json:"enabled"`
+			Store       string `json:"store"`
+			StoreName   string `json:"store_name"`
+			TriggerMode string `json:"trigger_mode"`
+			TargetTime  string `json:"target_time"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
 			return
 		}
+		mode := strings.TrimSpace(body.TriggerMode)
+		if mode != "on_open" {
+			mode = "time"
+		}
 		plan := LoadNetTicketPlan()
 		plan.Enabled = body.Enabled
 		plan.StoreID = strings.TrimSpace(body.Store)
 		plan.StoreName = strings.TrimSpace(body.StoreName)
+		plan.TriggerMode = mode
 		plan.TargetTime = strings.TrimSpace(body.TargetTime)
 		// 重新设定即重置当天执行状态，允许（重新）到点取号。
 		plan.FiredDate = ""

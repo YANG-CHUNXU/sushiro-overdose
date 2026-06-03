@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -107,7 +108,24 @@ func NewQueueLiveClient() *QueueLiveClient {
 }
 
 func (c *QueueLiveClient) ListStores(ctx context.Context, query QueueLiveStoreQuery) ([]QueueLiveStore, error) {
-	lat, lng := queueLiveCoordinates(query.Near)
+	var (
+		stores []QueueLiveStore
+		err    error
+	)
+	if strings.TrimSpace(query.Near) != "" {
+		// 带定位的请求要按真实坐标算距离，不能走全量缓存。
+		stores, err = c.fetchStores(ctx, query.Near)
+	} else {
+		stores, err = c.CachedAllStores(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return filterQueueLiveStores(stores, query), nil
+}
+
+func (c *QueueLiveClient) fetchStores(ctx context.Context, near string) ([]QueueLiveStore, error) {
+	lat, lng := queueLiveCoordinates(near)
 	v := url.Values{}
 	v.Set("latitude", lat)
 	v.Set("longitude", lng)
@@ -116,11 +134,35 @@ func (c *QueueLiveClient) ListStores(ctx context.Context, query QueueLiveStoreQu
 	if err != nil {
 		return nil, err
 	}
-	stores, err := decodeQueueLiveStores(body)
+	return decodeQueueLiveStores(body)
+}
+
+const allStoresCacheTTL = 45 * time.Second
+
+var (
+	allStoresCacheMu sync.Mutex
+	allStoresCache   []QueueLiveStore
+	allStoresCacheAt time.Time
+)
+
+// CachedAllStores 返回全国门店全量（不带定位距离），带进程内短 TTL 缓存。
+// 选择器、基准采集、开放轮询三处共用，避免反复打公开接口；取数失败时回退旧缓存。
+func (c *QueueLiveClient) CachedAllStores(ctx context.Context) ([]QueueLiveStore, error) {
+	allStoresCacheMu.Lock()
+	defer allStoresCacheMu.Unlock()
+	if len(allStoresCache) > 0 && time.Since(allStoresCacheAt) < allStoresCacheTTL {
+		return allStoresCache, nil
+	}
+	stores, err := c.fetchStores(ctx, "")
 	if err != nil {
+		if len(allStoresCache) > 0 {
+			return allStoresCache, nil
+		}
 		return nil, err
 	}
-	return filterQueueLiveStores(stores, query), nil
+	allStoresCache = stores
+	allStoresCacheAt = time.Now()
+	return stores, nil
 }
 
 func (c *QueueLiveClient) GetStore(ctx context.Context, storeID string) (QueueLiveStore, error) {
@@ -263,6 +305,16 @@ func queueLiveCoordinates(raw string) (string, string) {
 		return "1", "1"
 	}
 	return lat, lng
+}
+
+// queueLiveStoreOnlineOpen 判断门店线上取号是否已开放（netTicketStatus 翻为开放态）。
+// 已知取值：ONLINE=开放、OFFLINE_CLOSED=未开放。
+func queueLiveStoreOnlineOpen(s QueueLiveStore) bool {
+	v := strings.ToUpper(strings.TrimSpace(s.NetTicketStatus))
+	if v == "" || strings.Contains(v, "CLOSED") || strings.Contains(v, "OFFLINE") {
+		return false
+	}
+	return v == "ONLINE" || v == "ON" || strings.Contains(v, "OPEN")
 }
 
 func queueObservationFromLiveStore(store QueueLiveStore, at time.Time) QueueObservation {

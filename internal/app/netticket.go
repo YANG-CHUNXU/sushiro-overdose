@@ -23,11 +23,12 @@ const (
 
 // NetTicketPlan 是「定时取号」计划：到指定时间自动远程取号。
 type NetTicketPlan struct {
-	Enabled    bool   `json:"enabled"`
-	StoreID    string `json:"store_id"`
-	StoreName  string `json:"store_name,omitempty"`
-	TargetTime string `json:"target_time"` // "HHMM"
-	Status     string `json:"status"`      // idle/armed/success/error/expired
+	Enabled     bool   `json:"enabled"`
+	StoreID     string `json:"store_id"`
+	StoreName   string `json:"store_name,omitempty"`
+	TriggerMode string `json:"trigger_mode,omitempty"` // "time"(默认到点) / "on_open"(一开放就取号)
+	TargetTime  string `json:"target_time"`            // "HHMM"，仅 time 模式使用
+	Status      string `json:"status"`                 // idle/armed/success/error/expired
 	Number     string `json:"number,omitempty"`
 	TicketID   int64  `json:"ticket_id,omitempty"`
 	FiredDate  string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
@@ -100,13 +101,25 @@ func netTicketTick(ctx context.Context) {
 	defer netTicketMu.Unlock()
 
 	plan := LoadNetTicketPlan()
-	if !plan.Enabled || strings.TrimSpace(plan.StoreID) == "" || len(strings.TrimSpace(plan.TargetTime)) < 3 {
+	if !plan.Enabled || strings.TrimSpace(plan.StoreID) == "" {
 		return
 	}
 	now := time.Now()
 	today := now.Format("2006-01-02")
 	if plan.FiredDate == today {
 		return // 今天已处理过
+	}
+	if plan.TriggerMode == "on_open" {
+		netTicketTickOnOpen(ctx, plan, now, today)
+		return
+	}
+	netTicketTickByTime(ctx, plan, now, today)
+}
+
+// netTicketTickByTime 是「到点取号」：到设定时间的窗口内自动取号。
+func netTicketTickByTime(ctx context.Context, plan NetTicketPlan, now time.Time, today string) {
+	if len(strings.TrimSpace(plan.TargetTime)) < 3 {
+		return
 	}
 	target, ok := netTicketTargetToday(plan.TargetTime, now)
 	if !ok {
@@ -128,7 +141,36 @@ func netTicketTick(ctx context.Context) {
 		sendQueueAlert(ctx, "⏰ 定时取号未执行", DefaultString(plan.StoreName, plan.StoreID)+"：超过 "+netTicketDisplayTime(plan.TargetTime)+" 窗口仍未取到号")
 		return
 	}
-	// 命中窗口：按日期占位，确保只取一次（web/守护两个进程都安全）。
+	fireNetTicket(ctx, plan, now, today)
+}
+
+// netTicketTickOnOpen 是「一开放就取号」：轮询门店线上取号状态，翻为开放即取号。
+func netTicketTickOnOpen(ctx context.Context, plan NetTicketPlan, now time.Time, today string) {
+	stores, err := NewQueueLiveClient().CachedAllStores(ctx)
+	if err != nil {
+		return // 拿不到门店状态，下个 tick 再试
+	}
+	open := false
+	for _, s := range stores {
+		if strconv.Itoa(s.ID) == strings.TrimSpace(plan.StoreID) {
+			open = queueLiveStoreOnlineOpen(s)
+			break
+		}
+	}
+	if !open {
+		if plan.Status != "armed" {
+			plan.Status = "armed"
+			plan.LastError = ""
+			_ = SaveNetTicketPlan(plan)
+		}
+		return
+	}
+	fireNetTicket(ctx, plan, now, today)
+}
+
+// fireNetTicket 是 time/on_open 两种触发共用的取号执行路径。
+func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today string) {
+	// 命中条件：按日期占位，确保只取一次（web/守护两个进程都安全）。
 	if !reserveNetTicketFire(today) {
 		return
 	}

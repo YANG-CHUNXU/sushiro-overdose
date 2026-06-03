@@ -55,6 +55,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/queue/live", handleQueueLivePanel)
 	mux.HandleFunc("/api/queue/alerts", handleQueueAlerts)
 	mux.HandleFunc("/api/queue/areas", handleQueueLiveAreas)
+	mux.HandleFunc("/api/queue/baseline", handleQueueBaseline)
 	mux.HandleFunc("/api/update", handleUpdateCheck)
 	mux.HandleFunc("/api/stores", handleStores)
 
@@ -124,6 +125,7 @@ func cmdWeb() {
 	}
 	sampler.StartIfAuto(ctx)
 	netTicketSched.Start(ctx)
+	queueBaselineCollector.Start(ctx)
 
 	go func() {
 		<-ctx.Done()
