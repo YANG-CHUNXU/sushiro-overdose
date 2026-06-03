@@ -180,6 +180,16 @@ func (c *Client) CancelReservation(ctx context.Context, ticketID int64) error {
 	return err
 }
 
+// CancelNetTicket 取消当前排队号（日常排队），对应小程序「取消取号」。端点与
+// 参数来自抓包：POST cancelNetTicket，body 只带 wechatId（取消当前活跃号，不按 id）。
+func (c *Client) CancelNetTicket(ctx context.Context) error {
+	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/cancelNetTicket"
+	_, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
+		"wechatId": c.settings.WechatID,
+	})
+	return err
+}
+
 func (c *Client) BaseHeaders(authorization, contentType string) map[string]string {
 	headers := map[string]string{
 		"Authorization": EnsureBearer(authorization),

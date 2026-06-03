@@ -283,6 +283,32 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleCancelNetTicket 取消当前排队号（cancelNetTicket，只需 wechatId）。
+func handleCancelNetTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	refreshWebClient()
+	client := getWebClient()
+	if client == nil {
+		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，无法取消")
+		return
+	}
+	if err := client.CancelNetTicket(r.Context()); err != nil {
+		writeError(w, http.StatusBadGateway, friendlyNetTicketError(err))
+		return
+	}
+	// 取消成功后清掉本地取号计划状态，避免继续显示已取消的号。
+	plan := LoadNetTicketPlan()
+	plan.Status = "idle"
+	plan.Number = ""
+	plan.TicketID = 0
+	plan.LastError = ""
+	_ = SaveNetTicketPlan(plan)
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // handleCancelReservation 取消预约/排队号（按 ticketId，复用 cancelReservation 端点）。
 func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
