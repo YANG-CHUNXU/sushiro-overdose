@@ -3,10 +3,13 @@ package app
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWebSecurityMiddlewareProtectsLocalPOST(t *testing.T) {
@@ -106,6 +109,123 @@ func TestHandleCancelReservationRequiresReservationKind(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 			}
 		})
+	}
+}
+
+func TestClearLocalReservationOnlyPreservesNetTicket(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := SaveState(StateFilePath(), State{
+		ActiveReservation: &ReservationRecord{Kind: "net_ticket", Number: "1843", Wait: 12},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	clearLocalReservationOnly()
+	state, err := LoadState(StateFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveReservation == nil || state.ActiveReservation.Kind != "net_ticket" {
+		t.Fatalf("net ticket should be preserved: %+v", state.ActiveReservation)
+	}
+}
+
+func TestClearLocalReservationOnlyClearsReservation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := SaveState(StateFilePath(), State{
+		ActiveReservation: &ReservationRecord{Kind: "reservation", Number: "A001", TicketID: 123},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	clearLocalReservationOnly()
+	state, err := LoadState(StateFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveReservation != nil {
+		t.Fatalf("reservation should be cleared: %+v", state.ActiveReservation)
+	}
+}
+
+func TestLoadReservationsFallbackDropsStaleNetTicket(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := SaveState(StateFilePath(), State{
+		ActiveReservation: &ReservationRecord{Kind: "net_ticket", Number: "893", QueueDate: "20000101", Wait: 25},
+		SavedAt:           "2000-01-01T16:40:00+08:00",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveNetTicketPlan(NetTicketPlan{Status: "success", Number: "893", TicketID: 123}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := loadReservationsFallback()
+
+	if len(got) != 0 {
+		t.Fatalf("fallback = %#v, want empty", got)
+	}
+	state, err := LoadState(StateFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveReservation != nil {
+		t.Fatalf("stale net ticket state should be cleared: %+v", state.ActiveReservation)
+	}
+	plan := LoadNetTicketPlan()
+	if plan.Number != "" || plan.TicketID != 0 {
+		t.Fatalf("stale net ticket plan should be cleared: %+v", plan)
+	}
+}
+
+func TestNoCurrentNetTicketErrorClearsLocalNetTicket(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := SaveState(StateFilePath(), State{
+		ActiveReservation: &ReservationRecord{Kind: "net_ticket", Number: "893", QueueDate: time.Now().Format("20060102"), Wait: 25},
+		SavedAt:           time.Now().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveNetTicketPlan(NetTicketPlan{Status: "success", Number: "893", TicketID: 123}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !isNoCurrentNetTicketError(errors.New(`net ticket status response missing ticket id/number: {"netTicket":null}`)) {
+		t.Fatal("expected no current ticket error")
+	}
+	clearLocalNetTicketState()
+
+	state, err := LoadState(StateFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveReservation != nil {
+		t.Fatalf("net ticket state should be cleared: %+v", state.ActiveReservation)
+	}
+}
+
+func TestBookingEngineFinishRunClearsHandle(t *testing.T) {
+	e := &BookingEngine{state: EngineState{Status: EngineSuccess}}
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.cancel = cancel
+	e.done = done
+	_ = ctx
+
+	e.finishRun(done)
+
+	if e.cancel != nil || e.done != nil {
+		t.Fatalf("run handle not cleared: cancel=%v done=%v", e.cancel, e.done)
+	}
+	if e.GetState().Status != EngineSuccess {
+		t.Fatalf("status = %s, want success", e.GetState().Status)
 	}
 }
 

@@ -322,13 +322,28 @@ func queueObservationFromLiveStore(store QueueLiveStore, at time.Time) QueueObse
 		at = time.Now()
 	}
 	return QueueObservation{
-		Timestamp:        at.Format(time.RFC3339),
-		StoreID:          strconv.Itoa(store.ID),
-		DisplayCalledNo:  store.GroupQueues.CurrentCalledNo(),
-		WaitMinutes:      store.Wait,
-		GroupQueuesCount: store.GroupQueuesCount,
-		StoreStatus:      store.StoreStatus,
-		NetTicketStatus:  store.NetTicketStatus,
-		OnlineOpen:       strings.EqualFold(store.NetTicketStatus, "ONLINE"),
+		CollectedAt:       at.Format(time.RFC3339),
+		StoreID:           strconv.Itoa(store.ID),
+		WaitMinutes:       store.Wait,
+		GroupQueuesCount:  store.GroupQueuesCount,
+		StoreStatus:       store.StoreStatus,
+		NetTicketStatus:   store.NetTicketStatus,
+		ReservationStatus: store.ReservationStatus,
+		OnlineOpen:        queueLiveStoreOnlineOpen(store),
+		WaitTimeCounter:   store.WaitTimeCounter,
+		WaitTimeCap:       store.WaitTimeCap,
+		SourceEndpoint:    queueSourceEndpointStoreByID,
+		APIProfileVersion: queueAPIProfilePublicV1,
+		DisplayCalledNo:   store.GroupQueues.CurrentCalledNo(),
+		GroupQueues:       queueLiveGroupQueuesToCore(store.GroupQueues),
+	}
+}
+
+func queueLiveGroupQueuesToCore(queues QueueLiveGroupQueues) QueueGroupQueues {
+	return QueueGroupQueues{
+		ReservationQueue: queues.ReservationQueue,
+		CounterQueue:     queues.CounterQueue,
+		BoothQueue:       queues.BoothQueue,
+		MixedQueue:       queues.MixedQueue,
 	}
 }

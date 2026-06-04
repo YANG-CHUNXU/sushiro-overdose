@@ -188,6 +188,7 @@ func TestQueueObservationFromStoreInfoCapturesPublicWait(t *testing.T) {
 	now := time.Date(2026, 5, 26, 10, 30, 0, 0, time.FixedZone("CST", 8*3600))
 	observation, ok := queueObservationFromStoreInfo("3015", StoreInfo{
 		Wait:              20,
+		WaitTimeCounter:   3,
 		StoreStatus:       "OPEN",
 		NetTicketStatus:   "ONLINE_OPEN",
 		GroupQueuesCount:  19,
@@ -199,6 +200,36 @@ func TestQueueObservationFromStoreInfoCapturesPublicWait(t *testing.T) {
 	}
 	if observation.StoreID != "3015" || observation.WaitMinutes != 20 || !observation.OnlineOpen || observation.GroupQueuesCount != 19 {
 		t.Fatalf("unexpected observation: %+v", observation)
+	}
+	if observation.CollectedAt != now.Format(time.RFC3339) || observation.Timestamp != "" {
+		t.Fatalf("unexpected observation time fields: %+v", observation)
+	}
+	if observation.ReservationStatus != "ON" || observation.WaitTimeCounter != 3 || observation.SourceEndpoint != queueSourceEndpointStoreByID || observation.APIProfileVersion != queueAPIProfileStoreDetailV1 {
+		t.Fatalf("unexpected database-aligned fields: %+v", observation)
+	}
+}
+
+func TestNormalizeQueueObservationWritesDatabaseShape(t *testing.T) {
+	observation := QueueObservation{
+		Timestamp:       "2026-05-26T10:30:00+08:00",
+		StoreID:         "3015",
+		DisplayCalledNo: 3,
+		WaitMinutes:     20,
+	}
+	normalizeQueueObservationForWrite(&observation, time.Time{})
+	data, err := json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(data)
+	if !strings.Contains(raw, `"collected_at":"2026-05-26T10:30:00+08:00"`) || !strings.Contains(raw, `"wait_minutes":20`) {
+		t.Fatalf("database fields missing: %s", raw)
+	}
+	if strings.Contains(raw, `"ts"`) {
+		t.Fatalf("legacy ts should not be written: %s", raw)
+	}
+	if !strings.Contains(raw, `"source_endpoint":"getStoreById"`) || !strings.Contains(raw, `"api_profile_version":"store-detail-profile-v1"`) {
+		t.Fatalf("source fields missing: %s", raw)
 	}
 }
 
@@ -246,6 +277,9 @@ func TestAppendQueueObservationTightensPrivateObservationFile(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"store_id":"3015"`) {
 		t.Fatalf("appended observation missing: %s", data)
+	}
+	if !strings.Contains(string(data), `"collected_at":"2026-05-26T10:30:00+08:00"`) {
+		t.Fatalf("appended observation should use collected_at: %s", data)
 	}
 }
 

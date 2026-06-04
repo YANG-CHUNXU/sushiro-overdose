@@ -106,15 +106,15 @@ func recentStoreObservations(all []QueueObservation, storeID string, now time.Ti
 		if o.StoreID != storeID || o.DisplayCalledNo <= 0 {
 			continue
 		}
-		at, ok := parseRFC3339Local(o.Timestamp)
+		at, ok := parseRFC3339Local(queueObservationCollectedAt(o))
 		if !ok || at.Before(cutoff) || at.After(now) {
 			continue
 		}
 		out = append(out, o)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		li, _ := parseRFC3339Local(out[i].Timestamp)
-		lj, _ := parseRFC3339Local(out[j].Timestamp)
+		li, _ := parseRFC3339Local(queueObservationCollectedAt(out[i]))
+		lj, _ := parseRFC3339Local(queueObservationCollectedAt(out[j]))
 		return li.Before(lj)
 	})
 	return out
@@ -125,7 +125,7 @@ func calledAdvanceWithin(sorted []QueueObservation, now time.Time, window time.D
 	cutoff := now.Add(-window)
 	first, last := -1, len(sorted)-1
 	for i, o := range sorted {
-		at, ok := parseRFC3339Local(o.Timestamp)
+		at, ok := parseRFC3339Local(queueObservationCollectedAt(o))
 		if !ok || at.Before(cutoff) {
 			continue
 		}
@@ -144,11 +144,11 @@ func calledAdvanceWithin(sorted []QueueObservation, now time.Time, window time.D
 
 // calledRatePerMinute 用首尾观测算平均叫号速度（组/分），忽略叫号回退（跨日/重置）。
 func calledRatePerMinute(sorted []QueueObservation) (float64, bool) {
-	firstAt, ok := parseRFC3339Local(sorted[0].Timestamp)
+	firstAt, ok := parseRFC3339Local(queueObservationCollectedAt(sorted[0]))
 	if !ok {
 		return 0, false
 	}
-	lastAt, ok := parseRFC3339Local(sorted[len(sorted)-1].Timestamp)
+	lastAt, ok := parseRFC3339Local(queueObservationCollectedAt(sorted[len(sorted)-1]))
 	if !ok {
 		return 0, false
 	}

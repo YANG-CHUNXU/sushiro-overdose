@@ -162,7 +162,7 @@ func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, erro
 		var wrapper struct {
 			Data []ReservationRecord `json:"data"`
 		}
-		if err2 := json.Unmarshal(body, &wrapper); err2 == nil && len(wrapper.Data) > 0 {
+		if err2 := json.Unmarshal(body, &wrapper); err2 == nil {
 			markReservationRecordsKind(wrapper.Data, "reservation")
 			return wrapper.Data, nil
 		}

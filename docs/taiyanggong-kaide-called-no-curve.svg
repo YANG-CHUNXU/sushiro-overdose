@@ -1,0 +1,472 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7efe2"/><stop offset="0.58" stop-color="#fffdfa"/><stop offset="1" stop-color="#e8f1ff"/></linearGradient>
+<linearGradient id="line" x1="0" x2="1"><stop offset="0" stop-color="#B81C22"/><stop offset="1" stop-color="#E85D04"/></linearGradient>
+<filter id="shadow"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#5d4037" flood-opacity="0.14"/></filter>
+</defs>
+<rect x="0" y="0" width="1600" height="1160" rx="34" fill="url(#bg)"/>
+<rect x="38" y="34" width="1524" height="1088" rx="28" fill="#ffffff" filter="url(#shadow)"/>
+<text x="78" y="82" font-family="Arial, PingFang SC, sans-serif" font-size="31" font-weight="900" fill="#151515" text-anchor="start">太阳宫凯德店 · 每10分钟大概叫到几号</text>
+<text x="78" y="113" font-family="Arial, PingFang SC, sans-serif" font-size="14" font-weight="400" fill="#6b7280" text-anchor="start">数据：2026-06-03 本机 getStoreById 叫号观测 · 10分钟桶取桶内最后一次观测 · 真实 48 格，插值 17 格</text>
+<rect x="884" y="58" width="116" height="58" rx="15" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="896" y="80" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#6b7280" text-anchor="start">开始</text>
+<text x="896" y="104" font-family="Arial, PingFang SC, sans-serif" font-size="14" font-weight="900" fill="#111827" text-anchor="start">10:30 · 2号</text>
+<rect x="1010" y="58" width="116" height="58" rx="15" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1022" y="80" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#6b7280" text-anchor="start">12:00</text>
+<text x="1022" y="104" font-family="Arial, PingFang SC, sans-serif" font-size="14" font-weight="900" fill="#111827" text-anchor="start">223号</text>
+<rect x="1136" y="58" width="116" height="58" rx="15" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1148" y="80" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#6b7280" text-anchor="start">18:00</text>
+<text x="1148" y="104" font-family="Arial, PingFang SC, sans-serif" font-size="14" font-weight="900" fill="#111827" text-anchor="start">1128号</text>
+<rect x="1262" y="58" width="116" height="58" rx="15" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1274" y="80" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#6b7280" text-anchor="start">结束</text>
+<text x="1274" y="104" font-family="Arial, PingFang SC, sans-serif" font-size="14" font-weight="900" fill="#111827" text-anchor="start">21:10 · 1637号</text>
+<rect x="1388" y="58" width="116" height="58" rx="15" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1400" y="80" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#6b7280" text-anchor="start">最快真实10分</text>
+<text x="1400" y="104" font-family="Arial, PingFang SC, sans-serif" font-size="14" font-weight="900" fill="#111827" text-anchor="start">17:30 +101号</text>
+<rect x="92" y="128" width="1408" height="468" rx="22" fill="#fffaf6" stroke="#eadfd2" stroke-width="1"/>
+<line x1="112" y1="562.0" x2="1480" y2="562.0" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="567.0" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">0号</text>
+<line x1="112" y1="516.8" x2="1480" y2="516.8" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="521.8235294117648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">200号</text>
+<line x1="112" y1="471.6" x2="1480" y2="471.6" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="476.6470588235294" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">400号</text>
+<line x1="112" y1="426.5" x2="1480" y2="426.5" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="431.47058823529414" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">600号</text>
+<line x1="112" y1="381.3" x2="1480" y2="381.3" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="386.29411764705884" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">800号</text>
+<line x1="112" y1="336.1" x2="1480" y2="336.1" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="341.11764705882354" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">1000号</text>
+<line x1="112" y1="290.9" x2="1480" y2="290.9" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="295.94117647058823" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">1200号</text>
+<line x1="112" y1="245.8" x2="1480" y2="245.8" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="250.76470588235293" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">1400号</text>
+<line x1="112" y1="200.6" x2="1480" y2="200.6" stroke="#eadfd2" stroke-width="1"/>
+<text x="96" y="205.58823529411768" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="500" fill="#8b7b70" text-anchor="end">1600号</text>
+<line x1="112.0" y1="158" x2="112.0" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="112.0" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">10:30</text>
+<line x1="133.0" y1="158" x2="133.0" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="154.1" y1="158" x2="154.1" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="175.1" y1="158" x2="175.1" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="175.13846153846154" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">11:00</text>
+<line x1="196.2" y1="158" x2="196.2" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="217.2" y1="158" x2="217.2" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="238.3" y1="158" x2="238.3" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="238.27692307692308" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">11:30</text>
+<line x1="259.3" y1="158" x2="259.3" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="280.4" y1="158" x2="280.4" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="301.4" y1="158" x2="301.4" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="301.4153846153846" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">12:00</text>
+<line x1="322.5" y1="158" x2="322.5" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="343.5" y1="158" x2="343.5" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="364.6" y1="158" x2="364.6" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="364.55384615384617" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">12:30</text>
+<line x1="385.6" y1="158" x2="385.6" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="406.6" y1="158" x2="406.6" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="427.7" y1="158" x2="427.7" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="427.69230769230774" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">13:00</text>
+<line x1="448.7" y1="158" x2="448.7" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="469.8" y1="158" x2="469.8" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="490.8" y1="158" x2="490.8" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="490.83076923076925" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">13:30</text>
+<line x1="511.9" y1="158" x2="511.9" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="532.9" y1="158" x2="532.9" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="554.0" y1="158" x2="554.0" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="553.9692307692308" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">14:00</text>
+<line x1="575.0" y1="158" x2="575.0" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="596.1" y1="158" x2="596.1" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="617.1" y1="158" x2="617.1" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="617.1076923076923" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">14:30</text>
+<line x1="638.2" y1="158" x2="638.2" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="659.2" y1="158" x2="659.2" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="680.2" y1="158" x2="680.2" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="680.2461538461539" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">15:00</text>
+<line x1="701.3" y1="158" x2="701.3" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="722.3" y1="158" x2="722.3" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="743.4" y1="158" x2="743.4" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="743.3846153846155" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">15:30</text>
+<line x1="764.4" y1="158" x2="764.4" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="785.5" y1="158" x2="785.5" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="806.5" y1="158" x2="806.5" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="806.5230769230769" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">16:00</text>
+<line x1="827.6" y1="158" x2="827.6" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="848.6" y1="158" x2="848.6" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="869.7" y1="158" x2="869.7" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="869.6615384615385" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">16:30</text>
+<line x1="890.7" y1="158" x2="890.7" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="911.8" y1="158" x2="911.8" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="932.8" y1="158" x2="932.8" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="932.8" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">17:00</text>
+<line x1="953.8" y1="158" x2="953.8" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="974.9" y1="158" x2="974.9" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="995.9" y1="158" x2="995.9" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="995.9384615384616" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">17:30</text>
+<line x1="1017.0" y1="158" x2="1017.0" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1038.0" y1="158" x2="1038.0" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1059.1" y1="158" x2="1059.1" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1059.076923076923" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">18:00</text>
+<line x1="1080.1" y1="158" x2="1080.1" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1101.2" y1="158" x2="1101.2" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1122.2" y1="158" x2="1122.2" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1122.2153846153847" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">18:30</text>
+<line x1="1143.3" y1="158" x2="1143.3" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1164.3" y1="158" x2="1164.3" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1185.4" y1="158" x2="1185.4" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1185.3538461538462" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">19:00</text>
+<line x1="1206.4" y1="158" x2="1206.4" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1227.4" y1="158" x2="1227.4" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1248.5" y1="158" x2="1248.5" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1248.4923076923078" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">19:30</text>
+<line x1="1269.5" y1="158" x2="1269.5" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1290.6" y1="158" x2="1290.6" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1311.6" y1="158" x2="1311.6" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1311.6307692307691" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">20:00</text>
+<line x1="1332.7" y1="158" x2="1332.7" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1353.7" y1="158" x2="1353.7" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1374.8" y1="158" x2="1374.8" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1374.769230769231" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">20:30</text>
+<line x1="1395.8" y1="158" x2="1395.8" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1416.9" y1="158" x2="1416.9" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1437.9" y1="158" x2="1437.9" y2="562" stroke="#ead0bf" stroke-width="1"/>
+<text x="1437.9076923076923" y="586" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="600" fill="#7c6f66" text-anchor="middle">21:00</text>
+<line x1="1459.0" y1="158" x2="1459.0" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<line x1="1480.0" y1="158" x2="1480.0" y2="562" stroke="#f4e7dc" stroke-width="1"/>
+<path d="M 112.0 561.5 L 133.0 561.5 L 154.1 561.5 L 175.1 545.3 L 196.2 524.3 L 217.2 524.3 L 238.3 522.5 L 259.3 523.1 L 280.4 514.6 L 301.4 511.6 L 322.5 506.9 L 343.5 499.7 L 364.6 492.4 L 385.6 485.2 L 406.6 478.0 L 427.7 470.5 L 448.7 463.3 L 469.8 456.1 L 490.8 448.8 L 511.9 445.7 L 532.9 439.6 L 554.0 437.1 L 575.0 432.6 L 596.1 431.2 L 617.1 428.7 L 638.2 426.9 L 659.2 424.2 L 680.2 421.7 L 701.3 419.2 L 722.3 416.5 L 743.4 415.4 L 764.4 409.8 L 785.5 403.9 L 806.5 397.8 L 827.6 391.7 L 848.6 385.8 L 869.7 371.4 L 890.7 354.4 L 911.8 352.2 L 932.8 348.1 L 953.8 344.5 L 974.9 328.9 L 995.9 306.1 L 1017.0 306.1 L 1038.0 307.2 L 1059.1 307.2 L 1080.1 304.3 L 1101.2 301.6 L 1122.2 298.6 L 1143.3 295.9 L 1164.3 293.0 L 1185.4 290.9 L 1206.4 269.7 L 1227.4 267.4 L 1248.5 256.8 L 1269.5 247.6 L 1290.6 235.8 L 1311.6 235.1 L 1332.7 228.1 L 1353.7 220.2 L 1374.8 216.6 L 1395.8 204.9 L 1416.9 201.0 L 1437.9 192.9 L 1459.0 192.2 L 1459.0 562.0 L 112.0 562.0 Z" fill="#B81C22" opacity="0.08"/>
+<polyline points="112.0,561.8 133.0,561.8 154.1,561.8 175.1,560.4 196.2,517.0 217.2,517.0 238.3,517.0 259.3,517.0 280.4,517.0 301.4,517.0 322.5,517.0 343.5,517.0 364.6,517.0 385.6,517.0 406.6,517.0 427.7,517.0 448.7,447.3 469.8,447.3 490.8,447.3 511.9,447.3 532.9,447.3 554.0,447.3 575.0,447.3 596.1,447.3 617.1,447.3 638.2,447.3 659.2,413.6 680.2,413.6 701.3,410.2 722.3,410.2 743.4,401.6 764.4,394.6 785.5,388.5 806.5,381.3 827.6,364.8 848.6,340.4 869.7,332.1 890.7,333.6 911.8,324.4 932.8,324.4 953.8,310.4 974.9,306.1 995.9,304.9 1017.0,298.6 1038.0,295.2 1059.1,293.4 1080.1,289.1 1101.2,284.2 1122.2,280.8 1143.3,277.2 1164.3,277.2 1185.4,277.2 1206.4,277.2 1227.4,277.2 1248.5,277.2 1269.5,277.2 1290.6,246.2 1311.6,230.2 1332.7,202.4 1353.7,177.8 1374.8,177.8 1395.8,177.8 1416.9,177.8 1437.9,177.8 1459.0,177.8 1480.0,177.8" fill="none" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" stroke-dasharray="6 7"/>
+<polyline points="112.0,561.5 133.0,561.5 154.1,561.5 175.1,545.3 196.2,524.3 217.2,524.3 238.3,522.5 259.3,523.1 280.4,514.6 301.4,511.6 322.5,506.9 343.5,499.7 364.6,492.4 385.6,485.2 406.6,478.0 427.7,470.5 448.7,463.3 469.8,456.1 490.8,448.8 511.9,445.7 532.9,439.6 554.0,437.1 575.0,432.6 596.1,431.2 617.1,428.7 638.2,426.9 659.2,424.2 680.2,421.7 701.3,419.2 722.3,416.5 743.4,415.4 764.4,409.8 785.5,403.9 806.5,397.8 827.6,391.7 848.6,385.8 869.7,371.4 890.7,354.4 911.8,352.2 932.8,348.1 953.8,344.5 974.9,328.9 995.9,306.1 1017.0,306.1 1038.0,307.2 1059.1,307.2 1080.1,304.3 1101.2,301.6 1122.2,298.6 1143.3,295.9 1164.3,293.0 1185.4,290.9 1206.4,269.7 1227.4,267.4 1248.5,256.8 1269.5,247.6 1290.6,235.8 1311.6,235.1 1332.7,228.1 1353.7,220.2 1374.8,216.6 1395.8,204.9 1416.9,201.0 1437.9,192.9 1459.0,192.2" fill="none" stroke="url(#line)" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" opacity="1"/>
+<circle cx="112.0" cy="561.5" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>10:30 真实采样：2号</title></circle>
+<circle cx="133.0" cy="561.5" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>10:40 真实采样：2号</title></circle>
+<circle cx="154.1" cy="561.5" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>10:50 真实采样：2号</title></circle>
+<circle cx="175.1" cy="545.3" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>11:00 真实采样：74号</title></circle>
+<circle cx="196.2" cy="524.3" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>11:10 真实采样：167号</title></circle>
+<circle cx="217.2" cy="524.3" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>11:20 真实采样：167号</title></circle>
+<circle cx="238.3" cy="522.5" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>11:30 真实采样：175号</title></circle>
+<circle cx="259.3" cy="523.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>11:40 真实采样：172号</title></circle>
+<circle cx="280.4" cy="514.6" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>11:50 真实采样：210号</title></circle>
+<circle cx="301.4" cy="511.6" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>12:00 真实采样：223号</title></circle>
+<circle cx="322.5" cy="506.9" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>12:10 真实采样：244号</title></circle>
+<circle cx="343.5" cy="499.7" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>12:20 插值估算：约276号</title></circle>
+<circle cx="364.6" cy="492.4" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>12:30 插值估算：约308号</title></circle>
+<circle cx="385.6" cy="485.2" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>12:40 插值估算：约340号</title></circle>
+<circle cx="406.6" cy="478.0" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>12:50 插值估算：约372号</title></circle>
+<circle cx="427.7" cy="470.5" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>13:00 插值估算：约405号</title></circle>
+<circle cx="448.7" cy="463.3" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>13:10 插值估算：约437号</title></circle>
+<circle cx="469.8" cy="456.1" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>13:20 插值估算：约469号</title></circle>
+<circle cx="490.8" cy="448.8" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>13:30 真实采样：501号</title></circle>
+<circle cx="511.9" cy="445.7" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>13:40 真实采样：515号</title></circle>
+<circle cx="532.9" cy="439.6" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>13:50 真实采样：542号</title></circle>
+<circle cx="554.0" cy="437.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>14:00 真实采样：553号</title></circle>
+<circle cx="575.0" cy="432.6" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>14:10 真实采样：573号</title></circle>
+<circle cx="596.1" cy="431.2" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>14:20 真实采样：579号</title></circle>
+<circle cx="617.1" cy="428.7" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>14:30 真实采样：590号</title></circle>
+<circle cx="638.2" cy="426.9" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>14:40 真实采样：598号</title></circle>
+<circle cx="659.2" cy="424.2" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>14:50 插值估算：约610号</title></circle>
+<circle cx="680.2" cy="421.7" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>15:00 插值估算：约621号</title></circle>
+<circle cx="701.3" cy="419.2" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>15:10 插值估算：约632号</title></circle>
+<circle cx="722.3" cy="416.5" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>15:20 真实采样：644号</title></circle>
+<circle cx="743.4" cy="415.4" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>15:30 真实采样：649号</title></circle>
+<circle cx="764.4" cy="409.8" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>15:40 真实采样：674号</title></circle>
+<circle cx="785.5" cy="403.9" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>15:50 插值估算：约700号</title></circle>
+<circle cx="806.5" cy="397.8" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>16:00 插值估算：约727号</title></circle>
+<circle cx="827.6" cy="391.7" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>16:10 插值估算：约754号</title></circle>
+<circle cx="848.6" cy="385.8" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>16:20 真实采样：780号</title></circle>
+<circle cx="869.7" cy="371.4" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>16:30 真实采样：844号</title></circle>
+<circle cx="890.7" cy="354.4" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>16:40 真实采样：919号</title></circle>
+<circle cx="911.8" cy="352.2" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>16:50 真实采样：929号</title></circle>
+<circle cx="932.8" cy="348.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>17:00 真实采样：947号</title></circle>
+<circle cx="953.8" cy="344.5" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>17:10 真实采样：963号</title></circle>
+<circle cx="974.9" cy="328.9" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>17:20 真实采样：1032号</title></circle>
+<circle cx="995.9" cy="306.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>17:30 真实采样：1133号</title></circle>
+<circle cx="1017.0" cy="306.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>17:40 真实采样：1133号</title></circle>
+<circle cx="1038.0" cy="307.2" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>17:50 真实采样：1128号</title></circle>
+<circle cx="1059.1" cy="307.2" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>18:00 真实采样：1128号</title></circle>
+<circle cx="1080.1" cy="304.3" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>18:10 插值估算：约1141号</title></circle>
+<circle cx="1101.2" cy="301.6" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>18:20 插值估算：约1153号</title></circle>
+<circle cx="1122.2" cy="298.6" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>18:30 插值估算：约1166号</title></circle>
+<circle cx="1143.3" cy="295.9" r="3.6" fill="#f59e0b" stroke="#fff7ed" stroke-width="1.5" opacity="0.68"><title>18:40 插值估算：约1178号</title></circle>
+<circle cx="1164.3" cy="293.0" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>18:50 真实采样：1191号</title></circle>
+<circle cx="1185.4" cy="290.9" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>19:00 真实采样：1200号</title></circle>
+<circle cx="1206.4" cy="269.7" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>19:10 真实采样：1294号</title></circle>
+<circle cx="1227.4" cy="267.4" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>19:20 真实采样：1304号</title></circle>
+<circle cx="1248.5" cy="256.8" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>19:30 真实采样：1351号</title></circle>
+<circle cx="1269.5" cy="247.6" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>19:40 真实采样：1392号</title></circle>
+<circle cx="1290.6" cy="235.8" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>19:50 真实采样：1444号</title></circle>
+<circle cx="1311.6" cy="235.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>20:00 真实采样：1447号</title></circle>
+<circle cx="1332.7" cy="228.1" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>20:10 真实采样：1478号</title></circle>
+<circle cx="1353.7" cy="220.2" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>20:20 真实采样：1513号</title></circle>
+<circle cx="1374.8" cy="216.6" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>20:30 真实采样：1529号</title></circle>
+<circle cx="1395.8" cy="204.9" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>20:40 真实采样：1581号</title></circle>
+<circle cx="1416.9" cy="201.0" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>20:50 真实采样：1598号</title></circle>
+<circle cx="1437.9" cy="192.9" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>21:00 真实采样：1634号</title></circle>
+<circle cx="1459.0" cy="192.2" r="4.2" fill="#B81C22" stroke="#fff" stroke-width="2"><title>21:10 真实采样：1637号</title></circle>
+<line x1="175.1" y1="513.3" x2="175.1" y2="537.3" stroke="#B81C22" opacity="0.25"/>
+<rect x="141.13846153846154" y="491.2847058823529" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="175.13846153846154" y="508.2847058823529" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">74号</text>
+<line x1="301.4" y1="479.6" x2="301.4" y2="503.6" stroke="#B81C22" opacity="0.25"/>
+<rect x="267.4153846153846" y="457.62823529411764" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="301.4153846153846" y="474.62823529411764" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">223号</text>
+<line x1="932.8" y1="316.1" x2="932.8" y2="340.1" stroke="#B81C22" opacity="0.25"/>
+<rect x="898.8" y="294.0894117647059" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="932.8" y="311.0894117647059" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">947号</text>
+<line x1="1059.1" y1="275.2" x2="1059.1" y2="299.2" stroke="#B81C22" opacity="0.25"/>
+<rect x="1025.076923076923" y="253.20470588235293" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="1059.076923076923" y="270.2047058823529" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">1128号</text>
+<line x1="1185.4" y1="258.9" x2="1185.4" y2="282.9" stroke="#B81C22" opacity="0.25"/>
+<rect x="1151.3538461538462" y="236.94117647058823" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="1185.3538461538462" y="253.94117647058823" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">1200号</text>
+<line x1="1311.6" y1="203.1" x2="1311.6" y2="227.1" stroke="#B81C22" opacity="0.25"/>
+<rect x="1277.6307692307691" y="181.14823529411763" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="1311.6307692307691" y="198.14823529411763" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">1447号</text>
+<line x1="1437.9" y1="160.9" x2="1437.9" y2="184.9" stroke="#B81C22" opacity="0.25"/>
+<rect x="1403.9076923076923" y="138.90823529411762" width="68" height="24" rx="12" fill="#fff" stroke="#f1d2ca" stroke-width="1"/>
+<text x="1437.9076923076923" y="155.90823529411762" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#B81C22" text-anchor="middle">1634号</text>
+<circle cx="1082" cy="152" r="5" fill="#B81C22"/>
+<text x="1096" y="156" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="700" fill="#374151" text-anchor="start">真实10分钟桶</text>
+<circle cx="1232" cy="152" r="4" fill="#f59e0b" opacity="0.7"/>
+<text x="1244" y="156" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="700" fill="#92400e" text-anchor="start">缺口插值</text>
+<line x1="1358" y1="152" x2="1396" y2="152" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 7"/>
+<text x="1404" y="156" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="600" fill="#64748b" text-anchor="start">2026-06-02 对照</text>
+<text x="78" y="626" font-family="Arial, PingFang SC, sans-serif" font-size="22" font-weight="900" fill="#151515" text-anchor="start">10分钟读数表</text>
+<text x="244" y="626" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="start">无前缀=真实采样；≈=两侧真实采样之间插值，适合粗看走势</text>
+<text x="122" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="800" fill="#6b7280" text-anchor="end">小时</text>
+<text x="287.5" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#6b7280" text-anchor="middle">:00</text>
+<text x="494.5" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#6b7280" text-anchor="middle">:10</text>
+<text x="701.5" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#6b7280" text-anchor="middle">:20</text>
+<text x="908.5" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#6b7280" text-anchor="middle">:30</text>
+<text x="1115.5" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#6b7280" text-anchor="middle">:40</text>
+<text x="1322.5" y="648" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#6b7280" text-anchor="middle">:50</text>
+<rect x="68" y="657" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">10点</text>
+<rect x="184" y="658" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="391" y="658" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="598" y="658" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="805" y="658" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">2号</text>
+<text x="994" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">20分</text>
+<rect x="1012" y="658" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">2号</text>
+<text x="1201" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">25分</text>
+<rect x="1219" y="658" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">2号</text>
+<text x="1408" y="678" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">30分</text>
+<rect x="68" y="689" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">11点</text>
+<rect x="184" y="690" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">74号</text>
+<text x="373" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">65分</text>
+<rect x="391" y="690" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">167号</text>
+<text x="580" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">45分</text>
+<rect x="598" y="690" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">167号</text>
+<text x="787" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">110分</text>
+<rect x="805" y="690" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">175号</text>
+<text x="994" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">140分</text>
+<rect x="1012" y="690" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">172号</text>
+<text x="1201" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">155分</text>
+<rect x="1219" y="690" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">210号</text>
+<text x="1408" y="710" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">145分</text>
+<rect x="68" y="721" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">12点</text>
+<rect x="184" y="722" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">223号</text>
+<text x="373" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">140分</text>
+<rect x="391" y="722" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">244号</text>
+<text x="580" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">135分</text>
+<rect x="598" y="722" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈276号</text>
+<text x="787" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="805" y="722" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈308号</text>
+<text x="994" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="1012" y="722" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈340号</text>
+<text x="1201" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="1219" y="722" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈372号</text>
+<text x="1408" y="742" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="68" y="753" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">13点</text>
+<rect x="184" y="754" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈405号</text>
+<text x="373" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="391" y="754" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈437号</text>
+<text x="580" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="598" y="754" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈469号</text>
+<text x="787" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="805" y="754" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">501号</text>
+<text x="994" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">20分</text>
+<rect x="1012" y="754" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">515号</text>
+<text x="1201" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">15分</text>
+<rect x="1219" y="754" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">542号</text>
+<text x="1408" y="774" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">10分</text>
+<rect x="68" y="785" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">14点</text>
+<rect x="184" y="786" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">553号</text>
+<text x="373" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">15分</text>
+<rect x="391" y="786" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">573号</text>
+<text x="580" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="598" y="786" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">579号</text>
+<text x="787" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="805" y="786" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">590号</text>
+<text x="994" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="1012" y="786" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">598号</text>
+<text x="1201" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="1219" y="786" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈610号</text>
+<text x="1408" y="806" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="68" y="817" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">15点</text>
+<rect x="184" y="818" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈621号</text>
+<text x="373" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="391" y="818" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈632号</text>
+<text x="580" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="598" y="818" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">644号</text>
+<text x="787" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="805" y="818" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">649号</text>
+<rect x="1012" y="818" width="199" height="27" rx="8" fill="#fff7ed" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">674号</text>
+<text x="1201" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="1219" y="818" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈700号</text>
+<text x="1408" y="838" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="68" y="849" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">16点</text>
+<rect x="184" y="850" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈727号</text>
+<text x="373" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="391" y="850" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈754号</text>
+<text x="580" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="598" y="850" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">780号</text>
+<text x="787" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">10分</text>
+<rect x="805" y="850" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">844号</text>
+<text x="994" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">20分</text>
+<rect x="1012" y="850" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">919号</text>
+<text x="1201" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">20分</text>
+<rect x="1219" y="850" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">929号</text>
+<text x="1408" y="870" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">100分</text>
+<rect x="68" y="881" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">17点</text>
+<rect x="184" y="882" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">947号</text>
+<text x="373" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">190分</text>
+<rect x="391" y="882" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">963号</text>
+<text x="580" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">235分</text>
+<rect x="598" y="882" width="199" height="27" rx="8" fill="#fed7aa" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#111827" text-anchor="start">1032号</text>
+<text x="787" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">225分</text>
+<rect x="805" y="882" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1133号</text>
+<text x="994" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">215分</text>
+<rect x="1012" y="882" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1133号</text>
+<text x="1201" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">235分</text>
+<rect x="1219" y="882" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1128号</text>
+<text x="1408" y="902" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">245分</text>
+<rect x="68" y="913" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">18点</text>
+<rect x="184" y="914" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1128号</text>
+<text x="373" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">250分</text>
+<rect x="391" y="914" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈1141号</text>
+<text x="580" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="598" y="914" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈1153号</text>
+<text x="787" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="805" y="914" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈1166号</text>
+<text x="994" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="1012" y="914" width="199" height="27" rx="8" fill="#ffedd5" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#92400e" text-anchor="start">≈1178号</text>
+<text x="1201" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#d97706" text-anchor="end">估</text>
+<rect x="1219" y="914" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1191号</text>
+<text x="1408" y="934" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">250分</text>
+<rect x="68" y="945" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">19点</text>
+<rect x="184" y="946" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1200号</text>
+<text x="373" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">250分</text>
+<rect x="391" y="946" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1294号</text>
+<text x="580" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">205分</text>
+<rect x="598" y="946" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1304号</text>
+<text x="787" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">200分</text>
+<rect x="805" y="946" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1351号</text>
+<text x="994" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">175分</text>
+<rect x="1012" y="946" width="199" height="27" rx="8" fill="#fb923c" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1392号</text>
+<text x="1201" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">140分</text>
+<rect x="1219" y="946" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1444号</text>
+<text x="1408" y="966" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">110分</text>
+<rect x="68" y="977" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">20点</text>
+<rect x="184" y="978" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1447号</text>
+<text x="373" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">110分</text>
+<rect x="391" y="978" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1478号</text>
+<text x="580" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">95分</text>
+<rect x="598" y="978" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1513号</text>
+<text x="787" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">75分</text>
+<rect x="805" y="978" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1529号</text>
+<text x="994" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">65分</text>
+<rect x="1012" y="978" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1581号</text>
+<text x="1201" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">40分</text>
+<rect x="1219" y="978" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1598号</text>
+<text x="1408" y="998" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">30分</text>
+<rect x="68" y="1009" width="46" height="27" rx="9" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="91" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="12" font-weight="900" fill="#334155" text-anchor="middle">21点</text>
+<rect x="184" y="1010" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="194" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1634号</text>
+<text x="373" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="391" y="1010" width="199" height="27" rx="8" fill="#f87171" stroke="#ffffff" stroke-width="1"/>
+<text x="401" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#7f1d1d" text-anchor="start">1637号</text>
+<text x="580" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="10" font-weight="700" fill="#6b7280" text-anchor="end">5分</text>
+<rect x="598" y="1010" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="608" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="805" y="1010" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="815" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="1012" y="1010" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="1022" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="1219" y="1010" width="199" height="27" rx="8" fill="#f8fafc" stroke="#ffffff" stroke-width="1"/>
+<text x="1229" y="1030" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="900" fill="#cbd5e1" text-anchor="start">—</text>
+<rect x="78" y="1076" width="1444" height="54" rx="16" fill="#f8fafc" stroke="#e5e7eb" stroke-width="1"/>
+<text x="102" y="1098" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="600" fill="#475569" text-anchor="start">读法：数字是“当前叫号”，不是你手里取到的票号；每格对应一个10分钟时间点。</text>
+<text x="102" y="1120" font-family="Arial, PingFang SC, sans-serif" font-size="13" font-weight="600" fill="#475569" text-anchor="start">当天最快真实相邻10分钟：17:30 约 +101 号；如果要全国都这么看，采集端还要把单店详情里的叫号字段也入库。</text>
+</svg>

@@ -37,6 +37,13 @@ func TestRefreshSniperPlanStatuses(t *testing.T) {
 	if expired.Targets[0].Status != "expired" {
 		t.Fatalf("status = %q, want expired", expired.Targets[0].Status)
 	}
+
+	running := plan
+	running.Targets[0].Status = "running"
+	runningExpired := RefreshSniperPlan(running, openAt.Add(4*time.Minute), loc)
+	if runningExpired.Targets[0].Status != "expired" {
+		t.Fatalf("running status = %q, want expired", runningExpired.Targets[0].Status)
+	}
 }
 
 func TestLoadSniperPlanReadsLegacyTargets(t *testing.T) {
@@ -69,6 +76,39 @@ func TestLoadSniperPlanReadsLegacyTargets(t *testing.T) {
 	}
 	if plan.Targets[0].StoreID != "001" || plan.Targets[0].OpenAt == "" {
 		t.Fatalf("target = %#v", plan.Targets[0])
+	}
+}
+
+func TestStopRemainingSniperPlanTargetsAfterSuccess(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	loc := testLocation(t)
+	targets := []SniperTarget{
+		{Date: "20260714", StartAfter: "193000", StartBefore: "203000", StoreID: "001"},
+		{Date: "20260714", StartAfter: "203000", StartBefore: "210000", StoreID: "001"},
+	}
+	plan := NormalizeSniperPlan(targets, loc)
+	if len(plan.Targets) != 2 {
+		t.Fatalf("targets = %d, want 2", len(plan.Targets))
+	}
+	doneID := plan.Targets[0].ID
+	plan.Targets[0].Status = "done"
+	plan.Targets[0].CompletedAt = time.Now().In(loc).Format(time.RFC3339)
+	plan.Targets[1].Status = "running"
+	if err := SaveSniperPlan(plan, loc); err != nil {
+		t.Fatal(err)
+	}
+
+	StopRemainingSniperPlanTargetsAfterSuccess(doneID, loc)
+
+	got, err := LoadSniperPlan(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Targets[0].Status != "done" {
+		t.Fatalf("done target = %#v", got.Targets[0])
+	}
+	if got.Targets[1].Status != "stopped" || got.Targets[1].LastError == "" {
+		t.Fatalf("remaining target = %#v, want stopped with reason", got.Targets[1])
 	}
 }
 

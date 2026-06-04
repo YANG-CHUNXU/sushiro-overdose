@@ -95,14 +95,23 @@ type insightObservation struct {
 
 // LoadSlotHistoryInsights reads ~/.sushiro/history.jsonl and returns topN recommendations.
 func LoadSlotHistoryInsights(topN int, now time.Time) (SlotHistoryAnalysis, error) {
-	snapshots, err := loadHistory()
-	if err != nil {
-		if os.IsNotExist(err) {
+	info, statErr := os.Stat(historyPath())
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
 			return AnalyzeSlotHistoryTopN(nil, now, topN), nil
 		}
+		return SlotHistoryAnalysis{}, statErr
+	}
+	if analysis, ok := loadSlotHistoryInsightsCache(topN, info); ok {
+		return analysis, nil
+	}
+	snapshots, err := loadHistory()
+	if err != nil {
 		return SlotHistoryAnalysis{}, err
 	}
-	return AnalyzeSlotHistoryTopN(snapshots, now, topN), nil
+	analysis := AnalyzeSlotHistoryTopN(snapshots, now, topN)
+	saveSlotHistoryInsightsCache(topN, info, analysis)
+	return analysis, nil
 }
 
 // AnalyzeSlotHistory aggregates slot history and returns up to the default top recommendations.

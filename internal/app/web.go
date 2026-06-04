@@ -50,6 +50,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/auth/probe", handleAuthProbe)
 	mux.HandleFunc("/api/auth/import", handleAuthImport)
 	mux.HandleFunc("/api/insights", handleInsights)
+	mux.HandleFunc("/api/queue/dashboard", handleQueueDashboard)
 	mux.HandleFunc("/api/queue/trends", handleQueueTrends)
 	mux.HandleFunc("/api/queue/stores", handleQueueLiveStores)
 	mux.HandleFunc("/api/queue/store", handleQueueLiveStore)

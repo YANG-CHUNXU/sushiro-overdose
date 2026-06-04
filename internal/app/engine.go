@@ -115,6 +115,24 @@ func (e *BookingEngine) setState(status EngineStatus, message string) {
 	bus.publish("engine", mustJSON(e.GetState()))
 }
 
+func (e *BookingEngine) finishRun(done chan struct{}) {
+	e.mu.Lock()
+	if e.done == done {
+		e.cancel = nil
+		e.done = nil
+	}
+	e.mu.Unlock()
+	bus.publish("engine", mustJSON(e.GetState()))
+}
+
+func (e *BookingEngine) abortStart(done chan struct{}, cancel context.CancelFunc) {
+	if cancel != nil {
+		cancel()
+	}
+	e.finishRun(done)
+	close(done)
+}
+
 func (e *BookingEngine) addLog(msg string) {
 	e.addLogLevel(msg, "info")
 }
@@ -162,7 +180,10 @@ func (e *BookingEngine) StartCapture() error {
 	pauseSamplingForMainFlow()
 
 	go func() {
-		defer close(done)
+		defer func() {
+			e.finishRun(done)
+			close(done)
+		}()
 		e.runCapture(ctx)
 	}()
 	return nil
@@ -334,7 +355,7 @@ func (e *BookingEngine) StartBooking() error {
 
 	tokens, err := LoadLocalConfig()
 	if err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "暂无认证参数")
 		return fmt.Errorf("暂无认证参数，请先完成参数捕获")
 	}
@@ -346,7 +367,7 @@ func (e *BookingEngine) StartBooking() error {
 		tokens.Unlock()
 	}
 	if err := tokens.ValidateForReservation(); err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "预约参数不完整")
 		return err
 	}
@@ -356,7 +377,7 @@ func (e *BookingEngine) StartBooking() error {
 
 	// Quick verify
 	if _, err := client.GetTimeslots(context.Background(), settings.StoreIDs[0]); err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
 			DeleteLocalConfig()
@@ -368,7 +389,10 @@ func (e *BookingEngine) StartBooking() error {
 	setNotifier(BuildNotifierFromConfig())
 
 	go func() {
-		defer close(done)
+		defer func() {
+			e.finishRun(done)
+			close(done)
+		}()
 		e.runBooking(ctx, client, settings, prefs)
 	}()
 	return nil

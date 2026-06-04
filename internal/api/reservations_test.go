@@ -70,6 +70,36 @@ func TestGetReservationsMarksRecordsAsReservation(t *testing.T) {
 	}
 }
 
+func TestGetReservationsAcceptsEmptyWrappedData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/wechat/api_auth/2.0/ticketing/getReservations" {
+			t.Fatalf("path = %q, want getReservations", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Settings{
+		BaseURL:         server.URL,
+		ReservationAuth: "reservation-auth",
+		XAppCode:        "app-code",
+		XAppClient:      "miniapp",
+		UserAgent:       "ua",
+		Referer:         "ref",
+		WechatID:        "wechat",
+		PhoneNumber:     "phone",
+	})
+
+	records, err := client.GetReservations(context.Background())
+	if err != nil {
+		t.Fatalf("GetReservations() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("records len = %d, want 0", len(records))
+	}
+}
+
 func TestGetNetTicketStatusMarksNetTicketKind(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/wechat/api_auth/2.0/ticket/status" {

@@ -5,6 +5,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/api"
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -39,8 +40,10 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 	reservations, err := client.GetReservations(r.Context())
 	if err != nil {
 		if errors.Is(err, ErrReservationsEndpointUnavailable) {
+			items := loadReservationsFallback()
+			items = refreshReservationItemsWithCurrentNetTicket(r.Context(), client, items)
 			writeJSON(w, map[string]any{
-				"items":       loadReservationsFallback(),
+				"items":       items,
 				"unavailable": true,
 				"message":     "官方当前预约列表接口已变更或不可用；这里显示的是本地保存/补录记录，不代表寿司郎小程序里没有预约。",
 			})
@@ -49,7 +52,186 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, reservations)
+	syncLocalReservationState(reservations)
+	writeJSON(w, refreshReservationItemsWithCurrentNetTicket(r.Context(), client, reservations))
+}
+
+func syncLocalReservationState(reservations []ReservationRecord) {
+	if len(reservations) == 0 {
+		clearLocalReservationOnly()
+		return
+	}
+	latest := reservations[0]
+	if strings.TrimSpace(latest.Kind) == "" {
+		latest.Kind = "reservation"
+	}
+	_ = SaveState(StateFilePath(), State{ActiveReservation: &latest, SavedAt: time.Now().Format(time.RFC3339)})
+}
+
+func clearLocalReservationOnly() {
+	state, err := LoadState(StateFilePath())
+	if err != nil || state.ActiveReservation == nil {
+		return
+	}
+	active := *state.ActiveReservation
+	kind := strings.ToLower(strings.TrimSpace(active.Kind))
+	if kind == "net_ticket" || active.Wait > 0 || strings.ToUpper(strings.TrimSpace(active.Status)) == "WAITING" {
+		return
+	}
+	_ = ClearState(StateFilePath())
+}
+
+func refreshReservationItemsWithCurrentNetTicket(ctx context.Context, client *Client, items []ReservationRecord) []ReservationRecord {
+	if client == nil {
+		return filterStaleLocalNetTickets(items, time.Now())
+	}
+	ticket, err := client.GetNetTicketStatus(ctx)
+	if err == nil && netTicketLooksSuccessful(ticket) {
+		ticket = normalizeNetTicketRecord(ticket)
+		syncLocalNetTicketState(ticket)
+		return upsertReservationItem(items, ticket)
+	}
+	if isNoCurrentNetTicketError(err) {
+		clearLocalNetTicketState()
+		return removeNetTicketRecords(items)
+	}
+	clearStaleLocalNetTicketState(time.Now())
+	return filterStaleLocalNetTickets(items, time.Now())
+}
+
+func normalizeNetTicketRecord(ticket ReservationRecord) ReservationRecord {
+	ticket.Kind = "net_ticket"
+	if strings.TrimSpace(ticket.Status) == "" {
+		ticket.Status = "WAITING"
+	}
+	if strings.TrimSpace(ticket.QueueDate) == "" {
+		ticket.QueueDate = time.Now().Format("20060102")
+	}
+	return ticket
+}
+
+func syncLocalNetTicketState(ticket ReservationRecord) {
+	plan := LoadNetTicketPlan()
+	plan.Status = "success"
+	plan.Number = ticket.Number
+	plan.TicketID = ticket.TicketID
+	plan.LastError = ""
+	if strings.TrimSpace(plan.StoreID) == "" {
+		plan.StoreID = DefaultString(ticket.MonitoredStoreID, ticket.StoreID)
+	}
+	_ = SaveNetTicketPlan(plan)
+
+	state, err := LoadState(StateFilePath())
+	if err == nil && (state.ActiveReservation == nil || isLocalNetTicketRecord(*state.ActiveReservation)) {
+		_ = SaveState(StateFilePath(), State{ActiveReservation: &ticket, SavedAt: time.Now().Format(time.RFC3339)})
+	}
+}
+
+func clearLocalNetTicketState() {
+	state, err := LoadState(StateFilePath())
+	if err == nil && state.ActiveReservation != nil && isLocalNetTicketRecord(*state.ActiveReservation) {
+		_ = ClearState(StateFilePath())
+	}
+	plan := LoadNetTicketPlan()
+	if strings.TrimSpace(plan.Status) == "success" || strings.TrimSpace(plan.Status) == "issued_unknown" || plan.Number != "" || plan.TicketID != 0 {
+		plan.Status = "idle"
+		plan.Number = ""
+		plan.TicketID = 0
+		plan.LastError = ""
+		_ = SaveNetTicketPlan(plan)
+	}
+}
+
+func clearStaleLocalNetTicketState(now time.Time) {
+	state, err := LoadState(StateFilePath())
+	if err != nil || state.ActiveReservation == nil {
+		return
+	}
+	if localNetTicketIsStale(*state.ActiveReservation, state.SavedAt, now) {
+		clearLocalNetTicketState()
+	}
+}
+
+func filterStaleLocalNetTickets(items []ReservationRecord, now time.Time) []ReservationRecord {
+	out := items[:0]
+	for _, item := range items {
+		if localNetTicketIsStale(item, "", now) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func removeNetTicketRecords(items []ReservationRecord) []ReservationRecord {
+	out := items[:0]
+	for _, item := range items {
+		if !isLocalNetTicketRecord(item) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func upsertReservationItem(items []ReservationRecord, item ReservationRecord) []ReservationRecord {
+	for i := range items {
+		if reservationItemSameIdentity(items[i], item) {
+			items[i] = item
+			return items
+		}
+	}
+	return append(items, item)
+}
+
+func reservationItemSameIdentity(a, b ReservationRecord) bool {
+	if a.TicketID != 0 && b.TicketID != 0 {
+		return a.TicketID == b.TicketID
+	}
+	return strings.TrimSpace(a.Kind) == strings.TrimSpace(b.Kind) &&
+		strings.TrimSpace(a.Number) != "" &&
+		strings.TrimSpace(a.Number) == strings.TrimSpace(b.Number)
+}
+
+func isLocalNetTicketRecord(record ReservationRecord) bool {
+	kind := strings.ToLower(strings.TrimSpace(record.Kind))
+	return kind == "net_ticket" || record.Wait > 0 || strings.ToUpper(strings.TrimSpace(record.Status)) == "WAITING"
+}
+
+func localNetTicketIsStale(record ReservationRecord, savedAt string, now time.Time) bool {
+	if !isLocalNetTicketRecord(record) {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	today := now.Format("20060102")
+	if date := strings.TrimSpace(record.QueueDate); len(date) >= 8 && date[:8] != today {
+		return true
+	}
+	if savedAt != "" {
+		if at, err := time.Parse(time.RFC3339, savedAt); err == nil && at.In(now.Location()).Format("20060102") != today {
+			return true
+		}
+	}
+	return false
+}
+
+func isNoCurrentNetTicketError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if IsHTTPStatus(err, http.StatusNotFound) {
+		return true
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "no ticket") ||
+		strings.Contains(text, "not issued") ||
+		strings.Contains(text, "not found") ||
+		strings.Contains(text, "no data") ||
+		strings.Contains(text, "没有排队") ||
+		strings.Contains(text, "未取号") ||
+		strings.Contains(text, "不存在") ||
+		strings.Contains(text, "missing ticket id/number") && (strings.Contains(text, "null") || strings.Contains(text, "{}") || strings.Contains(text, "[]"))
 }
 
 func loadReservationsFallback() []ReservationRecord {
@@ -58,6 +240,10 @@ func loadReservationsFallback() []ReservationRecord {
 		return []ReservationRecord{}
 	}
 	reservation := *state.ActiveReservation
+	if localNetTicketIsStale(reservation, state.SavedAt, time.Now()) {
+		clearLocalNetTicketState()
+		return []ReservationRecord{}
+	}
 	if strings.TrimSpace(reservation.Status) == "" {
 		reservation.Status = "本地记录"
 	}

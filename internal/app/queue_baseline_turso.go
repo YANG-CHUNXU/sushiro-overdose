@@ -182,7 +182,7 @@ func fetchQueueBaselineFromTurso(ctx context.Context, cfg queueBaselineTursoConf
 		Version:       1,
 		GeneratedAt:   now.Format(time.RFC3339),
 		Source:        "turso",
-		BucketMinutes: 30,
+		BucketMinutes: queueDashboardDefaultBucketMins,
 		DateTypes:     []string{"weekday", "workday", "weekend", "holiday"},
 		Stores:        stores,
 		Latest:        latest,
@@ -229,19 +229,40 @@ func fetchQueueBaselineStores(ctx context.Context, cfg queueBaselineTursoConfig)
 }
 
 func fetchQueueBaselineLatest(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineLatest, string, error) {
+	latest, sourceUpdatedAt, err := fetchQueueBaselineLatestColumns(ctx, cfg, true)
+	if err == nil {
+		return latest, sourceUpdatedAt, nil
+	}
+	latest, sourceUpdatedAt, fallbackErr := fetchQueueBaselineLatestColumns(ctx, cfg, false)
+	if fallbackErr == nil {
+		return latest, sourceUpdatedAt, nil
+	}
+	return nil, "", fmt.Errorf("查询当前门店排队失败: %w", err)
+}
+
+func fetchQueueBaselineLatestColumns(ctx context.Context, cfg queueBaselineTursoConfig, includeCalled bool) ([]QueueBaselineLatest, string, error) {
+	calledColumns := ""
+	if includeCalled {
+		calledColumns = `,
+		display_called_no, group_queues_json`
+	}
 	result, err := tursoQuery(ctx, cfg, `SELECT
 		store_id, collected_at, name, city, area, wait_minutes, group_queues_count,
 		store_status, net_ticket_status, reservation_status, online_open,
-		wait_time_counter, wait_time_cap
+		wait_time_counter, wait_time_cap`+calledColumns+`
 	FROM store_latest
 	ORDER BY store_id`)
 	if err != nil {
-		return nil, "", fmt.Errorf("查询当前门店排队失败: %w", err)
+		return nil, "", err
+	}
+	minColumns := 13
+	if includeCalled {
+		minColumns = 15
 	}
 	out := make([]QueueBaselineLatest, 0, len(result.Rows))
 	sourceUpdatedAt := ""
 	for _, row := range result.Rows {
-		if len(row) < 13 {
+		if len(row) < minColumns {
 			continue
 		}
 		latest := QueueBaselineLatest{
@@ -259,6 +280,10 @@ func fetchQueueBaselineLatest(ctx context.Context, cfg queueBaselineTursoConfig)
 			WaitTimeCounter:   tursoInt(row[11]),
 			WaitTimeCap:       tursoInt(row[12]),
 		}
+		if includeCalled {
+			latest.DisplayCalledNo = tursoInt(row[13])
+			latest.GroupQueuesJSON = tursoString(row[14])
+		}
 		if latest.CollectedAt > sourceUpdatedAt {
 			sourceUpdatedAt = latest.CollectedAt
 		}
@@ -268,19 +293,44 @@ func fetchQueueBaselineLatest(ctx context.Context, cfg queueBaselineTursoConfig)
 }
 
 func fetchQueueBaselineRollups(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineRollup, string, error) {
+	rollups, sourceUpdatedAt, err := fetchQueueBaselineRollupsColumns(ctx, cfg, true)
+	if err == nil {
+		return rollups, sourceUpdatedAt, nil
+	}
+	rollups, sourceUpdatedAt, fallbackErr := fetchQueueBaselineRollupsColumns(ctx, cfg, false)
+	if fallbackErr == nil {
+		return rollups, sourceUpdatedAt, nil
+	}
+	return nil, "", fmt.Errorf("查询全国基准聚合失败: %w", err)
+}
+
+func fetchQueueBaselineRollupsColumns(ctx context.Context, cfg queueBaselineTursoConfig, includeCalled bool) ([]QueueBaselineRollup, string, error) {
+	calledColumns := ""
+	if includeCalled {
+		calledColumns = `,
+		called_sample_count, called_no_slow, called_no_typical, called_no_fast`
+	}
 	result, err := tursoQuery(ctx, cfg, `SELECT
 		store_id, date_type, weekday, time_bucket, sample_count, open_rate,
 		online_open_rate, busy_rate, wait_typical_minutes, wait_safe_minutes,
-		wait_max_minutes, queue_groups_typical, queue_groups_safe, confidence, updated_at
+		wait_max_minutes, queue_groups_typical, queue_groups_safe`+calledColumns+`, confidence, updated_at
 	FROM store_bucket_rollups
 	ORDER BY store_id, date_type, weekday, time_bucket`)
 	if err != nil {
-		return nil, "", fmt.Errorf("查询全国基准聚合失败: %w", err)
+		return nil, "", err
+	}
+	minColumns := 15
+	confidenceIndex := 13
+	updatedAtIndex := 14
+	if includeCalled {
+		minColumns = 19
+		confidenceIndex = 17
+		updatedAtIndex = 18
 	}
 	out := make([]QueueBaselineRollup, 0, len(result.Rows))
 	sourceUpdatedAt := ""
 	for _, row := range result.Rows {
-		if len(row) < 15 {
+		if len(row) < minColumns {
 			continue
 		}
 		rollup := QueueBaselineRollup{
@@ -297,8 +347,14 @@ func fetchQueueBaselineRollups(ctx context.Context, cfg queueBaselineTursoConfig
 			WaitMaxMinutes:     tursoInt(row[10]),
 			QueueGroupsTypical: tursoFloatPtr(row[11]),
 			QueueGroupsSafe:    tursoFloatPtr(row[12]),
-			Confidence:         tursoString(row[13]),
-			UpdatedAt:          tursoString(row[14]),
+			Confidence:         tursoString(row[confidenceIndex]),
+			UpdatedAt:          tursoString(row[updatedAtIndex]),
+		}
+		if includeCalled {
+			rollup.CalledSampleCount = tursoInt(row[13])
+			rollup.CalledNoSlow = tursoFloatPtr(row[14])
+			rollup.CalledNoTypical = tursoFloatPtr(row[15])
+			rollup.CalledNoFast = tursoFloatPtr(row[16])
 		}
 		if rollup.UpdatedAt > sourceUpdatedAt {
 			sourceUpdatedAt = rollup.UpdatedAt

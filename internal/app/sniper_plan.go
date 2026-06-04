@@ -127,7 +127,19 @@ func refreshSniperPlanTarget(target SniperPlanTarget, now time.Time, loc *time.L
 		target.CountdownSeconds = 0
 		return target
 	}
+	if target.Status == "stopped" {
+		target.CountdownSeconds = 0
+		return target
+	}
 	if target.Status == "running" {
+		if !openAt.IsZero() && !now.Before(openAt.Add(sniperWindow)) {
+			target.Status = "expired"
+			target.CountdownSeconds = 0
+			if target.LastError == "" {
+				target.LastError = "开放窗口内未预约成功"
+			}
+			return target
+		}
 		target.CountdownSeconds = maxInt64(0, int64(openAt.Sub(now).Seconds()))
 		return target
 	}
@@ -168,6 +180,32 @@ func UpdateSniperPlanTarget(targetID string, loc *time.Location, update func(*Sn
 		}
 	}
 	_ = SaveSniperPlan(state, loc)
+}
+
+func StopRemainingSniperPlanTargetsAfterSuccess(doneTargetID string, loc *time.Location) {
+	state, err := LoadSniperPlan(loc)
+	if err != nil {
+		return
+	}
+	now := time.Now().In(loc).Format(time.RFC3339)
+	changed := false
+	for i := range state.Targets {
+		target := &state.Targets[i]
+		if target.ID == doneTargetID || target.CompletedAt != "" || target.Status == "done" || target.Status == "expired" {
+			continue
+		}
+		switch strings.TrimSpace(target.Status) {
+		case "", "pending", "open", "running":
+			target.Status = "stopped"
+			target.CountdownSeconds = 0
+			target.LastError = "已因预约成功停止"
+			target.LastAttemptAt = now
+			changed = true
+		}
+	}
+	if changed {
+		_ = SaveSniperPlan(state, loc)
+	}
 }
 
 func normalizeLoadedPlanTargets(targets []SniperPlanTarget, loc *time.Location) []SniperPlanTarget {

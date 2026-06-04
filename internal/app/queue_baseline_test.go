@@ -2,7 +2,11 @@ package app
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
+
+	. "github.com/Ryujoxys/sushiro-overdose/internal/core"
 )
 
 func TestQueueLiveStoreOnlineOpen(t *testing.T) {
@@ -41,6 +45,30 @@ func TestNormalizeQueueBaselineConfig(t *testing.T) {
 		if got.IntervalMinutes != c.want {
 			t.Errorf("NormalizeQueueBaselineConfig(%d) = %d, want %d", c.in, got.IntervalMinutes, c.want)
 		}
+		if !got.UsePreferenceStores {
+			t.Errorf("NormalizeQueueBaselineConfig(%d) should default to preference stores", c.in)
+		}
+	}
+}
+
+func TestQueueBaselineStoreIDsUseExplicitOrPreferenceStores(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := SavePreferences(UserPreferences{
+		SelectedStores: []string{"3006", "3006", "3050"},
+		StorePriority:  []string{"3050", "3006"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(queueBaselineStoreIDs(QueueBaselineConfig{StoreIDs: []string{" 3006 ", "3006"}}), ","); got != "3006" {
+		t.Fatalf("explicit store ids = %q, want 3006", got)
+	}
+	if got := strings.Join(queueBaselineStoreIDs(QueueBaselineConfig{UsePreferenceStores: true}), ","); got != "3006,3050" {
+		t.Fatalf("preference store ids = %q, want 3006,3050", got)
 	}
 }
 
@@ -98,5 +126,64 @@ func TestQueueBaselineExportJSONShape(t *testing.T) {
 	rollup := got.Rollups[0]
 	if rollup.DateType != "workday" || rollup.WaitTypicalMinutes == nil || *rollup.WaitTypicalMinutes != 35 {
 		t.Fatalf("unexpected baseline rollup: %+v", rollup)
+	}
+}
+
+func TestQueueBaselineRecordWritesDatabaseShape(t *testing.T) {
+	record := QueueBaselineRecord{
+		Timestamp:        "2026-06-03T22:20:00+08:00",
+		StoreID:          3015,
+		Name:             "深圳店",
+		City:             "深圳",
+		Area:             "南山区",
+		Wait:             28,
+		GroupQueuesCount: 24,
+		StoreStatus:      "OPEN",
+		NetTicketStatus:  "ONLINE",
+		OnlineOpen:       true,
+	}
+	normalizeQueueBaselineRecordForWrite(&record)
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(data)
+	for _, want := range []string{
+		`"collected_at":"2026-06-03T22:20:00+08:00"`,
+		`"wait_minutes":28`,
+		`"source_endpoint":"stores"`,
+		`"api_profile_version":"public-profile-v1"`,
+	} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("missing %s in %s", want, raw)
+		}
+	}
+	if strings.Contains(raw, `"ts"`) || strings.Contains(raw, `"wait":`) {
+		t.Fatalf("legacy fields should not be written: %s", raw)
+	}
+}
+
+func TestQueueBaselineRecordFromStoreWritesDetailShape(t *testing.T) {
+	record := queueBaselineRecordFromStore(QueueLiveStore{
+		ID:               3006,
+		Name:             "太阳宫凯德店",
+		NameKana:         "北京",
+		Area:             "朝阳区",
+		Wait:             35,
+		GroupQueuesCount: 12,
+		NetTicketStatus:  "ONLINE",
+		GroupQueues: QueueLiveGroupQueues{
+			BoothQueue:   []string{"540"},
+			CounterQueue: []string{"535"},
+		},
+	}, "2026-06-04T14:30:00+08:00")
+	if record.StoreID != 3006 || record.DisplayCalledNo != 540 {
+		t.Fatalf("record called no = %+v", record)
+	}
+	if record.SourceEndpoint != queueSourceEndpointStoreByID || record.APIProfileVersion != queueAPIProfileStoreDetailV1 {
+		t.Fatalf("record source = %+v", record)
+	}
+	if !strings.Contains(record.GroupQueuesJSON, "540") {
+		t.Fatalf("group queues json = %q", record.GroupQueuesJSON)
 	}
 }

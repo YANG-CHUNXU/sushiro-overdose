@@ -27,6 +27,22 @@ func handleQueueTrends(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, BuildQueueTrendsWithContext(r.Context(), query, time.Now()))
 }
 
+func handleQueueDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	q := r.URL.Query()
+	query := QueueDashboardQuery{
+		StoreIDs:      queueTrendRequestStores(q["store"], q.Get("stores")),
+		Scope:         q.Get("scope"),
+		DateType:      q.Get("date_type"),
+		WindowHours:   atoiDefault(q.Get("window"), queueDashboardDefaultWindowHours),
+		BucketMinutes: atoiDefault(q.Get("bucket"), queueDashboardDefaultBucketMins),
+	}
+	writeJSON(w, BuildQueueDashboardWithContext(r.Context(), query, time.Now()))
+}
+
 func queueTrendRequestStores(storeValues []string, storesValue string) []string {
 	raw := append([]string{}, storeValues...)
 	raw = append(raw, strings.Split(storesValue, ",")...)

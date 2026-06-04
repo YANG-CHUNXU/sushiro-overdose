@@ -6,12 +6,15 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 )
+
+const historyUnchangedWriteInterval = 10 * time.Minute
 
 type SlotSnapshot struct {
 	Timestamp    string `json:"ts"`
@@ -27,18 +30,26 @@ func historyPath() string {
 }
 
 var (
-	lastHistoryWriteByStore = map[string]time.Time{}
-	historyMu               sync.Mutex
+	lastHistoryWriteByStore     = map[string]time.Time{}
+	lastHistorySignatureByStore = map[string]string{}
+	historyMu                   sync.Mutex
 )
 
 func appendHistory(slots []Slot, storeID string) {
 	historyMu.Lock()
 	defer historyMu.Unlock()
 
-	if time.Since(lastHistoryWriteByStore[storeID]) < 30*time.Second {
+	now := time.Now()
+	lastWrite := lastHistoryWriteByStore[storeID]
+	signature := historySlotsSignature(slots)
+	if now.Sub(lastWrite) < 30*time.Second {
 		return
 	}
-	lastHistoryWriteByStore[storeID] = time.Now()
+	if signature != "" && signature == lastHistorySignatureByStore[storeID] && now.Sub(lastWrite) < historyUnchangedWriteInterval {
+		return
+	}
+	lastHistoryWriteByStore[storeID] = now
+	lastHistorySignatureByStore[storeID] = signature
 
 	f, err := os.OpenFile(historyPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -46,7 +57,7 @@ func appendHistory(slots []Slot, storeID string) {
 	}
 	defer f.Close()
 
-	ts := time.Now().Format(time.RFC3339)
+	ts := now.Format(time.RFC3339)
 	w := bufio.NewWriter(f)
 	for _, s := range slots {
 		snap := SlotSnapshot{
@@ -62,6 +73,24 @@ func appendHistory(slots []Slot, storeID string) {
 		w.WriteByte('\n')
 	}
 	w.Flush()
+}
+
+func historySlotsSignature(slots []Slot) string {
+	if len(slots) == 0 {
+		return ""
+	}
+	h := fnv.New64a()
+	for _, s := range slots {
+		h.Write([]byte(s.Date))
+		h.Write([]byte{0})
+		h.Write([]byte(s.Start))
+		h.Write([]byte{0})
+		h.Write([]byte(s.End))
+		h.Write([]byte{0})
+		h.Write([]byte(s.Availability))
+		h.Write([]byte{0xff})
+	}
+	return fmt.Sprintf("%x", h.Sum64())
 }
 
 func loadHistory() ([]SlotSnapshot, error) {

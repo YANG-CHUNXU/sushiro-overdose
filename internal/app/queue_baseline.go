@@ -5,6 +5,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,17 +23,29 @@ const (
 // QueueBaselineRecord 是单家门店在某时刻的基准快照（全量记录，不做活跃过滤，
 // 闲时/关店的 0 等位也是基准数据）。写入独立文件，不污染排队趋势观测。
 type QueueBaselineRecord struct {
-	Timestamp         string `json:"ts"`
+	CollectedAt       string `json:"collected_at"`
 	StoreID           int    `json:"store_id"`
 	Name              string `json:"name"`
 	City              string `json:"city"`
 	Area              string `json:"area"`
-	Wait              int    `json:"wait"`
+	WaitMinutes       int    `json:"wait_minutes"`
+	GroupQueuesCount  int    `json:"group_queues_count"`
 	StoreStatus       string `json:"store_status"`
 	NetTicketStatus   string `json:"net_ticket_status"`
-	ReservationStatus string `json:"reservation_status,omitempty"`
-	GroupQueuesCount  int    `json:"group_queues_count"`
+	ReservationStatus string `json:"reservation_status"`
 	OnlineOpen        bool   `json:"online_open"`
+	WaitTimeCounter   int    `json:"wait_time_counter"`
+	WaitTimeCap       int    `json:"wait_time_cap"`
+	DisplayCalledNo   int    `json:"display_called_no,omitempty"`
+	GroupQueuesJSON   string `json:"group_queues_json,omitempty"`
+	UpdatedAt         string `json:"updated_at"`
+	SourceEndpoint    string `json:"source_endpoint"`
+	APIProfileVersion string `json:"api_profile_version"`
+
+	// Legacy local fields. New records use collected_at/wait_minutes so the
+	// local JSONL has the same shape as Turso snapshots/latest rows.
+	Timestamp string `json:"ts,omitempty"`
+	Wait      int    `json:"wait,omitempty"`
 }
 
 // QueueBaselineExport 是远端公开「全国基准」JSON 的协议结构。它只包含门店维度
@@ -96,6 +109,8 @@ type QueueBaselineLatest struct {
 	OnlineOpen        bool   `json:"online_open"`
 	WaitTimeCounter   int    `json:"wait_time_counter,omitempty"`
 	WaitTimeCap       int    `json:"wait_time_cap,omitempty"`
+	DisplayCalledNo   int    `json:"display_called_no,omitempty"`
+	GroupQueuesJSON   string `json:"group_queues_json,omitempty"`
 }
 
 type QueueBaselineRollup struct {
@@ -112,15 +127,21 @@ type QueueBaselineRollup struct {
 	WaitMaxMinutes     int      `json:"wait_max_minutes,omitempty"`
 	QueueGroupsTypical *float64 `json:"queue_groups_typical,omitempty"`
 	QueueGroupsSafe    *float64 `json:"queue_groups_safe,omitempty"`
+	CalledSampleCount  int      `json:"called_sample_count,omitempty"`
+	CalledNoSlow       *float64 `json:"called_no_slow,omitempty"`
+	CalledNoTypical    *float64 `json:"called_no_typical,omitempty"`
+	CalledNoFast       *float64 `json:"called_no_fast,omitempty"`
 	Confidence         string   `json:"confidence"`
 	UpdatedAt          string   `json:"updated_at"`
 }
 
-// QueueBaselineConfig 控制「全国门店基准采集」：周期性快照全部门店的实时
-// 等位/状态并落盘，作为基准数据。走公开接口，无需认证。
+// QueueBaselineConfig 控制本地公开排队基准采集：周期性快照用户选定门店的
+// 实时等位/状态并落盘。全国数据只从线上 Turso 读取，本地不再全量落全国。
 type QueueBaselineConfig struct {
-	Enabled         bool `json:"enabled"`
-	IntervalMinutes int  `json:"interval_minutes"`
+	Enabled             bool     `json:"enabled"`
+	IntervalMinutes     int      `json:"interval_minutes"`
+	StoreIDs            []string `json:"store_ids,omitempty"`
+	UsePreferenceStores bool     `json:"use_preference_stores"`
 }
 
 func queueBaselinePath() string { return filepath.Join(AppDirPath(), queueBaselineFile) }
@@ -139,11 +160,15 @@ func NormalizeQueueBaselineConfig(cfg QueueBaselineConfig) QueueBaselineConfig {
 	if cfg.IntervalMinutes > 1440 {
 		cfg.IntervalMinutes = 1440
 	}
+	cfg.StoreIDs = UniqueNonEmptyStrings(cfg.StoreIDs)
+	if len(cfg.StoreIDs) == 0 && !cfg.UsePreferenceStores {
+		cfg.UsePreferenceStores = true
+	}
 	return cfg
 }
 
 func LoadQueueBaselineConfig() QueueBaselineConfig {
-	def := QueueBaselineConfig{Enabled: false, IntervalMinutes: queueBaselineDefaultMinutes}
+	def := QueueBaselineConfig{Enabled: false, IntervalMinutes: queueBaselineDefaultMinutes, UsePreferenceStores: true}
 	data, err := os.ReadFile(queueBaselinePath())
 	if err != nil {
 		return def
@@ -208,7 +233,7 @@ func (c *QueueBaselineCollector) tick(ctx context.Context) {
 	if !due {
 		return
 	}
-	if _, err := collectQueueBaseline(ctx); err != nil {
+	if _, err := collectQueueBaselineWithConfig(ctx, cfg); err != nil {
 		return // 取数失败下个周期再试，不更新 lastAt
 	}
 	c.mu.Lock()
@@ -216,33 +241,77 @@ func (c *QueueBaselineCollector) tick(ctx context.Context) {
 	c.mu.Unlock()
 }
 
-// collectQueueBaseline 拉全国门店快照并全量落盘为基准记录，返回写入条数。
+// collectQueueBaseline 拉取本地选定门店快照并落盘，返回写入条数。
 func collectQueueBaseline(ctx context.Context) (int, error) {
-	stores, err := NewQueueLiveClient().CachedAllStores(ctx)
-	if err != nil {
-		return 0, err
+	return collectQueueBaselineWithConfig(ctx, LoadQueueBaselineConfig())
+}
+
+func collectQueueBaselineWithConfig(ctx context.Context, cfg QueueBaselineConfig) (int, error) {
+	storeIDs := queueBaselineStoreIDs(cfg)
+	if len(storeIDs) == 0 {
+		return 0, fmt.Errorf("暂无本地基准门店")
 	}
+	client := NewQueueLiveClient()
 	now := time.Now().Format(time.RFC3339)
-	records := make([]QueueBaselineRecord, 0, len(stores))
-	for _, s := range stores {
-		records = append(records, QueueBaselineRecord{
-			Timestamp:         now,
-			StoreID:           s.ID,
-			Name:              s.Name,
-			City:              s.NameKana,
-			Area:              s.Area,
-			Wait:              s.Wait,
-			StoreStatus:       s.StoreStatus,
-			NetTicketStatus:   s.NetTicketStatus,
-			ReservationStatus: s.ReservationStatus,
-			GroupQueuesCount:  s.GroupQueuesCount,
-			OnlineOpen:        queueLiveStoreOnlineOpen(s),
-		})
+	records := make([]QueueBaselineRecord, 0, len(storeIDs))
+	var lastErr error
+	for _, storeID := range storeIDs {
+		s, err := client.GetStore(ctx, storeID)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		records = append(records, queueBaselineRecordFromStore(s, now))
+	}
+	if len(records) == 0 && lastErr != nil {
+		return 0, lastErr
 	}
 	if err := appendQueueBaselineRecords(records); err != nil {
 		return 0, err
 	}
 	return len(records), nil
+}
+
+func queueBaselineStoreIDs(cfg QueueBaselineConfig) []string {
+	cfg = NormalizeQueueBaselineConfig(cfg)
+	if len(cfg.StoreIDs) > 0 {
+		return cfg.StoreIDs
+	}
+	if !cfg.UsePreferenceStores {
+		return nil
+	}
+	prefs := LoadPreferences()
+	if len(prefs.SelectedStores) > 0 {
+		return UniqueNonEmptyStrings(prefs.SelectedStores)
+	}
+	return UniqueNonEmptyStrings(prefs.StorePriority)
+}
+
+func queueBaselineRecordFromStore(s QueueLiveStore, collectedAt string) QueueBaselineRecord {
+	groupQueuesJSON := ""
+	if data, err := json.Marshal(s.GroupQueues); err == nil && string(data) != "{}" {
+		groupQueuesJSON = string(data)
+	}
+	return QueueBaselineRecord{
+		CollectedAt:       collectedAt,
+		StoreID:           s.ID,
+		Name:              s.Name,
+		City:              s.NameKana,
+		Area:              s.Area,
+		WaitMinutes:       s.Wait,
+		GroupQueuesCount:  s.GroupQueuesCount,
+		StoreStatus:       s.StoreStatus,
+		NetTicketStatus:   s.NetTicketStatus,
+		ReservationStatus: s.ReservationStatus,
+		OnlineOpen:        queueLiveStoreOnlineOpen(s),
+		WaitTimeCounter:   s.WaitTimeCounter,
+		WaitTimeCap:       s.WaitTimeCap,
+		DisplayCalledNo:   s.GroupQueues.CurrentCalledNo(),
+		GroupQueuesJSON:   groupQueuesJSON,
+		UpdatedAt:         collectedAt,
+		SourceEndpoint:    queueSourceEndpointStoreByID,
+		APIProfileVersion: queueAPIProfileStoreDetailV1,
+	}
 }
 
 // appendQueueBaselineRecords 一次性追加一批基准记录到 queue_baseline.jsonl。
@@ -261,6 +330,7 @@ func appendQueueBaselineRecords(records []QueueBaselineRecord) error {
 	_ = f.Chmod(0o600)
 	enc := json.NewEncoder(f)
 	for i := range records {
+		normalizeQueueBaselineRecordForWrite(&records[i])
 		if err := enc.Encode(records[i]); err != nil {
 			return err
 		}
@@ -268,14 +338,44 @@ func appendQueueBaselineRecords(records []QueueBaselineRecord) error {
 	return nil
 }
 
+func normalizeQueueBaselineRecordForWrite(record *QueueBaselineRecord) {
+	if record == nil {
+		return
+	}
+	if record.CollectedAt == "" {
+		if record.Timestamp != "" {
+			record.CollectedAt = record.Timestamp
+		} else {
+			record.CollectedAt = time.Now().Format(time.RFC3339)
+		}
+	}
+	if record.UpdatedAt == "" {
+		record.UpdatedAt = record.CollectedAt
+	}
+	if record.WaitMinutes == 0 && record.Wait > 0 {
+		record.WaitMinutes = record.Wait
+	}
+	if record.SourceEndpoint == "" {
+		record.SourceEndpoint = queueSourceEndpointStores
+	}
+	if record.APIProfileVersion == "" {
+		record.APIProfileVersion = queueAPIProfilePublicV1
+	}
+	record.Timestamp = ""
+	record.Wait = 0
+}
+
 func handleQueueBaseline(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		cfg := LoadQueueBaselineConfig()
 		writeJSON(w, map[string]any{
-			"enabled":          cfg.Enabled,
-			"interval_minutes": cfg.IntervalMinutes,
-			"remote":           queueBaselineRemoteStatusFromConfig(loadQueueBaselineTursoConfig()),
+			"enabled":               cfg.Enabled,
+			"interval_minutes":      cfg.IntervalMinutes,
+			"store_ids":             cfg.StoreIDs,
+			"use_preference_stores": cfg.UsePreferenceStores,
+			"effective_store_ids":   queueBaselineStoreIDs(cfg),
+			"remote":                queueBaselineRemoteStatusFromConfig(loadQueueBaselineTursoConfig()),
 		})
 	case http.MethodPost:
 		var body QueueBaselineConfig

@@ -24,18 +24,32 @@ const (
 	queueStatsFile       = "queue_stats.json"
 	queueHolidayFile     = "holidays.json"
 	queueDataStaleAfter  = 6 * time.Hour
+
+	queueSourceEndpointStores    = "stores"
+	queueSourceEndpointStoreByID = "getStoreById"
+	queueAPIProfilePublicV1      = "public-profile-v1"
+	queueAPIProfileStoreDetailV1 = "store-detail-profile-v1"
 )
 
 type QueueObservation struct {
-	Timestamp        string           `json:"ts"`
-	StoreID          string           `json:"store_id"`
-	DisplayCalledNo  int              `json:"display_called_no"`
-	OnlineOpen       bool             `json:"online_open,omitempty"`
-	WaitMinutes      int              `json:"wait_minutes,omitempty"`
-	StoreStatus      string           `json:"store_status,omitempty"`
-	NetTicketStatus  string           `json:"net_ticket_status,omitempty"`
-	GroupQueuesCount int              `json:"group_queues_count,omitempty"`
-	GroupQueues      QueueGroupQueues `json:"group_queues,omitempty"`
+	CollectedAt       string           `json:"collected_at"`
+	StoreID           string           `json:"store_id"`
+	WaitMinutes       int              `json:"wait_minutes"`
+	GroupQueuesCount  int              `json:"group_queues_count"`
+	StoreStatus       string           `json:"store_status"`
+	NetTicketStatus   string           `json:"net_ticket_status"`
+	ReservationStatus string           `json:"reservation_status"`
+	OnlineOpen        bool             `json:"online_open"`
+	WaitTimeCounter   int              `json:"wait_time_counter"`
+	WaitTimeCap       int              `json:"wait_time_cap"`
+	SourceEndpoint    string           `json:"source_endpoint"`
+	APIProfileVersion string           `json:"api_profile_version"`
+	DisplayCalledNo   int              `json:"display_called_no,omitempty"`
+	GroupQueues       QueueGroupQueues `json:"group_queues,omitempty"`
+
+	// Timestamp is the legacy local JSONL field. New records use collected_at,
+	// but old files are still accepted so existing local history stays usable.
+	Timestamp string `json:"ts,omitempty"`
 }
 
 type QueueSession struct {
@@ -238,12 +252,9 @@ func appendQueueObservation(observation QueueObservation) error {
 	if strings.TrimSpace(observation.StoreID) == "" {
 		return nil
 	}
-	if strings.TrimSpace(observation.Timestamp) == "" {
-		observation.Timestamp = time.Now().Format(time.RFC3339)
-	}
-	observation.GroupQueues = normalizeQueueGroupQueues(observation.GroupQueues)
-	if observation.DisplayCalledNo <= 0 {
-		observation.DisplayCalledNo = queueObservationCalledNo(observation)
+	normalizeQueueObservationForWrite(&observation, time.Now())
+	if strings.TrimSpace(observation.CollectedAt) == "" {
+		observation.CollectedAt = time.Now().Format(time.RFC3339)
 	}
 	if observation.DisplayCalledNo <= 0 && observation.WaitMinutes <= 0 && observation.GroupQueuesCount <= 0 && !queueGroupQueuesHasAny(observation.GroupQueues) {
 		return nil
@@ -268,6 +279,59 @@ func appendQueueObservation(observation QueueObservation) error {
 	return nil
 }
 
+func normalizeQueueObservationForWrite(observation *QueueObservation, now time.Time) {
+	if observation == nil {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if strings.TrimSpace(observation.CollectedAt) == "" {
+		if legacy := strings.TrimSpace(observation.Timestamp); legacy != "" {
+			observation.CollectedAt = legacy
+		} else {
+			observation.CollectedAt = now.Format(time.RFC3339)
+		}
+	}
+	observation.Timestamp = ""
+	observation.StoreID = strings.TrimSpace(observation.StoreID)
+	observation.StoreStatus = strings.TrimSpace(observation.StoreStatus)
+	observation.NetTicketStatus = strings.TrimSpace(observation.NetTicketStatus)
+	observation.ReservationStatus = strings.TrimSpace(observation.ReservationStatus)
+	observation.SourceEndpoint = strings.TrimSpace(observation.SourceEndpoint)
+	if observation.SourceEndpoint == "" {
+		observation.SourceEndpoint = queueSourceEndpointStoreByID
+	}
+	observation.APIProfileVersion = strings.TrimSpace(observation.APIProfileVersion)
+	if observation.APIProfileVersion == "" {
+		observation.APIProfileVersion = queueAPIProfileStoreDetailV1
+	}
+	observation.GroupQueues = normalizeQueueGroupQueues(observation.GroupQueues)
+	if observation.DisplayCalledNo <= 0 {
+		observation.DisplayCalledNo = queueObservationCalledNo(*observation)
+	}
+}
+
+func normalizeQueueObservationForRead(observation *QueueObservation) {
+	if observation == nil {
+		return
+	}
+	if strings.TrimSpace(observation.CollectedAt) == "" {
+		observation.CollectedAt = strings.TrimSpace(observation.Timestamp)
+	}
+	observation.GroupQueues = normalizeQueueGroupQueues(observation.GroupQueues)
+	if observation.DisplayCalledNo <= 0 {
+		observation.DisplayCalledNo = queueObservationCalledNo(*observation)
+	}
+}
+
+func queueObservationCollectedAt(observation QueueObservation) string {
+	if value := strings.TrimSpace(observation.CollectedAt); value != "" {
+		return value
+	}
+	return strings.TrimSpace(observation.Timestamp)
+}
+
 func queueObservationFromStoreInfo(storeID string, store StoreInfo, now time.Time) (QueueObservation, bool) {
 	storeID = strings.TrimSpace(storeID)
 	if storeID == "" {
@@ -281,14 +345,18 @@ func queueObservationFromStoreInfo(storeID string, store StoreInfo, now time.Tim
 		wait = 0
 	}
 	observation := QueueObservation{
-		Timestamp:        now.Format(time.RFC3339),
-		StoreID:          storeID,
-		WaitMinutes:      wait,
-		StoreStatus:      strings.TrimSpace(store.StoreStatus),
-		NetTicketStatus:  strings.TrimSpace(store.NetTicketStatus),
-		GroupQueuesCount: store.GroupQueuesCount,
-		GroupQueues:      normalizeQueueGroupQueues(store.GroupQueues),
-		OnlineOpen:       isQueueOnlineOpen(store),
+		CollectedAt:       now.Format(time.RFC3339),
+		StoreID:           storeID,
+		WaitMinutes:       wait,
+		GroupQueuesCount:  store.GroupQueuesCount,
+		StoreStatus:       strings.TrimSpace(store.StoreStatus),
+		NetTicketStatus:   strings.TrimSpace(store.NetTicketStatus),
+		ReservationStatus: strings.TrimSpace(store.ReservationStatus),
+		OnlineOpen:        isQueueOnlineOpen(store),
+		WaitTimeCounter:   store.WaitTimeCounter,
+		SourceEndpoint:    queueSourceEndpointStoreByID,
+		APIProfileVersion: queueAPIProfileStoreDetailV1,
+		GroupQueues:       normalizeQueueGroupQueues(store.GroupQueues),
 	}
 	observation.DisplayCalledNo = queueObservationCalledNo(observation)
 	return observation, wait > 0 || store.GroupQueuesCount > 0 || observation.OnlineOpen || queueGroupQueuesHasAny(observation.GroupQueues)
@@ -518,21 +586,23 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 		}
 		observation.GroupQueues = normalizeQueueGroupQueues(observation.GroupQueues)
 		observationsByStore[storeID] = append(observationsByStore[storeID], observation)
-		if at, ok := parseRFC3339Local(observation.Timestamp); ok {
+		if at, ok := parseRFC3339Local(queueObservationCollectedAt(observation)); ok {
 			updateLatest(&summary.LastObservationAt, at)
 		}
 	}
 	for storeID, storeObservations := range observationsByStore {
 		sort.Slice(storeObservations, func(i, j int) bool {
-			left, lok := parseRFC3339Local(storeObservations[i].Timestamp)
-			right, rok := parseRFC3339Local(storeObservations[j].Timestamp)
+			leftRaw := queueObservationCollectedAt(storeObservations[i])
+			rightRaw := queueObservationCollectedAt(storeObservations[j])
+			left, lok := parseRFC3339Local(leftRaw)
+			right, rok := parseRFC3339Local(rightRaw)
 			if !lok || !rok {
-				return storeObservations[i].Timestamp < storeObservations[j].Timestamp
+				return leftRaw < rightRaw
 			}
 			return left.Before(right)
 		})
 		for _, observation := range storeObservations {
-			at, ok := parseRFC3339Local(observation.Timestamp)
+			at, ok := parseRFC3339Local(queueObservationCollectedAt(observation))
 			if !ok || !queueTrendMatches(query, at, storeFilter, storeID, holidays, workdays) {
 				continue
 			}
@@ -548,7 +618,7 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 		}
 		lastCalledByDate := map[string]int{}
 		for _, observation := range storeObservations {
-			at, ok := parseRFC3339Local(observation.Timestamp)
+			at, ok := parseRFC3339Local(queueObservationCollectedAt(observation))
 			if !ok {
 				continue
 			}
@@ -1150,6 +1220,7 @@ func loadQueueObservations() []QueueObservation {
 		}
 		var observation QueueObservation
 		if json.Unmarshal([]byte(line), &observation) == nil {
+			normalizeQueueObservationForRead(&observation)
 			out = append(out, observation)
 		}
 	}

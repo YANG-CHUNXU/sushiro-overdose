@@ -40,7 +40,7 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 
 	tokens, err := LoadLocalConfig()
 	if err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "暂无认证参数")
 		return fmt.Errorf("暂无认证参数，请先完成参数捕获")
 	}
@@ -51,26 +51,26 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 		tokens.Unlock()
 	}
 	if err := tokens.ValidateForReservation(); err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "预约参数不完整")
 		return err
 	}
 	settings := tokens.ToSettingsWithPrefs(prefs)
 	targets = normalizeSniperTargetsForSettings(targets, settings)
 	if len(targets) == 0 {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "暂无狙击目标")
 		return fmt.Errorf("暂无有效狙击目标")
 	}
 	if err := SaveSniperPlan(NormalizeSniperPlan(targets, settings.Location), settings.Location); err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "保存狙击计划失败")
 		return err
 	}
 
 	client := NewClient(settings)
 	if _, err := client.GetTimeslots(context.Background(), settings.StoreIDs[0]); err != nil {
-		cancel()
+		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
 			DeleteLocalConfig()
@@ -81,7 +81,10 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 
 	setNotifier(BuildNotifierFromConfig())
 	go func() {
-		defer close(done)
+		defer func() {
+			e.finishRun(done)
+			close(done)
+		}()
 		e.runSniper(ctx, client, settings, targets)
 	}()
 	return nil
@@ -286,6 +289,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					t.LastError = ""
 					t.CompletedAt = time.Now().In(settings.Location).Format(time.RFC3339)
 				})
+				StopRemainingSniperPlanTargetsAfterSuccess(targetID, settings.Location)
 				e.mu.Lock()
 				e.state.Reservation = &reservation
 				e.mu.Unlock()

@@ -2,6 +2,8 @@ package app
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -133,5 +135,38 @@ func TestAnalyzeSlotHistoryTopNRecommendations(t *testing.T) {
 
 	if recs := TopSlotInsightRecommendations(analysis, 0); len(recs) != 0 {
 		t.Fatalf("TopSlotInsightRecommendations top 0 len = %d, want 0", len(recs))
+	}
+}
+
+func TestLoadSlotHistoryInsightsWritesCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(filepath.Join(home, ".sushiro"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := `{"ts":"2026-05-01T10:00:00+08:00","store_id":"001","date":"20260515","start":"193000","end":"200000","availability":"AVAILABLE"}` + "\n" +
+		`{"ts":"2026-05-01T11:00:00+08:00","store_id":"001","date":"20260515","start":"193000","end":"200000","availability":"FULL"}` + "\n" +
+		`{"ts":"2026-05-08T10:00:00+08:00","store_id":"001","date":"20260522","start":"193000","end":"200000","availability":"AVAILABLE"}` + "\n"
+	if err := os.WriteFile(historyPath(), []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := LoadSlotHistoryInsights(5, insightTestNow(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ValidSnapshots != 3 {
+		t.Fatalf("valid snapshots = %d, want 3", first.ValidSnapshots)
+	}
+	if _, err := os.Stat(historyInsightsCachePath()); err != nil {
+		t.Fatalf("cache file missing: %v", err)
+	}
+	second, err := LoadSlotHistoryInsights(5, insightTestNow(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ValidSnapshots != first.ValidSnapshots || len(second.Stores) != len(first.Stores) {
+		t.Fatalf("cached analysis mismatch: first=%+v second=%+v", first, second)
 	}
 }
