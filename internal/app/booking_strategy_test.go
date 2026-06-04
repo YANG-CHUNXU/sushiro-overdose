@@ -138,6 +138,32 @@ func TestNormalizePreferencesFillsStrategyDefaults(t *testing.T) {
 	}
 }
 
+func TestNormalizePreferencesDropsPartialPhoneOverride(t *testing.T) {
+	prefs := NormalizePreferences(UserPreferences{PhoneNumber: "9280"})
+	if prefs.PhoneNumber != "" {
+		t.Fatalf("PhoneNumber = %q, want empty partial override", prefs.PhoneNumber)
+	}
+
+	prefs = NormalizePreferences(UserPreferences{PhoneNumber: "138 0013 8000"})
+	if prefs.PhoneNumber != "13800138000" {
+		t.Fatalf("PhoneNumber = %q, want normalized full number", prefs.PhoneNumber)
+	}
+}
+
+func TestCapturedTokensIgnorePartialPreferencePhone(t *testing.T) {
+	tokens := &CapturedTokens{PhoneNumber: "13800138000"}
+
+	settings := tokens.ToSettingsWithPrefs(UserPreferences{PhoneNumber: "9280"})
+	if settings.PhoneNumber != "13800138000" {
+		t.Fatalf("PhoneNumber = %q, want captured number", settings.PhoneNumber)
+	}
+
+	settings = tokens.ToSettingsWithPrefs(UserPreferences{PhoneNumber: "13900139000"})
+	if settings.PhoneNumber != "13900139000" {
+		t.Fatalf("PhoneNumber = %q, want full preference override", settings.PhoneNumber)
+	}
+}
+
 func TestPreferTargetSlotHonorsPriorityAndTimeStrategy(t *testing.T) {
 	loc := testLocation(t)
 

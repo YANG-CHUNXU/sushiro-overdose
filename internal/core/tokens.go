@@ -286,7 +286,7 @@ func (t *CapturedTokens) ToSettingsWithPrefs(prefs UserPreferences) Settings {
 
 	// 偏好里预填的手机号/微信ID 优先于捕获值，方便取号前提前配置。
 	phoneNumber := t.PhoneNumber
-	if v := strings.TrimSpace(prefs.PhoneNumber); v != "" {
+	if v := NormalizePreferencePhoneNumber(prefs.PhoneNumber); v != "" {
 		phoneNumber = v
 	}
 	wechatID := t.WechatID

@@ -98,9 +98,28 @@ func NormalizePreferences(prefs UserPreferences) UserPreferences {
 	if ParseTimeSeconds(prefs.TargetTime) < 0 {
 		prefs.TargetTime = DefaultTargetTime
 	}
+	prefs.PhoneNumber = NormalizePreferencePhoneNumber(prefs.PhoneNumber)
 	prefs.SelectedStores = UniqueNonEmptyStrings(prefs.SelectedStores)
 	prefs.StorePriority = normalizeStorePriority(prefs.StorePriority, prefs.SelectedStores)
 	return prefs
+}
+
+func NormalizePreferencePhoneNumber(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	digits := b.String()
+	if len(digits) < 8 {
+		return ""
+	}
+	return digits
 }
 
 func SavePreferences(prefs UserPreferences) error {

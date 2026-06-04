@@ -515,7 +515,7 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
           <div class="fg"><label>成人</label><input type="number" id="pa" min="0" max="10" value="2"></div>
           <div class="fg"><label>儿童</label><input type="number" id="pc" min="0" max="10" value="0"></div>
           <div class="fg"><label>桌型</label><select id="pt"><option value="T">桌位</option><option value="C">吧台</option></select></div>
-          <div class="fg"><label>手机号（取号/预约用）</label><input type="tel" id="pphone" maxlength="11" placeholder="留空则用捕获到的号码"></div>
+          <div class="fg"><label>完整手机号（可选）</label><input type="tel" id="pphone" maxlength="11" placeholder="不要填尾号；留空用捕获号码"></div>
         </div>
         <div class="fg"><label>添加门店（搜全国）</label><div class="fl g8 fw"><input id="storeSearch" placeholder="输入城市或门店名，如 北京 / 凯德" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter'){searchStores();return false}"><button class="bt bt-w bt-s" onclick="searchStores()">搜索</button></div><div id="storeSearchResults" class="mt8"></div></div>
         <div class="fg"><label>抢号门店与优先级</label><div id="bookingStores" class="store-list"><span class="mu">用上方搜索添加，或完成认证后自动带入</span></div><div class="ps mt8">抢预约 / 取号会按勾选门店的排序依次尝试。新加的门店若从没在小程序点过，建议刷新认证后先试一家确认可用。</div></div>
