@@ -239,8 +239,8 @@ go vet ./...                # 静态检查
 ### 发布新版本
 
 ```bash
-git tag v2.9.0
-git push origin v2.9.0
+git tag vX.Y.Z          # 替换为新版本号，如 v2.11.0
+git push origin vX.Y.Z
 # GitHub Actions 自动构建所有平台并发布 Release
 ```
 
