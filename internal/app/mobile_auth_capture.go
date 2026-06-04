@@ -338,7 +338,7 @@ li{margin:8px 0}
 <h1>寿司郎手机认证捕获</h1>
 <p class="muted">这一步让手机真实微信产生认证请求，电脑只捕获寿司郎接口参数。完成后请关闭手机 Wi-Fi 代理。</p>
 <p><a class="btn" href="` + html.EscapeString(data.CAURL) + `">下载并安装 CA 证书</a></p>
-<div class="warn">iPhone：安装描述文件后，还需要到“设置 → 通用 → 关于本机 → 证书信任设置”里完全信任该证书。安卓机型可能不允许微信信任用户证书，如果抓不到 HTTPS，可以换 iPhone 或系统支持用户证书的安卓。</div>
+<div class="warn">本页面向 iPhone：安装描述文件后，还需要到“设置 → 通用 → 关于本机 → 证书信任设置”里完全信任该证书，否则抓不到 HTTPS。安卓请改用电脑上的“手动导入认证”（用手机抓包工具导出请求再粘贴），不需要这一页。</div>
 <h2>手机 Wi-Fi 代理</h2>
 <p>把当前 Wi-Fi 的 HTTP 代理改为“手动”，服务器和端口填下面任意一个：</p>
 <ul>` + hostList + `</ul>

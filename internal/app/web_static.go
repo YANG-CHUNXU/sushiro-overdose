@@ -248,7 +248,7 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
           <div class="actions">
             <button class="bt bt-r bt-l" id="bm" onclick="mA()">开始</button>
             <button class="bt bt-o hid" id="bs" onclick="sE()">停止</button>
-            <button class="bt bt-w" id="bc" onclick="sC()">重新获取认证</button>
+            <button class="bt bt-w" id="bc" onclick="startAuth()">重新获取认证</button>
             <button class="bt bt-w" id="brst" onclick="rST()">重置抓包</button>
           </div>
           <div id="nc" class="notice hid"></div>
@@ -270,7 +270,7 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
         <div class="card">
           <h2>新手路径</h2>
           <div class="track">
-            <div class="step" id="step-capture" style="cursor:pointer" onclick="sC()"><div class="mark">1</div><div><b>获取认证</b><span>重启 PC 微信，在小程序里点一次「排队」或「预约」。</span></div></div>
+            <div class="step" id="step-capture" style="cursor:pointer" onclick="startAuth()"><div class="mark">1</div><div><b>获取认证</b><span>Windows 用手机扫码获取（分安卓/苹果）；macOS 在 PC 微信里点一次「排队」或「预约」。</span></div></div>
             <div class="step" id="step-prefs" style="cursor:pointer" onclick="go('se',document.querySelector('[onclick*=se]'))"><div class="mark">2</div><div><b>选门店和偏好</b><span>勾选要抢的门店、调整人数桌型和时段。</span></div></div>
             <div class="step" id="step-sampling" style="cursor:pointer" onclick="go('sm',document.querySelector('[onclick*=sm]'))"><div class="mark">3</div><div><b>信息收集（可选）</b><span>后台观察门店变化，用于判断到店时间。</span></div></div>
             <div class="step" id="step-booking" style="cursor:pointer" onclick="mA()"><div class="mark">4</div><div><b>开始抢号</b><span>按门店、日期、时段策略依次尝试。</span></div></div>
@@ -433,7 +433,7 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
         <div class="fl g8 fw mt8"><button class="bt bt-r" onclick="sN()">保存通知</button><button class="bt bt-w" onclick="tN('all')">测试全部</button><button class="bt bt-w" onclick="tN('feishu')">飞书</button><button class="bt bt-w" onclick="tN('telegram')">Telegram</button><button class="bt bt-w" onclick="tN('bark')">Bark</button><button class="bt bt-w" onclick="tN('serverchan')">Server酱</button></div>
       </div>
       <div class="cd" style="grid-column:1/-1">
-        <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">手机认证捕获</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="startMobileAuthCapture()">启动手机捕获</button><button class="bt bt-w bt-s" onclick="loadMobileAuth()">刷新</button><button class="bt bt-o bt-s" onclick="stopMobileAuthCapture()">停止</button></div></div>
+        <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">手机认证捕获</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="openAuthWizard()">获取认证向导</button><button class="bt bt-w bt-s" onclick="startMobileAuthCapture()">启动手机捕获</button><button class="bt bt-w bt-s" onclick="loadMobileAuth()">刷新</button><button class="bt bt-o bt-s" onclick="stopMobileAuthCapture()">停止</button></div></div>
         <div class="ps">用于 Windows 端：手机真实微信产生寿司郎认证流量，电脑只捕获认证参数。不会修改 Windows 系统代理；捕获完成后请关闭手机 Wi-Fi 代理。</div>
         <div id="mobileAuthState" class="diag-detail mt8">尚未加载</div>
         <div id="mobileAuthBox" class="ua-box hid"><div id="mobileAuthQR"></div><div id="mobileAuthURLs" class="ps ua-urls"></div></div>
@@ -556,11 +556,11 @@ function uD(){
     b.textContent='查看预约';b.className='bt bt-r bt-l';b.onclick=()=>go('re',document.querySelector('[onclick*=re]'));
   }else if(es.status==='error'){
     badge.textContent='需要处理';title.textContent='运行遇到问题';copy.textContent='原始错误信息见下方，便于排查；按建议处理后点重试。';
-    b.textContent=hc?'重新开始':'重新获取认证';b.className='bt bt-y bt-l';b.onclick=hc?sB:sC;
+    b.textContent=hc?'重新开始':'重新获取认证';b.className='bt bt-y bt-l';b.onclick=hc?sB:startAuth;
     nc.classList.remove('hid');nc.innerHTML='<b>错误</b><br><code style="word-break:break-all">'+esc(es.message||'(无错误信息)')+'</code><br><br><b>建议</b><br>'+esc(explainMsg(es.message));
   }else if(!hc){
-    badge.textContent='第一步 · 首次设置';title.textContent='先获取认证参数';copy.textContent='点击下方按钮启动捕获代理，然后在 PC 微信里打开寿司郎小程序点一次「排队」或「预约」即可。';
-    b.textContent='开始获取认证';b.className='bt bt-y bt-l';b.onclick=sC;
+    badge.textContent='第一步 · 首次设置';title.textContent='先获取认证参数';copy.textContent=pf==='windows'?'Windows 下 PC 微信抓不到认证，点下方按钮用手机扫码获取（分安卓/苹果引导）。':'点击下方按钮启动捕获代理，然后在 PC 微信里打开寿司郎小程序点一次「排队」或「预约」即可。';
+    b.textContent=pf==='windows'?'用手机扫码获取认证':'开始获取认证';b.className='bt bt-y bt-l';b.onclick=startAuth;
     nc.classList.remove('hid');nc.textContent='完成认证后会自动出现下一步指引：选门店、查日历、开始抢号。';
   }else{
     const hasStores=(pr.selected_stores||[]).length>0;
@@ -591,7 +591,23 @@ async function sC(){try{const d=await(await fetch('/api/engine/capture',{method:
 async function rST(){if(!confirm('重置抓包状态？会断开当前抓包代理并清理残留，之后可点「获取认证」手动重新连接。'))return;try{const d=await safeFetch('/api/engine/reset',{method:'POST'});if(d.error){alert(d.error);return}await loadStatus();alert('已重置抓包状态，点「获取认证」可重新连接')}catch(e){alert('重置失败：'+String(e.message||e))}}
 async function sB(){try{const d=await(await fetch('/api/engine/booking',{method:'POST'})).json();if(d.error)alert(d.error);await loadStatus();}catch(e){alert('启动失败')}}
 async function sE(){try{await fetch('/api/engine/stop',{method:'POST'});await loadStatus();}catch(e){}}
-function mA(){hc?sB():sC()}
+function startAuth(){if(pf==='windows'){openAuthWizard()}else{sC()}}
+function mA(){hc?sB():startAuth()}
+let authWizPoll=null;
+function openAuthWizard(){let ov=el('authWiz');if(!ov){ov=document.createElement('div');ov.id='authWiz';ov.className='ov';document.body.appendChild(ov)}ov.classList.remove('hid');ov.style.display='flex';authWizStep('home')}
+function closeAuthWizard(){const ov=el('authWiz');if(ov){ov.classList.add('hid');ov.style.display='none'}if(authWizPoll){clearInterval(authWizPoll);authWizPoll=null}fetch('/api/mobile-auth/stop',{method:'POST',headers:{'X-Sushiro-CSRF':csrfToken}}).catch(()=>{})}
+function authWizShell(body){return '<div class="ovc"><div class="fl ai jb mb16"><b>用手机获取认证</b><button class="bt bt-w bt-s" onclick="closeAuthWizard()">关闭</button></div><div style="overflow:auto">'+body+'</div></div>'}
+function authWizStep(step){const ov=el('authWiz');if(!ov)return;if(authWizPoll){clearInterval(authWizPoll);authWizPoll=null}
+  if(step==='home'){ov.innerHTML=authWizShell('<p class="mu">PC 微信小程序在 Windows 上抓不到认证，请用手机操作拿到必要信息。先选你的手机：</p><div class="fl g8 fw mt16"><button class="bt bt-r" onclick="authWizStep(\'ios\')">iPhone</button><button class="bt bt-r" onclick="authWizStep(\'android\')">安卓</button></div>')}
+  else if(step==='ios'){ov.innerHTML=authWizShell('<p class="mu">iPhone 两种方式，任选其一：</p><div class="fl g8 fw mt16"><button class="bt bt-r" onclick="authWizStep(\'ios_auto\')">自动代理抓（推荐）</button><button class="bt bt-w" onclick="authWizStep(\'ios_manual\')">手动导入</button></div><div class="mt16"><button class="bt bt-w bt-s" onclick="authWizStep(\'home\')">← 返回</button></div>')}
+  else if(step==='ios_auto'){ov.innerHTML=authWizShell('<div id="awAuto"><span class="mu">正在启动…</span></div><div class="mt16"><button class="bt bt-w bt-s" onclick="closeAuthWizard()">停止并关闭</button> <button class="bt bt-w bt-s" onclick="authWizStep(\'ios\')">← 返回</button></div>');authWizStartAuto()}
+  else if(step==='ios_manual'){ov.innerHTML=authWizShell(authWizImportHTML('ios'))}
+  else if(step==='android'){ov.innerHTML=authWizShell(authWizImportHTML('android'))}}
+async function authWizStartAuto(){try{const d=await safeFetch('/api/mobile-auth/start',{method:'POST'},12000);authWizRenderAuto(d);authWizPoll=setInterval(authWizPollAuto,2500)}catch(e){const b=el('awAuto');if(b)b.innerHTML='<span class="bad">启动失败：'+esc(String(e.message||e))+'</span>'}}
+async function authWizPollAuto(){try{const d=await safeFetch('/api/mobile-auth');authWizRenderAuto(d);if(d.saved||d.config_complete){if(authWizPoll){clearInterval(authWizPoll);authWizPoll=null}await loadStatus();alert('认证已获取并保存！请把手机 Wi-Fi 代理改回关闭。');closeAuthWizard()}}catch(e){}}
+function authWizRenderAuto(d){const b=el('awAuto');if(!b)return;const urls=d.guide_urls||[],hosts=d.hosts||[];b.innerHTML='<p class="mu">用 iPhone 微信「扫一扫」下面二维码打开引导页：①装 CA 证书 ②设置→通用→关于本机→证书信任设置里完全信任 ③把 Wi-Fi 的 HTTP 代理设为下面的 电脑IP:端口 ④彻底关掉再打开微信，进寿司郎小程序点一次门店/排队/预约。抓到后这里会自动提示完成。</p><div class="mt8" style="text-align:center">'+((d.active&&d.qr_svg)?d.qr_svg:'<span class="mu">二维码加载中…</span>')+'</div><div class="ps mt8">'+(urls.length?'<b>扫码或手机浏览器打开：</b><br>'+urls.map(u=>'<code>'+esc(u)+'</code>').join('<br>'):'')+'<div class="mu mt8"><b>Wi-Fi 代理：</b>'+hosts.map(h=>'<code>'+esc(h)+':'+esc(d.proxy_port||'')+'</code>').join(' ')+'</div></div><div class="diag-detail mt8">'+esc(d.message||'')+'</div>'}
+function authWizImportHTML(platform){const guide=platform==='android'?'<b>安卓怎么抓：</b><ol><li>手机装一个能抓 HTTPS 的工具（如 Reqable / Stream / HttpCanary），按它的说明装好并信任证书。</li><li>开启抓包，打开微信寿司郎小程序，点一次门店列表/排队/预约。</li><li>在工具里找到 <code>crm-cn-prd.sushiro.com.cn</code> 的请求，导出/复制成 cURL 或原始请求头。</li><li>把内容粘贴到下面，点「解析并保存」。建议至少含一次查询请求和一次排队/预约请求。</li></ol>':'<b>iPhone 手动抓：</b><ol><li>用能抓 HTTPS 的工具按其说明装信任证书并抓包（也可改用上一步「自动代理抓」）。</li><li>打开微信寿司郎小程序点一次门店/排队/预约。</li><li>导出 <code>crm-cn-prd.sushiro.com.cn</code> 请求为 cURL / 原始请求头。</li><li>粘贴到下面，点「解析并保存」。</li></ol>';return '<div class="ps">'+guide+'</div><div class="fg mt8"><label>粘贴抓包内容（JSON / cURL / 原始请求头）</label><textarea id="awImport" placeholder="包含 X-App-Code、Authorization、User-Agent、Referer、wechatId、phoneNumber、storeId…"></textarea></div><div id="awImportState" class="diag-detail mt8 hid"></div><div class="fl ai jb mt16"><button class="bt bt-w bt-s" onclick="authWizStep(\''+(platform==='android'?'home':'ios')+'\')">← 返回</button><button class="bt bt-r" onclick="authWizImport()">解析并保存</button></div>'}
+async function authWizImport(){const txt=(el('awImport')?.value||'').trim();if(!txt){alert('请先粘贴抓包内容');return}const st=el('awImportState');if(st){st.classList.remove('hid');st.innerHTML='解析中…'}try{const d=await safeFetch('/api/auth/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})},15000);if(d.saved){if(st)st.innerHTML='<span class="ok">已保存</span> '+esc(d.message||'');await loadStatus();alert('认证已导入并保存！');closeAuthWizard()}else{if(st)st.innerHTML='<span class="bad">字段不完整，还缺：</span>'+esc((d.missing||[]).join('、')||'未知')+'<br><span class="mu">再补一段包含缺失字段的请求即可。</span>'}}catch(e){if(st)st.innerHTML='<span class="bad">导入失败：'+esc(String(e.message||e))+'</span>'}}
 
 async function lC(){await ensureStores();if(!stores.length){el('storeChoices').innerHTML='<span class="mu">先完成认证获取</span>';el('sc').innerHTML='<div class="empty">先完成认证获取，再查看日历</div>';return}if(!selStores.length)selStores=stores.map(s=>String(s.id));rStoreChoices();rC()}
 function rStoreChoices(){const c=el('storeChoices');c.innerHTML=stores.map(s=>'<button class="chip '+(selStores.includes(String(s.id))?'on':'')+'" data-store="'+escA(String(s.id))+'">'+esc(s.nickname||s.name||s.id)+'</button>').join('');c.querySelectorAll('.chip').forEach(b=>b.onclick=()=>togStore(b.dataset.store))}
