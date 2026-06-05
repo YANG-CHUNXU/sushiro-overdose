@@ -19,13 +19,14 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	pid := readPID()
 	hasConfig := HasValidConfig()
 	status := map[string]any{
-		"version":    Version,
-		"running":    isRunning(),
-		"pid":        pid,
-		"has_config": hasConfig,
-		"platform":   runtime.GOOS,
-		"engine":     engine.GetState(),
-		"sampling":   sampler.GetState(),
+		"version":     Version,
+		"running":     isRunning(),
+		"pid":         pid,
+		"has_config":  hasConfig,
+		"platform":    runtime.GOOS,
+		"engine":      engine.GetState(),
+		"sampling":    sampler.GetState(),
+		"auth_health": getAuthHealth(),
 	}
 	writeJSON(w, status)
 }
@@ -40,6 +41,7 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 	reservations, err := client.GetReservations(r.Context())
 	if err != nil {
 		if errors.Is(err, ErrReservationsEndpointUnavailable) {
+			// 端点变更（404）不代表认证失效，认证健康保持不变。
 			items := loadReservationsFallback()
 			items = refreshReservationItemsWithCurrentNetTicket(r.Context(), client, items)
 			writeJSON(w, map[string]any{
@@ -49,9 +51,11 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		noteAuthResult(err) // 认证失败则标记 stale，触发提醒
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	markAuthHealthy()
 	syncLocalReservationState(reservations)
 	writeJSON(w, refreshReservationItemsWithCurrentNetTicket(r.Context(), client, reservations))
 }
@@ -370,6 +374,7 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	ticket, err := client.CreateNetTicket(r.Context(), storeID)
 	if err != nil {
+		noteAuthResult(err) // 认证失败则标记 stale
 		if isTicketAlreadyIssuedError(err) {
 			plan := LoadNetTicketPlan()
 			plan.Enabled = true
@@ -389,6 +394,7 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, friendlyNetTicketError(err))
 		return
 	}
+	markAuthHealthy() // 取号成功 → 认证有效
 	plan := LoadNetTicketPlan()
 	plan.Enabled = true
 	plan.StoreID = storeID
@@ -486,9 +492,11 @@ func handleCancelNetTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := client.CancelNetTicket(r.Context()); err != nil {
+		noteAuthResult(err)
 		writeError(w, http.StatusBadGateway, friendlyNetTicketError(err))
 		return
 	}
+	markAuthHealthy()
 	// 取消成功后清掉本地取号计划状态，避免继续显示已取消的号。
 	plan := LoadNetTicketPlan()
 	plan.Status = "idle"
@@ -524,9 +532,11 @@ func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := client.CancelReservation(r.Context(), body.TicketID); err != nil {
+		noteAuthResult(err)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	markAuthHealthy()
 	writeJSON(w, map[string]any{"ok": true})
 }
 

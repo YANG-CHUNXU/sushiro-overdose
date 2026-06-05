@@ -205,6 +205,7 @@ func (m *mobileAuthCaptureManager) finish(tokens *CapturedTokens) {
 		m.mu.Unlock()
 		return
 	}
+	markAuthHealthy() // 手机重新捕获认证 → 清除"认证过期"提醒
 	setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 	tokens.Lock()
 	if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {

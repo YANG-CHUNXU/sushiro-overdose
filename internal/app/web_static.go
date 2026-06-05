@@ -371,6 +371,12 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
   .called-table td{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border:0;padding:6px 8px;text-align:right}
   .called-table td::before{content:attr(data-label);color:var(--mute);font-weight:800;font-size:11px;text-align:left;white-space:nowrap}
 }
+.authpill{margin-left:6px;display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:800;cursor:pointer;border:1px solid var(--line-strong);background:#fff;color:var(--sub);white-space:nowrap}
+.authpill.ok{color:var(--green);border-color:#BFE4CC;background:var(--green-soft)}
+.authpill.stale{color:var(--red);border-color:#F0B7B9;background:var(--red-soft)}
+.authbanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:12px 14px;border-radius:12px;background:var(--red-soft);border:1px solid #F0B7B9;color:var(--red);font-size:13px;font-weight:700;cursor:pointer}
+.authbanner b{font-weight:900;margin-right:2px}
+.authbanner .bt{margin-left:auto}
 </style>
 </head>
 <body>
@@ -390,11 +396,13 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
       <a href="#" data-group="mine" onclick="goGroup('mine');return false">我的单据</a>
       <a href="#" data-group="settings" onclick="goGroup('settings');return false">设置</a>
     </nav>
+    <span class="authpill hid" id="authPill" onclick="authPillClick()"></span>
     <span class="ver" id="ver">loading</span>
   </div>
 </header>
 
 <main class="shell wrap">
+  <div id="authBanner" class="authbanner hid" onclick="startAuth()"></div>
   <nav class="nav subnav hid" id="subnav"></nav>
   <section id="p-da">
     <div class="grid">
@@ -707,7 +715,7 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
 <footer class="ft">由 <a href="https://github.com/Ryujoxys/sushiro-overdose">sushiro-overdose</a> 驱动 · 非官方工具，仅供学习</footer>
 
 <script>
-let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qdSelected=[],qtSelected=[],qtTrendStores=[];
+let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qdSelected=[],qtSelected=[],qtTrendStores=[],ah={};
 const W=['日','一','二','三','四','五','六'];
 const need=['x_app_code','query_auth','reservation_auth','user_agent','referer','wechat_id','phone_number','store_ids'];
 const csrfToken=document.querySelector('meta[name="sushiro-csrf"]')?.content||'';
@@ -766,7 +774,9 @@ const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g
 function renderSubnav(g,active){const sn=el('subnav');if(!sn)return;if(!g||g.pages.length<=1){sn.innerHTML='';sn.classList.add('hid');return}sn.classList.remove('hid');sn.innerHTML=g.pages.map(([p,label])=>'<a href="#" class="'+(p===active?'on':'')+'" onclick="go(\''+p+'\');return false">'+esc(label)+'</a>').join('')}
 function goGroup(gid){const g=NAV_GROUPS.find(x=>x.id===gid);if(g)go(g.pages[0][0]);return false}
 function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({ca:lC,in:lI,qd:lQD,qt:lQT,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
-async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;uE();uSamplingSummary();uD();}catch(e){el('ver').textContent='offline';}}
+async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};uE();uSamplingSummary();uD();uAuth();}catch(e){el('ver').textContent='offline';}}
+function uAuth(){const pill=el('authPill'),banner=el('authBanner'),st=(ah&&ah.status)||'unknown';if(pill){if(!hc){pill.className='authpill';pill.textContent='只读模式'}else if(st==='stale'){pill.className='authpill stale';pill.textContent='认证可能过期'}else{pill.className='authpill ok';pill.textContent='已认证'}pill.classList.remove('hid')}if(banner){if(hc&&st==='stale'){banner.classList.remove('hid');banner.innerHTML='<b>认证可能已过期</b>在手机上用过寿司郎小程序后，电脑这边的认证就会失效（同一账号只认一个会话）。<button class="bt bt-r bt-s" onclick="event.stopPropagation();startAuth()">重新获取认证</button>'}else{banner.classList.add('hid');banner.innerHTML=''}}}
+function authPillClick(){if(!hc||(ah&&ah.status==='stale'))startAuth();else go('re')}
 async function init(){await loadStatus();await lP();checkUpdate();sse();const h=location.hash.slice(1);if(h&&PAGE_GROUP[h]&&h!=='da')go(h);}
 function isRun(){return ['capturing','booking','sniping'].includes(es.status)}
 function setStep(id,state){const x=el(id);x.classList.remove('active','done');if(state)x.classList.add(state)}
@@ -1001,7 +1011,7 @@ async function loadSnPlan(){try{const d=await(await fetch('/api/sniper/plan')).j
 function renderSnPlan(p){const c=el('snPlan'),ts=p?.targets||[];if(!ts.length){c.innerHTML='<div class="empty">还没有蹲号目标。点“添加目标”，填日期、门店和时间窗。</div>';return}c.innerHTML='<table class="tbl"><thead><tr><th>目标</th><th>开放窗口</th><th>状态</th><th>尝试</th><th>最后错误</th></tr></thead><tbody>'+ts.map(t=>'<tr><td>'+esc(t.store_id)+'<br>'+esc(t.date)+' '+esc(fT(t.start_after))+'-'+esc(fT(t.start_before))+'</td><td>'+esc(t.open_at?new Date(t.open_at).toLocaleString():'-')+'<br>'+(t.countdown_seconds>0?Math.ceil(t.countdown_seconds/60)+' 分钟后':'窗口内/已结束')+'</td><td>'+esc(t.status||'-')+'</td><td>'+esc(t.attempts||0)+'</td><td>'+esc(t.last_error||'')+'</td></tr>').join('')+'</tbody></table>'}
 async function startSn(){const read=readSnTargets();if(!read.ok)return;if(!read.targets.length){toast('请至少添加一个有效目标');return}if(!await confirmDialog('启动自动蹲号？\\n到开放窗口会自动尝试创建预约；抢到后会停止。\\n不会取消已有预约或排队号。'))return;try{const d=await(await fetch('/api/sniper/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:read.targets})})).json();if(d.error){toast(d.error);return}await loadStatus();await loadSnPlan();toast('狙击计划已启动，抢到的预约会出现在“我的单据”')}catch(e){toast('启动失败')}}
 
-async function lR(){const c=el('rc');c.innerHTML='<div class="empty">正在读取你的预约和排队号。</div>';try{const d=await safeFetch('/api/reservations');if(d.error){c.innerHTML=loadErrBoxHTML(d.error,'lR()','我的单据');return}const items=Array.isArray(d)?d:(d.items||[]),unav=!Array.isArray(d)&&d.unavailable,msg=(!Array.isArray(d)&&d.message)||'';const note=unav?'<div class="diag-detail"><b>线上单据暂时读不到</b><br>'+esc(msg||'官方当前列表接口不可用；不代表你没有预约，请以寿司郎小程序为准。')+'<div class="mt8">'+localResFormHTML()+'</div></div>':'';if(!items.length){c.innerHTML=note||'<div class="empty">当前没有从官方读到预约或排队号。手机小程序如果有记录，请刷新或使用下方补录。</div>';return}c.innerHTML=note+'<div class="sg">'+items.map(r=>{const when=r.slot_label||[r.queueDate,fT(r.start),r.end?'-'+fT(r.end):''].filter(Boolean).join(' '),store=r.store_name||r.monitored_store_id||r.storeId||'',kind=recordKind(r);const extra=[];if(r.wait>0)extra.push('前面 '+r.wait+' 桌');extra.push(r.checkedIn?'已签到':'未签到');extra.push(kind==='net_ticket'?'排队号':kind==='reservation'?'预约':'类型待确认');const cancel=cancelActionHTML(r,kind);return'<div class="sl av"><div class="tm">'+esc(r.number||'-')+'</div><div class="ss">'+esc(r.status||'-')+(store?' · '+esc(store):'')+'</div><div class="mu mt8">'+esc(when||'时间待确认')+'<br>'+esc(extra.join(' · '))+'<br>#'+esc(r.ticketId||'')+'</div>'+cancel+'</div>'}).join('')+'</div>'}catch(e){c.innerHTML=loadErrBoxHTML(e,'lR()','我的单据')}}
+async function lR(){const c=el('rc');c.innerHTML='<div class="empty">正在读取你的预约和排队号。</div>';try{const d=await safeFetch('/api/reservations');if(d.error){loadStatus();c.innerHTML=loadErrBoxHTML(d.error,'lR()','我的单据');return}const items=Array.isArray(d)?d:(d.items||[]),unav=!Array.isArray(d)&&d.unavailable,msg=(!Array.isArray(d)&&d.message)||'';const note=unav?'<div class="diag-detail"><b>线上单据暂时读不到</b><br>'+esc(msg||'官方当前列表接口不可用；不代表你没有预约，请以寿司郎小程序为准。')+'<div class="mt8">'+localResFormHTML()+'</div></div>':'';if(!items.length){c.innerHTML=note||'<div class="empty">当前没有从官方读到预约或排队号。手机小程序如果有记录，请刷新或使用下方补录。</div>';return}c.innerHTML=note+'<div class="sg">'+items.map(r=>{const when=r.slot_label||[r.queueDate,fT(r.start),r.end?'-'+fT(r.end):''].filter(Boolean).join(' '),store=r.store_name||r.monitored_store_id||r.storeId||'',kind=recordKind(r);const extra=[];if(r.wait>0)extra.push('前面 '+r.wait+' 桌');extra.push(r.checkedIn?'已签到':'未签到');extra.push(kind==='net_ticket'?'排队号':kind==='reservation'?'预约':'类型待确认');const cancel=cancelActionHTML(r,kind);return'<div class="sl av"><div class="tm">'+esc(r.number||'-')+'</div><div class="ss">'+esc(r.status||'-')+(store?' · '+esc(store):'')+'</div><div class="mu mt8">'+esc(when||'时间待确认')+'<br>'+esc(extra.join(' · '))+'<br>#'+esc(r.ticketId||'')+'</div>'+cancel+'</div>'}).join('')+'</div>'}catch(e){loadStatus();c.innerHTML=loadErrBoxHTML(e,'lR()','我的单据')}}
 function recordKind(r){const k=String(r.kind||'').toLowerCase();if(k)return k;if(r.wait>0||String(r.status||'').toUpperCase()==='WAITING')return'net_ticket';if(r.start||r.end||r.queueDate||r.slot_label)return'reservation';return'unknown'}
 function cancelActionHTML(r,kind){if(kind==='net_ticket')return'<div class="mt8"><button class="bt bt-o bt-s" onclick="cancelNetTicket()">取消排队号</button></div>';if(kind==='reservation'&&r.ticketId)return'<div class="mt8"><button class="bt bt-o bt-s" onclick="cancelTicket('+r.ticketId+',&quot;reservation&quot;)">取消预约</button></div>';return'<div class="mu mt8">为避免误取消，类型未确认的记录不提供取消按钮。</div>'}
 function localResFormHTML(){return'<div class="fr"><div class="fg" style="flex:1"><label>预约日期</label><input id="lrDate" type="date"></div><div class="fg" style="flex:1"><label>预约时间</label><input id="lrTime" type="time"></div><div class="fg" style="flex:1"><label>号码</label><input id="lrNo" placeholder="可选"></div><div class="fg" style="flex:1"><label>Ticket ID</label><input id="lrTicket" placeholder="可选"></div><button class="bt bt-w bt-s" onclick="saveLocalReservation()">补录到本地</button></div><p class="mu mt8">补录只用于本工具展示和提醒，不会同步到寿司郎，也不能替代小程序确认。</p>'}

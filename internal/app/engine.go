@@ -287,6 +287,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 					e.setState(EngineError, "认证参数保存失败: "+err.Error())
 					return
 				}
+				markAuthHealthy() // 重新捕获认证 → 清除"认证过期"提醒
 				setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 				e.cleanupProxy()
 				if report.OK {

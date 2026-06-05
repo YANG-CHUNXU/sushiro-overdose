@@ -53,6 +53,7 @@ func handleAuthImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "保存认证参数失败: "+err.Error())
 		return
 	}
+	markAuthHealthy() // 重新导入认证 → 清除"认证过期"提醒
 	prefs := LoadPreferences()
 	tokens.Lock()
 	if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {
