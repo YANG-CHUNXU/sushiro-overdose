@@ -39,6 +39,7 @@ func handleQueueDashboard(w http.ResponseWriter, r *http.Request) {
 		DateType:      q.Get("date_type"),
 		WindowHours:   atoiDefault(q.Get("window"), queueDashboardDefaultWindowHours),
 		BucketMinutes: atoiDefault(q.Get("bucket"), queueDashboardDefaultBucketMins),
+		TargetNo:      atoiDefault(q.Get("target_no"), 0),
 	}
 	writeJSON(w, BuildQueueDashboardWithContext(r.Context(), query, time.Now()))
 }

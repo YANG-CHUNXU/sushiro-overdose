@@ -426,6 +426,27 @@ func TestIsNoReservationText(t *testing.T) {
 	}
 }
 
+func TestIsActiveReservationText(t *testing.T) {
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{text: "E052", want: true},
+		{text: "You can only make one reservation at a time.", want: true},
+		{text: "すでにご予約をいただいております。", want: true},
+		{text: "已经有预约", want: true},
+		{text: "名额已满", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			if got := IsActiveReservationText(tt.text); got != tt.want {
+				t.Fatalf("IsActiveReservationText(%q) = %v, want %v", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestReservationBusinessError(t *testing.T) {
 	tests := []struct {
 		name string
@@ -453,6 +474,11 @@ func TestReservationBusinessError(t *testing.T) {
 			want: ErrNoReservationAvailable,
 		},
 		{
+			name: "json active reservation exists",
+			body: []byte(`{"code":"E052","message":"You can only make one reservation at a time."}`),
+			want: ErrActiveReservationExists,
+		},
+		{
 			name: "unknown business response",
 			body: []byte(`{"code":"OK","message":"queued"}`),
 			want: nil,
@@ -476,6 +502,28 @@ func TestReservationBusinessError(t *testing.T) {
 				t.Fatalf("ReservationBusinessError() = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestCreateReservationMapsActiveReservationError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/wechat/api_auth/2.0/ticketing/createReservation" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":"E052","message":"You can only make one reservation at a time."}`))
+	}))
+	defer server.Close()
+
+	settings := validSettingsForTest()
+	settings.BaseURL = server.URL
+	client := NewClient(settings)
+	client.SetHTTPClient(server.Client())
+
+	_, err := client.CreateReservation(context.Background(), "001", "20260515", "193000")
+	if !errors.Is(err, ErrActiveReservationExists) {
+		t.Fatalf("CreateReservation() error = %v, want %v", err, ErrActiveReservationExists)
 	}
 }
 

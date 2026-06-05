@@ -510,6 +510,13 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				}
 			}
 
+			if errors.Is(err, ErrActiveReservationExists) {
+				msg := friendlyOfficialAPIError(err)
+				e.addLogLevel(slotLabel+" — "+msg, "error")
+				e.setState(EngineError, msg)
+				return
+			}
+
 			if isOfficialServerHTTPError(err) {
 				key := bookingSlotKey(best.StoreID, best.Date, best.Start)
 				markTemporaryBookingSkip(temporarySkips, key, now)

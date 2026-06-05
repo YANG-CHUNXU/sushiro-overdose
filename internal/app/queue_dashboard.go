@@ -20,6 +20,7 @@ const (
 	queueDashboardMaxWindowHours     = 24
 	queueDashboardDayStart           = "10:00"
 	queueDashboardDayEnd             = "22:00"
+	queueDashboardArrivalLeadMins    = 20
 )
 
 type QueueDashboardQuery struct {
@@ -28,6 +29,7 @@ type QueueDashboardQuery struct {
 	DateType      string   `json:"date_type"`
 	WindowHours   int      `json:"window_hours"`
 	BucketMinutes int      `json:"bucket_minutes"`
+	TargetNo      int      `json:"target_no,omitempty"`
 }
 
 type QueueDashboardResponse struct {
@@ -37,6 +39,7 @@ type QueueDashboardResponse struct {
 	Summary           QueueDashboardSummary        `json:"summary"`
 	CalledSummary     QueueDashboardCalledSummary  `json:"called_summary"`
 	CalledCurve       []QueueDashboardCalledPoint  `json:"called_curve"`
+	Advisor           QueueDashboardAdvisor        `json:"advisor"`
 	Trend             []QueueDashboardTrendPoint   `json:"trend"`
 	StoreRank         []QueueDashboardStoreRow     `json:"store_rank"`
 	WeekdayProfiles   []QueueDashboardWeekday      `json:"weekday_profiles"`
@@ -177,6 +180,50 @@ type QueueDashboardDateType struct {
 	PeakBucket     string   `json:"peak_bucket,omitempty"`
 }
 
+type QueueDashboardAdvisor struct {
+	State         string                           `json:"state"`
+	StoreID       string                           `json:"store_id,omitempty"`
+	StoreName     string                           `json:"store_name,omitempty"`
+	TargetNo      int                              `json:"target_no,omitempty"`
+	Headline      string                           `json:"headline"`
+	Copy          string                           `json:"copy"`
+	TargetBucket  string                           `json:"target_bucket,omitempty"`
+	TargetLabel   string                           `json:"target_label,omitempty"`
+	ArrivalBucket string                           `json:"arrival_bucket,omitempty"`
+	ArrivalLabel  string                           `json:"arrival_label,omitempty"`
+	Confidence    string                           `json:"confidence,omitempty"`
+	Source        string                           `json:"source,omitempty"`
+	BucketMinutes int                              `json:"bucket_minutes,omitempty"`
+	Milestones    []QueueDashboardAdvisorMilestone `json:"milestones,omitempty"`
+	StoreChoices  []QueueDashboardStoreChoice      `json:"store_choices,omitempty"`
+}
+
+type QueueDashboardAdvisorMilestone struct {
+	Label           string `json:"label"`
+	Bucket          string `json:"bucket"`
+	CalledNoTypical int    `json:"called_no_typical,omitempty"`
+	CalledNoSlow    int    `json:"called_no_slow,omitempty"`
+	CalledNoFast    int    `json:"called_no_fast,omitempty"`
+	QueueGroups     int    `json:"queue_groups,omitempty"`
+	WaitMinutes     int    `json:"wait_minutes,omitempty"`
+	Confidence      string `json:"confidence,omitempty"`
+	Source          string `json:"source,omitempty"`
+}
+
+type QueueDashboardStoreChoice struct {
+	StoreID         string `json:"store_id"`
+	StoreName       string `json:"store_name"`
+	Label           string `json:"label"`
+	Reason          string `json:"reason"`
+	WaitMinutes     int    `json:"wait_minutes,omitempty"`
+	QueueGroups     int    `json:"queue_groups,omitempty"`
+	CalledNo        int    `json:"called_no,omitempty"`
+	StoreStatus     string `json:"store_status,omitempty"`
+	NetTicketStatus string `json:"net_ticket_status,omitempty"`
+	OnlineOpen      bool   `json:"online_open"`
+	Score           int    `json:"score"`
+}
+
 type queueDashboardSnapshot struct {
 	storeID         string
 	storeName       string
@@ -246,6 +293,7 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 	if len(remoteCalledCurve) > 0 && (len(calledCurve) == 0 || query.Scope == "all" && len(query.StoreIDs) == 0) {
 		calledSummary, calledCurve = remoteCalledSummary, remoteCalledCurve
 	}
+	advisor := buildQueueDashboardAdvisor(query, calledSummary, calledCurve, latest, now)
 	weekdayProfiles, heatmap, dateTypes := buildQueueDashboardRollupViews(query, baseline.Rollups, storeFilter)
 	summary := buildQueueDashboardSummary(query, latest, trend, len(localBaseline)+len(localObservations), baseline)
 	scope := queueDashboardScope(query, latest, baselineStatus, trendSource)
@@ -261,6 +309,7 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 		Summary:           summary,
 		CalledSummary:     calledSummary,
 		CalledCurve:       calledCurve,
+		Advisor:           advisor,
 		Trend:             trend,
 		StoreRank:         latest,
 		WeekdayProfiles:   weekdayProfiles,
@@ -298,6 +347,9 @@ func normalizeQueueDashboardQuery(query QueueDashboardQuery) QueueDashboardQuery
 	}
 	if query.WindowHours > queueDashboardMaxWindowHours {
 		query.WindowHours = queueDashboardMaxWindowHours
+	}
+	if query.TargetNo < 0 {
+		query.TargetNo = 0
 	}
 	switch query.BucketMinutes {
 	case 5, 10, 15, 30, 60:
@@ -808,6 +860,308 @@ func buildQueueDashboardRemoteCalledCurve(query QueueDashboardQuery, baseline Qu
 	summary.PointCount = len(points)
 	summary.Confidence = queueDashboardConfidence(summary.SampleCount)
 	return summary, points
+}
+
+func buildQueueDashboardAdvisor(query QueueDashboardQuery, summary QueueDashboardCalledSummary, curve []QueueDashboardCalledPoint, latestRows []QueueDashboardStoreRow, now time.Time) QueueDashboardAdvisor {
+	advisor := QueueDashboardAdvisor{
+		State:         "empty",
+		StoreID:       summary.StoreID,
+		StoreName:     summary.StoreName,
+		TargetNo:      query.TargetNo,
+		Headline:      "暂无可用叫号判断",
+		Copy:          "先开启信息收集，或选择一个有线上基准的门店。",
+		Confidence:    summary.Confidence,
+		Source:        summary.Source,
+		BucketMinutes: query.BucketMinutes,
+		StoreChoices:  buildQueueDashboardStoreChoices(latestRows),
+	}
+	points := queueDashboardAdvisorPoints(curve)
+	if len(points) == 0 {
+		if len(advisor.StoreChoices) > 0 {
+			best := advisor.StoreChoices[0]
+			advisor.State = "store_choices"
+			advisor.Headline = "当前更好去：" + best.StoreName
+			advisor.Copy = best.Reason + "。叫号曲线样本还不够，先按实时排队轻重判断。"
+			advisor.StoreID = best.StoreID
+			advisor.StoreName = best.StoreName
+			advisor.Source = "latest"
+		}
+		return advisor
+	}
+	if advisor.StoreID == "" {
+		advisor.StoreID = points[0].StoreID
+	}
+	if advisor.StoreName == "" {
+		advisor.StoreName = points[0].StoreName
+	}
+	advisor.Confidence = queueDashboardMergeConfidence(summary.Confidence, points)
+	advisor.Source = points[0].Source
+
+	if query.TargetNo > 0 {
+		return buildQueueDashboardTargetAdvisor(advisor, query.TargetNo, summary, points)
+	}
+	return buildQueueDashboardMilestoneAdvisor(advisor, points, now)
+}
+
+func buildQueueDashboardTargetAdvisor(base QueueDashboardAdvisor, targetNo int, summary QueueDashboardCalledSummary, points []QueueDashboardCalledPoint) QueueDashboardAdvisor {
+	base.TargetNo = targetNo
+	if summary.LatestCalledNo >= targetNo && summary.LatestCalledNo > 0 {
+		base.State = "passed"
+		base.TargetBucket = summary.LatestBucket
+		base.TargetLabel = queueDashboardBucketText(summary.LatestBucket)
+		base.Headline = "当前已经叫到 " + strconv.Itoa(summary.LatestCalledNo) + " 号"
+		base.Copy = strconv.Itoa(targetNo) + " 号可能已经过号；请用手机小程序确认现场状态。"
+		base.ArrivalLabel = "尽快到店或重新取号"
+		return base
+	}
+	for _, point := range points {
+		if point.CalledNoTypical <= 0 || point.CalledNoTypical < targetNo {
+			continue
+		}
+		arrivalBucket := queueDashboardArrivalBucket(point.Bucket)
+		base.State = "target"
+		base.TargetBucket = point.Bucket
+		base.TargetLabel = queueDashboardBucketText(point.Bucket)
+		base.ArrivalBucket = arrivalBucket
+		base.ArrivalLabel = queueDashboardBucketText(arrivalBucket) + " 前到店"
+		base.Confidence = point.Confidence
+		base.Source = point.Source
+		base.Headline = "预计 " + queueDashboardBucketText(point.Bucket) + " 左右叫到 " + strconv.Itoa(targetNo) + " 号"
+		base.Copy = "建议 " + queueDashboardBucketText(arrivalBucket) + " 前到店；这个点一般叫到 " + strconv.Itoa(point.CalledNoTypical) + " 号。"
+		base.Milestones = []QueueDashboardAdvisorMilestone{queueDashboardAdvisorMilestone("命中时间点", point)}
+		return base
+	}
+	last := points[len(points)-1]
+	base.State = "uncovered"
+	base.TargetBucket = last.Bucket
+	base.TargetLabel = queueDashboardBucketText(last.Bucket)
+	base.Confidence = last.Confidence
+	base.Source = last.Source
+	base.Headline = "样本还没覆盖到 " + strconv.Itoa(targetNo) + " 号"
+	base.Copy = "目前曲线到 " + queueDashboardBucketText(last.Bucket) + " 一般叫到 " + strconv.Itoa(last.CalledNoTypical) + " 号；继续收集后会更准。"
+	base.Milestones = []QueueDashboardAdvisorMilestone{queueDashboardAdvisorMilestone("样本末尾", last)}
+	return base
+}
+
+func buildQueueDashboardMilestoneAdvisor(base QueueDashboardAdvisor, points []QueueDashboardCalledPoint, now time.Time) QueueDashboardAdvisor {
+	base.State = "milestones"
+	base.Headline = "这家店几点大概叫到多少号"
+	base.Copy = "下面是按同类日期聚合出来的关键时间点；输入你手里的号可以直接估算叫到时间。"
+	base.Milestones = queueDashboardAdvisorMilestones(points, now)
+	if len(base.Milestones) > 0 {
+		first := base.Milestones[0]
+		base.TargetBucket = first.Bucket
+		base.TargetLabel = queueDashboardBucketText(first.Bucket)
+	}
+	return base
+}
+
+func queueDashboardAdvisorPoints(curve []QueueDashboardCalledPoint) []QueueDashboardCalledPoint {
+	points := make([]QueueDashboardCalledPoint, 0, len(curve))
+	for _, point := range curve {
+		if point.CalledNoTypical <= 0 || !queueDashboardCalledBucketInRange(point.Bucket) {
+			continue
+		}
+		points = append(points, point)
+	}
+	sort.SliceStable(points, func(i, j int) bool {
+		return queueDashboardBucketMinute(points[i].Bucket) < queueDashboardBucketMinute(points[j].Bucket)
+	})
+	return points
+}
+
+func queueDashboardAdvisorMilestones(points []QueueDashboardCalledPoint, now time.Time) []QueueDashboardAdvisorMilestone {
+	type target struct {
+		label  string
+		minute int
+	}
+	targets := []target{}
+	nowMinute := now.Hour()*60 + now.Minute()
+	if now.IsZero() || nowMinute < queueDashboardBucketMinute(queueDashboardDayStart) || nowMinute > queueDashboardBucketMinute(queueDashboardDayEnd) {
+		targets = append(targets, target{label: "开店后", minute: queueDashboardBucketMinute(queueDashboardDayStart)})
+	} else {
+		targets = append(targets, target{label: "现在附近", minute: nowMinute})
+		targets = append(targets, target{label: "1小时后", minute: nowMinute + 60})
+		targets = append(targets, target{label: "2小时后", minute: nowMinute + 120})
+	}
+	targets = append(targets,
+		target{label: "晚高峰", minute: 18*60 + 30},
+		target{label: "收尾前", minute: 21*60 + 30},
+	)
+	out := []QueueDashboardAdvisorMilestone{}
+	seen := map[string]bool{}
+	for _, target := range targets {
+		point, ok := queueDashboardPointAtOrAfter(points, target.minute)
+		if !ok || seen[target.label+"|"+point.Bucket] {
+			continue
+		}
+		seen[target.label+"|"+point.Bucket] = true
+		out = append(out, queueDashboardAdvisorMilestone(target.label, point))
+	}
+	if len(out) == 0 && len(points) > 0 {
+		out = append(out, queueDashboardAdvisorMilestone("样本末尾", points[len(points)-1]))
+	}
+	return out
+}
+
+func queueDashboardAdvisorMilestone(label string, point QueueDashboardCalledPoint) QueueDashboardAdvisorMilestone {
+	return QueueDashboardAdvisorMilestone{
+		Label:           label,
+		Bucket:          point.Bucket,
+		CalledNoTypical: point.CalledNoTypical,
+		CalledNoSlow:    point.CalledNoSlow,
+		CalledNoFast:    point.CalledNoFast,
+		QueueGroups:     point.QueueGroups,
+		WaitMinutes:     point.WaitMinutes,
+		Confidence:      point.Confidence,
+		Source:          point.Source,
+	}
+}
+
+func queueDashboardPointAtOrAfter(points []QueueDashboardCalledPoint, minute int) (QueueDashboardCalledPoint, bool) {
+	if len(points) == 0 {
+		return QueueDashboardCalledPoint{}, false
+	}
+	dayStart := queueDashboardBucketMinute(queueDashboardDayStart)
+	dayEnd := queueDashboardBucketMinute(queueDashboardDayEnd)
+	if minute < dayStart {
+		minute = dayStart
+	}
+	if minute > dayEnd {
+		minute = dayEnd
+	}
+	for _, point := range points {
+		if queueDashboardBucketMinute(point.Bucket) >= minute {
+			return point, true
+		}
+	}
+	return points[len(points)-1], true
+}
+
+func queueDashboardArrivalBucket(bucket string) string {
+	minute := queueDashboardBucketMinute(bucket)
+	if minute < 0 {
+		return ""
+	}
+	minute -= queueDashboardArrivalLeadMins
+	if minute < queueDashboardBucketMinute(queueDashboardDayStart) {
+		minute = queueDashboardBucketMinute(queueDashboardDayStart)
+	}
+	return queueDashboardMinuteBucket(minute)
+}
+
+func queueDashboardBucketMinute(bucket string) int {
+	seconds := ParseTimeSeconds(compactTrendTime(bucket))
+	if seconds < 0 {
+		return -1
+	}
+	return seconds / 60
+}
+
+func queueDashboardMinuteBucket(minute int) string {
+	if minute < 0 {
+		return ""
+	}
+	hour := minute / 60
+	min := minute % 60
+	return strconv.Itoa(hour/10) + strconv.Itoa(hour%10) + ":" + strconv.Itoa(min/10) + strconv.Itoa(min%10)
+}
+
+func queueDashboardBucketText(bucket string) string {
+	if strings.TrimSpace(bucket) == "" {
+		return "现在"
+	}
+	return bucket
+}
+
+func queueDashboardMergeConfidence(summaryConfidence string, points []QueueDashboardCalledPoint) string {
+	for _, confidence := range []string{"high", "medium", "low"} {
+		if summaryConfidence == confidence {
+			return confidence
+		}
+		for _, point := range points {
+			if point.Confidence == confidence {
+				return confidence
+			}
+		}
+	}
+	return summaryConfidence
+}
+
+func buildQueueDashboardStoreChoices(rows []QueueDashboardStoreRow) []QueueDashboardStoreChoice {
+	choices := make([]QueueDashboardStoreChoice, 0, len(rows))
+	for _, row := range rows {
+		if strings.TrimSpace(row.StoreID) == "" {
+			continue
+		}
+		choice := QueueDashboardStoreChoice{
+			StoreID:         row.StoreID,
+			StoreName:       dashboardStoreName(nil, row.StoreID, row.StoreName),
+			WaitMinutes:     row.WaitMinutes,
+			QueueGroups:     row.QueueGroups,
+			CalledNo:        row.CalledNo,
+			StoreStatus:     row.StoreStatus,
+			NetTicketStatus: row.NetTicketStatus,
+			OnlineOpen:      row.OnlineOpen,
+		}
+		choice.Score = queueDashboardStoreChoiceScore(row)
+		choice.Label = queueDashboardStoreChoiceLabel(row)
+		choice.Reason = queueDashboardStoreChoiceReason(row)
+		choices = append(choices, choice)
+	}
+	sort.SliceStable(choices, func(i, j int) bool {
+		if choices[i].Score != choices[j].Score {
+			return choices[i].Score < choices[j].Score
+		}
+		if choices[i].WaitMinutes != choices[j].WaitMinutes {
+			return choices[i].WaitMinutes < choices[j].WaitMinutes
+		}
+		if choices[i].QueueGroups != choices[j].QueueGroups {
+			return choices[i].QueueGroups < choices[j].QueueGroups
+		}
+		return choices[i].StoreID < choices[j].StoreID
+	})
+	if len(choices) > 4 {
+		return choices[:4]
+	}
+	return choices
+}
+
+func queueDashboardStoreChoiceScore(row QueueDashboardStoreRow) int {
+	score := row.WaitMinutes + row.QueueGroups*4
+	if row.WaitMinutes == 0 && row.QueueGroups == 0 {
+		score += 35
+	}
+	if queueDashboardIsOpen(row.StoreStatus) {
+		score -= 12
+	} else {
+		score += 180
+	}
+	if row.OnlineOpen {
+		score -= 18
+	}
+	return score
+}
+
+func queueDashboardStoreChoiceLabel(row QueueDashboardStoreRow) string {
+	if !queueDashboardIsOpen(row.StoreStatus) {
+		return "暂停"
+	}
+	if row.WaitMinutes <= 30 && row.QueueGroups <= 8 {
+		return "最好去"
+	}
+	if row.WaitMinutes <= 75 || row.QueueGroups <= 20 {
+		return "可备选"
+	}
+	return "偏挤"
+}
+
+func queueDashboardStoreChoiceReason(row QueueDashboardStoreRow) string {
+	ticket := "线上取号暂停"
+	if row.OnlineOpen {
+		ticket = "可线上取号"
+	}
+	return "前面 " + strconv.Itoa(row.QueueGroups) + " 桌，预计 " + strconv.Itoa(row.WaitMinutes) + " 分钟，" + ticket
 }
 
 func queueDashboardRemoteCalledStoreID(query QueueDashboardQuery, rollups []QueueBaselineRollup, storeFilter map[string]bool) string {

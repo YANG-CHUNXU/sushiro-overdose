@@ -19,6 +19,7 @@ import (
 
 var ErrNoReservationAvailable = errors.New("no reservation available")
 var ErrReservationsEndpointUnavailable = errors.New("reservations endpoint unavailable")
+var ErrActiveReservationExists = errors.New("active reservation exists")
 
 type APIError struct {
 	StatusCode int
@@ -106,6 +107,9 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 	if err != nil {
 		if IsNoReservationText(err.Error()) {
 			return ReservationRecord{}, ErrNoReservationAvailable
+		}
+		if IsActiveReservationText(err.Error()) {
+			return ReservationRecord{}, ErrActiveReservationExists
 		}
 		return ReservationRecord{}, err
 	}
@@ -360,6 +364,9 @@ func ReservationBusinessError(body []byte) error {
 	if IsNoReservationText(text) {
 		return ErrNoReservationAvailable
 	}
+	if IsActiveReservationText(text) {
+		return ErrActiveReservationExists
+	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -367,8 +374,12 @@ func ReservationBusinessError(body []byte) error {
 	}
 	for _, key := range []string{"code", "errorCode", "error_code", "errCode", "message", "msg", "error"} {
 		if v, ok := payload[key]; ok {
-			if IsNoReservationText(fmt.Sprintf("%v", v)) {
+			text := fmt.Sprintf("%v", v)
+			if IsNoReservationText(text) {
 				return ErrNoReservationAvailable
+			}
+			if IsActiveReservationText(text) {
+				return ErrActiveReservationExists
 			}
 		}
 	}
@@ -382,6 +393,18 @@ func IsNoReservationText(text string) bool {
 		strings.Contains(text, "no reservation available") ||
 		strings.Contains(text, "名额已满") ||
 		strings.Contains(text, "已满")
+}
+
+func IsActiveReservationText(text string) bool {
+	text = strings.ToLower(text)
+	return strings.Contains(text, "e052") ||
+		strings.Contains(text, "already") && strings.Contains(text, "reservation") ||
+		strings.Contains(text, "one reservation at a time") ||
+		strings.Contains(text, "すでにご予約") ||
+		strings.Contains(text, "予約をいただいております") ||
+		strings.Contains(text, "已有预约") ||
+		strings.Contains(text, "已经有预约") ||
+		strings.Contains(text, "一次只能预约")
 }
 
 func IsHTTPStatus(err error, status int) bool {

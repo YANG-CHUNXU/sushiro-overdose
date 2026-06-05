@@ -8,6 +8,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -261,6 +262,18 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
 						DeleteLocalConfig()
 						e.setState(EngineError, "预约认证参数已失效")
+						return
+					}
+					if errors.Is(err, ErrActiveReservationExists) {
+						msg := friendlyOfficialAPIError(err)
+						UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
+							t.Status = "error"
+							t.Attempts = attempts
+							t.LastError = msg
+							t.LastAttemptAt = time.Now().In(settings.Location).Format(time.RFC3339)
+						})
+						e.addLogLevel(slotLabel+" — "+msg, "error")
+						e.setState(EngineError, msg)
 						return
 					}
 					if isOfficialServerHTTPError(err) {

@@ -4,6 +4,8 @@ import (
 	. "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -202,5 +204,132 @@ func TestQueueDashboardRemoteCalledCurveUsesTursoRollups(t *testing.T) {
 	}
 	if point.QueueGroups != 14 || point.WaitMinutes != 40 || point.SampleCount != 40 || point.DayCount != 2 {
 		t.Fatalf("unexpected weighted metrics: %+v", point)
+	}
+}
+
+func TestQueueDashboardAdvisorMapsTargetNumberToBucket(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	curve := []QueueDashboardCalledPoint{
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "18:10", CalledNoTypical: 760, CalledNoSlow: 720, CalledNoFast: 810, Confidence: "medium", Source: "local"},
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "18:30", CalledNoTypical: 840, CalledNoSlow: 800, CalledNoFast: 890, Confidence: "medium", Source: "local"},
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "18:40", CalledNoTypical: 900, CalledNoSlow: 860, CalledNoFast: 940, Confidence: "high", Source: "local"},
+	}
+	summary := QueueDashboardCalledSummary{
+		StoreID:        "3006",
+		StoreName:      "太阳宫凯德店",
+		LatestCalledNo: 760,
+		Confidence:     "medium",
+		Source:         "local",
+	}
+	got := buildQueueDashboardAdvisor(QueueDashboardQuery{BucketMinutes: 10, TargetNo: 893}, summary, curve, nil, time.Date(2026, 6, 5, 18, 0, 0, 0, loc))
+	if got.State != "target" || got.TargetBucket != "18:40" || got.ArrivalBucket != "18:20" {
+		t.Fatalf("unexpected advisor: %+v", got)
+	}
+	if got.Headline != "预计 18:40 左右叫到 893 号" {
+		t.Fatalf("headline = %q", got.Headline)
+	}
+	if len(got.Milestones) != 1 || got.Milestones[0].CalledNoTypical != 900 {
+		t.Fatalf("unexpected milestones: %+v", got.Milestones)
+	}
+}
+
+func TestQueueDashboardAdvisorMarksAlreadyPassedTarget(t *testing.T) {
+	curve := []QueueDashboardCalledPoint{
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "18:30", CalledNoTypical: 840, Confidence: "medium", Source: "local"},
+	}
+	summary := QueueDashboardCalledSummary{
+		StoreID:        "3006",
+		StoreName:      "太阳宫凯德店",
+		LatestBucket:   "18:35",
+		LatestCalledNo: 910,
+		Confidence:     "medium",
+		Source:         "local",
+	}
+	got := buildQueueDashboardAdvisor(QueueDashboardQuery{BucketMinutes: 10, TargetNo: 893}, summary, curve, nil, time.Now())
+	if got.State != "passed" || got.TargetBucket != "18:35" {
+		t.Fatalf("unexpected advisor: %+v", got)
+	}
+	if got.Copy != "893 号可能已经过号；请用手机小程序确认现场状态。" {
+		t.Fatalf("copy = %q", got.Copy)
+	}
+}
+
+func TestQueueDashboardAdvisorHandlesUncoveredTargetNumber(t *testing.T) {
+	curve := []QueueDashboardCalledPoint{
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "21:30", CalledNoTypical: 920, Confidence: "low", Source: "remote_baseline"},
+	}
+	got := buildQueueDashboardAdvisor(QueueDashboardQuery{BucketMinutes: 10, TargetNo: 1100}, QueueDashboardCalledSummary{StoreID: "3006", Source: "remote_baseline"}, curve, nil, time.Now())
+	if got.State != "uncovered" || got.TargetBucket != "21:30" {
+		t.Fatalf("unexpected advisor: %+v", got)
+	}
+	if got.Headline != "样本还没覆盖到 1100 号" {
+		t.Fatalf("headline = %q", got.Headline)
+	}
+}
+
+func TestQueueDashboardAdvisorReturnsMilestonesWithoutTarget(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	curve := []QueueDashboardCalledPoint{
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "18:00", CalledNoTypical: 700, Confidence: "medium", Source: "local"},
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "19:00", CalledNoTypical: 820, Confidence: "medium", Source: "local"},
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "20:00", CalledNoTypical: 920, Confidence: "medium", Source: "local"},
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Bucket: "21:30", CalledNoTypical: 1030, Confidence: "medium", Source: "local"},
+	}
+	got := buildQueueDashboardAdvisor(QueueDashboardQuery{BucketMinutes: 10}, QueueDashboardCalledSummary{StoreID: "3006", Source: "local"}, curve, nil, time.Date(2026, 6, 5, 18, 0, 0, 0, loc))
+	if got.State != "milestones" || len(got.Milestones) < 3 {
+		t.Fatalf("unexpected advisor: %+v", got)
+	}
+	if got.Milestones[0].Label != "现在附近" || got.Milestones[0].Bucket != "18:00" {
+		t.Fatalf("unexpected first milestone: %+v", got.Milestones)
+	}
+}
+
+func TestQueueDashboardAdvisorRanksStoreChoicesByCurrentEffort(t *testing.T) {
+	rows := []QueueDashboardStoreRow{
+		{StoreID: "slow", StoreName: "排队多", StoreStatus: "OPEN", OnlineOpen: true, WaitMinutes: 100, QueueGroups: 25},
+		{StoreID: "closed", StoreName: "休息中", StoreStatus: "CLOSED", OnlineOpen: false, WaitMinutes: 0, QueueGroups: 0},
+		{StoreID: "easy", StoreName: "好去", StoreStatus: "OPEN", OnlineOpen: true, WaitMinutes: 20, QueueGroups: 4},
+	}
+	got := buildQueueDashboardAdvisor(QueueDashboardQuery{BucketMinutes: 10}, QueueDashboardCalledSummary{StoreID: "easy", Source: "local"}, nil, rows, time.Now())
+	if len(got.StoreChoices) != 3 {
+		t.Fatalf("choices len = %d, want 3: %+v", len(got.StoreChoices), got.StoreChoices)
+	}
+	if got.StoreChoices[0].StoreID != "easy" || got.StoreChoices[0].Label != "最好去" {
+		t.Fatalf("best choice = %+v", got.StoreChoices[0])
+	}
+	if got.StoreChoices[2].StoreID != "closed" || got.StoreChoices[2].Label != "暂停" {
+		t.Fatalf("closed choice should rank last: %+v", got.StoreChoices)
+	}
+}
+
+func TestQueueDashboardHTTPContractIncludesAdvisor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
+		t.Fatalf("mkdir app dir: %v", err)
+	}
+	data := `{"collected_at":"2026-06-04T18:10:00+08:00","store_id":"3006","display_called_no":760,"wait_minutes":30,"group_queues_count":8,"store_status":"OPEN","net_ticket_status":"ONLINE","online_open":true}` + "\n" +
+		`{"collected_at":"2026-06-04T18:30:00+08:00","store_id":"3006","display_called_no":840,"wait_minutes":40,"group_queues_count":12,"store_status":"OPEN","net_ticket_status":"ONLINE","online_open":true}` + "\n" +
+		`{"collected_at":"2026-06-04T18:40:00+08:00","store_id":"3006","display_called_no":900,"wait_minutes":45,"group_queues_count":14,"store_status":"OPEN","net_ticket_status":"ONLINE","online_open":true}` + "\n" +
+		`{"collected_at":"2026-06-05T10:10:00+08:00","store_id":"3006","display_called_no":100,"wait_minutes":20,"group_queues_count":4,"store_status":"OPEN","net_ticket_status":"ONLINE","online_open":true}` + "\n"
+	if err := os.WriteFile(queueObservationPath(), []byte(data), 0o600); err != nil {
+		t.Fatalf("write observations: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/api/queue/dashboard?scope=local&stores=3006&target_no=893&bucket=10", nil)
+	rec := httptest.NewRecorder()
+	handleQueueDashboard(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got QueueDashboardResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, rec.Body.String())
+	}
+	if got.Advisor.TargetNo != 893 || got.Advisor.TargetBucket != "18:40" || got.Advisor.ArrivalLabel != "18:20 前到店" {
+		t.Fatalf("unexpected advisor contract: %+v", got.Advisor)
+	}
+	if len(got.Advisor.StoreChoices) != 1 || got.Advisor.StoreChoices[0].StoreID != "3006" {
+		t.Fatalf("missing store choices: %+v", got.Advisor.StoreChoices)
 	}
 }

@@ -47,4 +47,22 @@ internal/
 - 用户数据路径统一通过 `core` 的 path helper（`paths.go`），不在业务逻辑中拼硬编码路径。
 - `core` 保持无内部依赖；不要让它反向依赖 `app`/`api`/`proxy`。
 
+## Spec-Driven Development
+
+大 feature 必须先写规格再实现，避免 LLM 在代码基准上自由发挥。
+
+- 项目宪法：`.specify/memory/constitution.md`
+- Feature 模板：`specs/_template/`
+- 当前规格：`specs/NNN-short-name/`
+
+任何触碰预约、排队、取消、公开采集、本地状态、后台进程的改动，都必须在 `spec.md` / `plan.md` / `tasks.md` 中说明：
+
+- 用户可见行为和异常状态
+- 官方 API 调用是只读还是 mutation
+- 本地状态文件的 writer/reader/清理规则
+- 预约和排队是否严格隔离
+- 测试和手动验证方式
+
+CI 中的架构守卫测试会检查高风险边界，例如官方取消 API 只能出现在显式取消 handler 中。新增例外必须先更新项目宪法和对应 spec。
+
 > 更详细的架构说明与打包流程见 [AGENTS.md](AGENTS.md)。
