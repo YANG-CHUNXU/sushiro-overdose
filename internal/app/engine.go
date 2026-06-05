@@ -68,6 +68,9 @@ type BookingEngine struct {
 	tokens *CapturedTokens
 	proxy  *ProxyServer
 	logs   []LogEntry
+	// pinnedSlot，非空时 booking 只预约这一个确切时段（直接预约），不按偏好扫描。
+	// 仅单次运行有效，finishRun 清空。
+	pinnedSlot *TargetSlot
 }
 
 var engine = &BookingEngine{
@@ -121,6 +124,7 @@ func (e *BookingEngine) finishRun(done chan struct{}) {
 		e.cancel = nil
 		e.done = nil
 	}
+	e.pinnedSlot = nil
 	e.mu.Unlock()
 	bus.publish("engine", mustJSON(e.GetState()))
 }
@@ -334,6 +338,46 @@ func (e *BookingEngine) ResetCapture() {
 }
 
 // StartBooking begins the automated booking loop.
+// normalizeBookingTime 把 HHMM / HH:MM:SS 等规范成官方接口要求的 HHMMSS。
+func normalizeBookingTime(t string) string {
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, t)
+	if len(digits) == 4 {
+		return digits + "00"
+	}
+	return digits
+}
+
+// StartBookingSlot 直接预约一个确切时段（来自「预约未来」里已放出、可约的卡片）。
+// 与 StartBooking 共用校验/运行链路，只是钉死单个目标、不按偏好扫描，且为一次性。
+func (e *BookingEngine) StartBookingSlot(storeID, date, start, end string) error {
+	storeID = strings.TrimSpace(storeID)
+	date = strings.TrimSpace(date)
+	start = normalizeBookingTime(start)
+	end = normalizeBookingTime(end)
+	if storeID == "" || date == "" || start == "" {
+		return fmt.Errorf("时段信息不完整，无法直接预约")
+	}
+	e.mu.Lock()
+	if e.isRunningLocked() {
+		e.mu.Unlock()
+		return fmt.Errorf("引擎正在运行中")
+	}
+	e.pinnedSlot = &TargetSlot{StoreID: storeID, Date: date, Start: start, End: end}
+	e.mu.Unlock()
+	if err := e.StartBooking(); err != nil {
+		e.mu.Lock()
+		e.pinnedSlot = nil
+		e.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
 func (e *BookingEngine) StartBooking() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
@@ -361,7 +405,15 @@ func (e *BookingEngine) StartBooking() error {
 	}
 
 	prefs := LoadPreferences()
-	if len(prefs.SelectedStores) > 0 {
+	e.mu.RLock()
+	pinned := e.pinnedSlot
+	e.mu.RUnlock()
+	if pinned != nil {
+		// 直接预约：钉死该时段所属门店，即使它不在偏好门店里。
+		tokens.Lock()
+		tokens.StoreIDs = []string{pinned.StoreID}
+		tokens.Unlock()
+	} else if len(prefs.SelectedStores) > 0 {
 		tokens.Lock()
 		tokens.StoreIDs = prefs.SelectedStores
 		tokens.Unlock()
@@ -413,6 +465,71 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 
 	healthStop := startHealthCheck(ctx, client, settings.StoreIDs)
 	defer close(healthStop)
+
+	// 直接预约：钉死单个时段，一次性尝试（成功即停，不可约/业务错误即停），不进入偏好扫描循环。
+	e.mu.RLock()
+	pinned := e.pinnedSlot
+	e.mu.RUnlock()
+	if pinned != nil {
+		best := pinned
+		slotLabel := FormatSlotWindow(best.Date, best.Start, best.End, settings.Location)
+		e.addLog(fmt.Sprintf("直接预约: %s — 尝试预约...", slotLabel))
+		var lastErr error
+		for attempt := 0; attempt < 3; attempt++ {
+			select {
+			case <-ctx.Done():
+				e.setState(EngineIdle, "已停止")
+				return
+			default:
+			}
+			reservation, err := client.CreateReservation(ctx, best.StoreID, best.Date, best.Start)
+			if err == nil {
+				storeInfo, _ := client.GetStoreInfo(ctx, best.StoreID)
+				storeName := storeInfo.Name
+				if storeName == "" {
+					storeName = best.StoreID
+				}
+				reservation.MonitoredStoreID = best.StoreID
+				onBookingSuccess(reservation, storeName, storeInfo.Address, slotLabel, "预约")
+				e.mu.Lock()
+				e.state.Reservation = &reservation
+				e.mu.Unlock()
+				e.setState(EngineSuccess, fmt.Sprintf("预约成功！%s @ %s", slotLabel, storeName))
+				e.addLog(fmt.Sprintf("🎉 预约成功！号码: %s, 时段: %s, 门店: %s", reservation.Number, slotLabel, storeName))
+				return
+			}
+			lastErr = err
+			if isAuthError(err) {
+				e.addLogLevel("认证失败", "error")
+				sendNotification("寿司郎 - 认证失败", "请重新捕获参数")
+				DeleteLocalConfig()
+				e.setState(EngineError, "认证参数已失效")
+				return
+			}
+			if errors.Is(err, ErrActiveReservationExists) {
+				msg := friendlyOfficialAPIError(err)
+				e.addLogLevel(slotLabel+" — "+msg, "error")
+				e.setState(EngineError, msg)
+				return
+			}
+			if errors.Is(err, ErrNoReservationAvailable) {
+				e.addLogLevel(slotLabel+" — 这个时段已经约满或被抢走了", "error")
+				e.setState(EngineError, "这个时段已经约满或被抢走了；可以挑别的时段，或对未放出的时段加入狙击。")
+				return
+			}
+			if isOfficialServerHTTPError(err) {
+				e.addLog(bookingServerErrorLog(slotLabel, err))
+				time.Sleep(400 * time.Millisecond)
+				continue
+			}
+			e.addLogLevel(fmt.Sprintf("%s — 预约失败: %s", slotLabel, err), "error")
+			e.setState(EngineError, "预约失败："+err.Error())
+			return
+		}
+		e.addLogLevel(fmt.Sprintf("%s — 预约失败: %v", slotLabel, lastErr), "error")
+		e.setState(EngineError, "这个时段暂时预约不上，请稍后重试或挑别的时段。")
+		return
+	}
 
 	var booked map[string]bool
 	temporarySkips := map[string]time.Time{}

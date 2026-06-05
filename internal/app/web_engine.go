@@ -552,6 +552,26 @@ func handleEngineBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refreshWebClient()
+
+	// 可选时段参数：齐全则直接预约这个确切时段，否则维持原"按偏好自动抢"。
+	var body struct {
+		Store string `json:"store"`
+		Date  string `json:"date"`
+		Start string `json:"start"`
+		End   string `json:"end"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	if strings.TrimSpace(body.Store) != "" && strings.TrimSpace(body.Date) != "" && strings.TrimSpace(body.Start) != "" {
+		if err := engine.StartBookingSlot(body.Store, body.Date, body.Start, body.End); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "message": "正在预约这个时段"})
+		return
+	}
+
 	if err := engine.StartBooking(); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
