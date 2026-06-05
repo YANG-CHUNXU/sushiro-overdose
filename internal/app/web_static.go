@@ -8,7 +8,8 @@ const indexHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="sushiro-csrf" content="{{CSRF_TOKEN}}">
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/png" href="data:image/png;base64,` + logoBase64 + `">
+<link rel="apple-touch-icon" href="data:image/png;base64,` + logoBase64 + `">
 <title>SUSHIRO Overdose</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
