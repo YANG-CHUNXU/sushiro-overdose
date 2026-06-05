@@ -117,9 +117,10 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 	return parseReservationRecord(body, "reservation")
 }
 
-// CreateNetTicket 远程取号（日常排队），对应小程序「排队取号」。端点名来自抓包，
-// payload 参照 createReservation 去掉日期/时间（取号即"现在"）。属实验性：成功与否、
-// 字段细节以接口实际返回为准，错误原文会原样返回便于校正。
+// CreateNetTicket 远程取号（日常排队），对应小程序「排队取号」。端点与 body 字段
+// (storeId/adult/child/tableType/wechatId/phoneNumber) 已用接口抓包(api_discovery)
+// 比对过官方成功请求，确认一致。失败多为官方在该门店/时段不放行（E010 等），错误原文
+// 原样返回便于定位。注意：复用同一套令牌，取号会顶掉手机端会话，反之亦然（见 spec 006）。
 func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (ReservationRecord, error) {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/createNetTicket"
 	// 取号人数/桌型兜底：若预约偏好未配置（adult/child 都为 0、tableType 为空），
