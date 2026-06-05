@@ -32,9 +32,6 @@ func TestBuildQueueDashboardUsesLocalObservationShape(t *testing.T) {
 	if got.Summary.StoreCount != 1 || got.Summary.TotalQueueGroups != 24 || got.Summary.OpenStores != 1 {
 		t.Fatalf("unexpected summary: %+v", got.Summary)
 	}
-	if len(got.StoreRank) != 1 || got.StoreRank[0].CalledNo != 130 || got.StoreRank[0].Source != "local_detail" {
-		t.Fatalf("unexpected store rank: %+v", got.StoreRank)
-	}
 	if len(got.Trend) != 2 || got.Summary.TrendDelta != 14 {
 		t.Fatalf("unexpected trend: summary=%+v trend=%+v", got.Summary, got.Trend)
 	}
@@ -284,24 +281,6 @@ func TestQueueDashboardAdvisorReturnsMilestonesWithoutTarget(t *testing.T) {
 	}
 }
 
-func TestQueueDashboardAdvisorRanksStoreChoicesByCurrentEffort(t *testing.T) {
-	rows := []QueueDashboardStoreRow{
-		{StoreID: "slow", StoreName: "排队多", StoreStatus: "OPEN", OnlineOpen: true, WaitMinutes: 100, QueueGroups: 25},
-		{StoreID: "closed", StoreName: "休息中", StoreStatus: "CLOSED", OnlineOpen: false, WaitMinutes: 0, QueueGroups: 0},
-		{StoreID: "easy", StoreName: "好去", StoreStatus: "OPEN", OnlineOpen: true, WaitMinutes: 20, QueueGroups: 4},
-	}
-	got := buildQueueDashboardAdvisor(QueueDashboardQuery{BucketMinutes: 10}, QueueDashboardCalledSummary{StoreID: "easy", Source: "local"}, nil, rows, time.Now())
-	if len(got.StoreChoices) != 3 {
-		t.Fatalf("choices len = %d, want 3: %+v", len(got.StoreChoices), got.StoreChoices)
-	}
-	if got.StoreChoices[0].StoreID != "easy" || got.StoreChoices[0].Label != "最好去" {
-		t.Fatalf("best choice = %+v", got.StoreChoices[0])
-	}
-	if got.StoreChoices[2].StoreID != "closed" || got.StoreChoices[2].Label != "暂停" {
-		t.Fatalf("closed choice should rank last: %+v", got.StoreChoices)
-	}
-}
-
 func TestQueueDashboardHTTPContractIncludesAdvisor(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -328,8 +307,5 @@ func TestQueueDashboardHTTPContractIncludesAdvisor(t *testing.T) {
 	}
 	if got.Advisor.TargetNo != 893 || got.Advisor.TargetBucket != "18:40" || got.Advisor.ArrivalLabel != "18:20 前到店" {
 		t.Fatalf("unexpected advisor contract: %+v", got.Advisor)
-	}
-	if len(got.Advisor.StoreChoices) != 1 || got.Advisor.StoreChoices[0].StoreID != "3006" {
-		t.Fatalf("missing store choices: %+v", got.Advisor.StoreChoices)
 	}
 }

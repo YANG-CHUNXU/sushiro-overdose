@@ -41,7 +41,6 @@ type QueueDashboardResponse struct {
 	CalledCurve       []QueueDashboardCalledPoint  `json:"called_curve"`
 	Advisor           QueueDashboardAdvisor        `json:"advisor"`
 	Trend             []QueueDashboardTrendPoint   `json:"trend"`
-	StoreRank         []QueueDashboardStoreRow     `json:"store_rank"`
 	WeekdayProfiles   []QueueDashboardWeekday      `json:"weekday_profiles"`
 	Heatmap           []QueueDashboardHeatmapPoint `json:"heatmap"`
 	DateTypeSummaries []QueueDashboardDateType     `json:"date_type_summaries"`
@@ -195,7 +194,6 @@ type QueueDashboardAdvisor struct {
 	Source        string                           `json:"source,omitempty"`
 	BucketMinutes int                              `json:"bucket_minutes,omitempty"`
 	Milestones    []QueueDashboardAdvisorMilestone `json:"milestones,omitempty"`
-	StoreChoices  []QueueDashboardStoreChoice      `json:"store_choices,omitempty"`
 }
 
 type QueueDashboardAdvisorMilestone struct {
@@ -208,20 +206,6 @@ type QueueDashboardAdvisorMilestone struct {
 	WaitMinutes     int    `json:"wait_minutes,omitempty"`
 	Confidence      string `json:"confidence,omitempty"`
 	Source          string `json:"source,omitempty"`
-}
-
-type QueueDashboardStoreChoice struct {
-	StoreID         string `json:"store_id"`
-	StoreName       string `json:"store_name"`
-	Label           string `json:"label"`
-	Reason          string `json:"reason"`
-	WaitMinutes     int    `json:"wait_minutes,omitempty"`
-	QueueGroups     int    `json:"queue_groups,omitempty"`
-	CalledNo        int    `json:"called_no,omitempty"`
-	StoreStatus     string `json:"store_status,omitempty"`
-	NetTicketStatus string `json:"net_ticket_status,omitempty"`
-	OnlineOpen      bool   `json:"online_open"`
-	Score           int    `json:"score"`
 }
 
 type queueDashboardSnapshot struct {
@@ -311,7 +295,6 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 		CalledCurve:       calledCurve,
 		Advisor:           advisor,
 		Trend:             trend,
-		StoreRank:         latest,
 		WeekdayProfiles:   weekdayProfiles,
 		Heatmap:           heatmap,
 		DateTypeSummaries: dateTypes,
@@ -873,19 +856,9 @@ func buildQueueDashboardAdvisor(query QueueDashboardQuery, summary QueueDashboar
 		Confidence:    summary.Confidence,
 		Source:        summary.Source,
 		BucketMinutes: query.BucketMinutes,
-		StoreChoices:  buildQueueDashboardStoreChoices(latestRows),
 	}
 	points := queueDashboardAdvisorPoints(curve)
 	if len(points) == 0 {
-		if len(advisor.StoreChoices) > 0 {
-			best := advisor.StoreChoices[0]
-			advisor.State = "store_choices"
-			advisor.Headline = "当前更好去：" + best.StoreName
-			advisor.Copy = best.Reason + "。叫号曲线样本还不够，先按实时排队轻重判断。"
-			advisor.StoreID = best.StoreID
-			advisor.StoreName = best.StoreName
-			advisor.Source = "latest"
-		}
 		return advisor
 	}
 	if advisor.StoreID == "" {
@@ -1086,82 +1059,6 @@ func queueDashboardMergeConfidence(summaryConfidence string, points []QueueDashb
 		}
 	}
 	return summaryConfidence
-}
-
-func buildQueueDashboardStoreChoices(rows []QueueDashboardStoreRow) []QueueDashboardStoreChoice {
-	choices := make([]QueueDashboardStoreChoice, 0, len(rows))
-	for _, row := range rows {
-		if strings.TrimSpace(row.StoreID) == "" {
-			continue
-		}
-		choice := QueueDashboardStoreChoice{
-			StoreID:         row.StoreID,
-			StoreName:       dashboardStoreName(nil, row.StoreID, row.StoreName),
-			WaitMinutes:     row.WaitMinutes,
-			QueueGroups:     row.QueueGroups,
-			CalledNo:        row.CalledNo,
-			StoreStatus:     row.StoreStatus,
-			NetTicketStatus: row.NetTicketStatus,
-			OnlineOpen:      row.OnlineOpen,
-		}
-		choice.Score = queueDashboardStoreChoiceScore(row)
-		choice.Label = queueDashboardStoreChoiceLabel(row)
-		choice.Reason = queueDashboardStoreChoiceReason(row)
-		choices = append(choices, choice)
-	}
-	sort.SliceStable(choices, func(i, j int) bool {
-		if choices[i].Score != choices[j].Score {
-			return choices[i].Score < choices[j].Score
-		}
-		if choices[i].WaitMinutes != choices[j].WaitMinutes {
-			return choices[i].WaitMinutes < choices[j].WaitMinutes
-		}
-		if choices[i].QueueGroups != choices[j].QueueGroups {
-			return choices[i].QueueGroups < choices[j].QueueGroups
-		}
-		return choices[i].StoreID < choices[j].StoreID
-	})
-	if len(choices) > 4 {
-		return choices[:4]
-	}
-	return choices
-}
-
-func queueDashboardStoreChoiceScore(row QueueDashboardStoreRow) int {
-	score := row.WaitMinutes + row.QueueGroups*4
-	if row.WaitMinutes == 0 && row.QueueGroups == 0 {
-		score += 35
-	}
-	if queueDashboardIsOpen(row.StoreStatus) {
-		score -= 12
-	} else {
-		score += 180
-	}
-	if row.OnlineOpen {
-		score -= 18
-	}
-	return score
-}
-
-func queueDashboardStoreChoiceLabel(row QueueDashboardStoreRow) string {
-	if !queueDashboardIsOpen(row.StoreStatus) {
-		return "暂停"
-	}
-	if row.WaitMinutes <= 30 && row.QueueGroups <= 8 {
-		return "最好去"
-	}
-	if row.WaitMinutes <= 75 || row.QueueGroups <= 20 {
-		return "可备选"
-	}
-	return "偏挤"
-}
-
-func queueDashboardStoreChoiceReason(row QueueDashboardStoreRow) string {
-	ticket := "线上取号暂停"
-	if row.OnlineOpen {
-		ticket = "可线上取号"
-	}
-	return "前面 " + strconv.Itoa(row.QueueGroups) + " 桌，预计 " + strconv.Itoa(row.WaitMinutes) + " 分钟，" + ticket
 }
 
 func queueDashboardRemoteCalledStoreID(query QueueDashboardQuery, rollups []QueueBaselineRollup, storeFilter map[string]bool) string {
