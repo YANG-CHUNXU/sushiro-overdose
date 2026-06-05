@@ -27,7 +27,7 @@
 - [x] T014 Run `go vet ./...`.
 - [x] T015 Run `go test ./...`.
 - [x] T016 Run `git diff --check`.
-- [ ] T017 Manually verify markers, mobile fit, and eat-now reorder.
+- [x] T017 Manually verify markers, mobile fit, and eat-now reorder.
 
 ## Phase 4: Release
 
