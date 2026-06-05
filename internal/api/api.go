@@ -122,11 +122,21 @@ func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotT
 // 字段细节以接口实际返回为准，错误原文会原样返回便于校正。
 func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (ReservationRecord, error) {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/createNetTicket"
+	// 取号人数/桌型兜底：若预约偏好未配置（adult/child 都为 0、tableType 为空），
+	// 用合理默认，避免拿"0 个人"提交导致官方 500/E010。
+	adult, child := c.settings.Adult, c.settings.Child
+	if adult <= 0 && child <= 0 {
+		adult = 2
+	}
+	tableType := c.settings.TableType
+	if strings.TrimSpace(tableType) == "" {
+		tableType = "T"
+	}
 	payload := map[string]any{
 		"storeId":     storeID,
-		"adult":       c.settings.Adult,
-		"child":       c.settings.Child,
-		"tableType":   c.settings.TableType,
+		"adult":       adult,
+		"child":       child,
+		"tableType":   tableType,
 		"wechatId":    c.settings.WechatID,
 		"phoneNumber": c.settings.PhoneNumber,
 	}
@@ -203,6 +213,8 @@ func (c *Client) BaseHeaders(authorization, contentType string) map[string]strin
 		"X-App-Client":  c.settings.XAppClient,
 		"User-Agent":    c.settings.UserAgent,
 		"Referer":       c.settings.Referer,
+		// 微信小程序 WebView 在每个 api_auth 请求都会带这个头，补齐以更贴近官方请求。
+		"Xweb_xhr": "1",
 	}
 	if strings.TrimSpace(contentType) != "" {
 		headers["Content-Type"] = contentType
