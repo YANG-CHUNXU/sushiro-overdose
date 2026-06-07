@@ -396,20 +396,23 @@ func queueObservationCalledNo(observation QueueObservation) int {
 	if observation.DisplayCalledNo > 0 {
 		return observation.DisplayCalledNo
 	}
-	return firstQueueNumber(observation.GroupQueues.MixedQueue)
+	return currentDineInCalledNo(observation.GroupQueues)
 }
 
-func firstQueueNumber(values []string) int {
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if n, err := strconv.Atoi(value); err == nil && n > 0 {
-			return n
+func currentDineInCalledNo(queues QueueGroupQueues) int {
+	best := 0
+	for _, values := range [][]string{queues.BoothQueue, queues.MixedQueue, queues.CounterQueue} {
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if n, err := strconv.Atoi(value); err == nil && n > best {
+				best = n
+			}
 		}
 	}
-	return 0
+	return best
 }
 
 func isQueueOnlineOpen(store StoreInfo) bool {

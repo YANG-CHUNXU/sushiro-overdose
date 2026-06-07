@@ -593,21 +593,10 @@ func netTicketIssuedToday(now time.Time) bool {
 		now = time.Now()
 	}
 	plan := LoadNetTicketPlan()
-	if !plan.Enabled {
-		return false
-	}
 	if plan.Status != "success" && plan.Status != "issued_unknown" {
 		return false
 	}
-	today := now.Format("2006-01-02")
-	if strings.TrimSpace(plan.FiredDate) == today {
-		return true
-	}
-	if strings.TrimSpace(plan.FiredAt) == "" {
-		return false
-	}
-	firedAt, ok := parseRFC3339Local(plan.FiredAt)
-	return ok && firedAt.Format("2006-01-02") == today
+	return netTicketPlanFiredOn(plan, now)
 }
 
 func pauseSamplingForMainFlow() {

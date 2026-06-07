@@ -76,6 +76,7 @@ func handleQueueAlerts(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		cfg = normalizeQueueAlertConfig(cfg)
 		if err := SaveQueueAlertConfig(cfg); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return

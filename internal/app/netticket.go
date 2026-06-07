@@ -50,7 +50,7 @@ func LoadNetTicketPlan() NetTicketPlan {
 	if p.Status == "error" && isTicketAlreadyIssuedText(p.LastError) {
 		p.Status = "issued_unknown"
 	}
-	return p
+	return normalizeNetTicketPlan(p, time.Now())
 }
 
 func SaveNetTicketPlan(p NetTicketPlan) error {
@@ -60,6 +60,43 @@ func SaveNetTicketPlan(p NetTicketPlan) error {
 		return err
 	}
 	return os.WriteFile(netTicketPlanPath(), data, 0o600)
+}
+
+func normalizeNetTicketPlan(p NetTicketPlan, now time.Time) NetTicketPlan {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if p.Status == "" {
+		p.Status = "idle"
+	}
+	if p.Enabled && netTicketPlanTerminal(p.Status) {
+		p.Enabled = false
+	}
+	return p
+}
+
+func netTicketPlanTerminal(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "success", "issued_unknown", "expired", "error":
+		return true
+	default:
+		return false
+	}
+}
+
+func netTicketPlanFiredOn(p NetTicketPlan, day time.Time) bool {
+	if day.IsZero() {
+		day = time.Now()
+	}
+	today := day.Format("2006-01-02")
+	if strings.TrimSpace(p.FiredDate) == today {
+		return true
+	}
+	if strings.TrimSpace(p.FiredAt) == "" {
+		return false
+	}
+	firedAt, ok := parseRFC3339Local(p.FiredAt)
+	return ok && firedAt.Format("2006-01-02") == today
 }
 
 var netTicketMu sync.Mutex
@@ -134,6 +171,7 @@ func netTicketTickByTime(ctx context.Context, plan NetTicketPlan, now time.Time,
 		return
 	}
 	if now.After(target.Add(netTicketWindowMinutes * time.Minute)) {
+		plan.Enabled = false
 		plan.Status = "expired"
 		plan.FiredDate = today
 		plan.FiredAt = now.Format(time.RFC3339)
@@ -180,6 +218,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 
 	client := currentAuthedClient()
 	if client == nil {
+		plan.Enabled = false
 		plan.Status = "error"
 		plan.LastError = "尚未捕获认证参数（或已过期），无法自动取号"
 		_ = SaveNetTicketPlan(plan)
@@ -208,6 +247,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 			clearNetTicketFire(today)
 			return
 		}
+		plan.Enabled = false
 		plan.Status = "error"
 		plan.LastError = friendlyNetTicketError(err)
 		_ = SaveNetTicketPlan(plan)
@@ -220,6 +260,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 }
 
 func markNetTicketIssuedUnknown(plan *NetTicketPlan, message string) {
+	plan.Enabled = false
 	plan.Status = "issued_unknown"
 	plan.LastError = message
 	_ = SaveNetTicketPlan(*plan)
@@ -236,6 +277,7 @@ func recoverExistingNetTicket(ctx context.Context, client *Client, plan *NetTick
 }
 
 func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketPlan, ticket ReservationRecord) {
+	plan.Enabled = false
 	plan.Status = "success"
 	plan.Number = ticket.Number
 	plan.TicketID = ticket.TicketID

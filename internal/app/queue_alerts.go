@@ -33,12 +33,27 @@ type QueueAlertRule struct {
 	Type        string `json:"type"`
 	WaitMinutes int    `json:"wait_minutes,omitempty"` // wait_below：预估等待 ≤ 此值时提醒
 	TargetNo    int    `json:"target_no,omitempty"`    // called_reach：我手里的号
-	LeadGroups  int    `json:"lead_groups,omitempty"`  // called_reach：提前多少号提醒
+	LeadGroups  int    `json:"lead_groups,omitempty"`  // called_reach：提前多少号提醒（兼容旧配置）
+	NotifyAtNo  int    `json:"notify_at_no,omitempty"` // called_reach：叫到/超过这个号时提醒
+	NotifyAtNos []int  `json:"notify_at_nos,omitempty"`
 	Enabled     bool   `json:"enabled"`
 }
 
 func (r QueueAlertRule) key() string {
+	if r.Type == queueAlertCalledReach {
+		return fmt.Sprintf("%s|%s|%d|%d|%d", r.StoreID, r.Type, r.WaitMinutes, r.TargetNo, r.calledReachThreshold())
+	}
 	return fmt.Sprintf("%s|%s|%d|%d", r.StoreID, r.Type, r.WaitMinutes, r.TargetNo)
+}
+
+func (r QueueAlertRule) calledReachThreshold() int {
+	if r.NotifyAtNo > 0 {
+		return r.NotifyAtNo
+	}
+	if r.TargetNo > 0 {
+		return r.TargetNo - r.LeadGroups
+	}
+	return 0
 }
 
 type QueueAlertConfig struct {
@@ -66,16 +81,96 @@ func LoadQueueAlertConfig() QueueAlertConfig {
 	if json.Unmarshal(data, &cfg) != nil {
 		return QueueAlertConfig{}
 	}
-	return cfg
+	return normalizeQueueAlertConfig(cfg)
 }
 
 func SaveQueueAlertConfig(cfg QueueAlertConfig) error {
 	os.MkdirAll(AppDirPath(), 0o755)
+	cfg = normalizeQueueAlertConfig(cfg)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(queueAlertConfigPath(), data, 0o600)
+}
+
+func normalizeQueueAlertConfig(cfg QueueAlertConfig) QueueAlertConfig {
+	out := QueueAlertConfig{Rules: make([]QueueAlertRule, 0, len(cfg.Rules))}
+	seen := map[string]bool{}
+	for _, rule := range cfg.Rules {
+		rules := normalizeQueueAlertRule(rule)
+		for _, normalized := range rules {
+			key := normalized.key()
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			out.Rules = append(out.Rules, normalized)
+		}
+	}
+	return out
+}
+
+func normalizeQueueAlertRule(rule QueueAlertRule) []QueueAlertRule {
+	rule.StoreID = strings.TrimSpace(rule.StoreID)
+	rule.StoreName = strings.TrimSpace(rule.StoreName)
+	rule.Type = strings.TrimSpace(rule.Type)
+	if rule.StoreID == "" || rule.Type == "" {
+		return nil
+	}
+	switch rule.Type {
+	case queueAlertCalledReach:
+		if rule.TargetNo <= 0 {
+			return nil
+		}
+		nos := positiveUniqueInts(rule.NotifyAtNos)
+		if rule.NotifyAtNo > 0 {
+			nos = appendUniqueInt(nos, rule.NotifyAtNo)
+		}
+		if len(nos) == 0 {
+			threshold := rule.calledReachThreshold()
+			if threshold > 0 {
+				nos = append(nos, threshold)
+			}
+		}
+		out := make([]QueueAlertRule, 0, len(nos))
+		for _, no := range nos {
+			normalized := rule
+			normalized.NotifyAtNos = nil
+			normalized.NotifyAtNo = no
+			normalized.LeadGroups = max(0, normalized.TargetNo-no)
+			out = append(out, normalized)
+		}
+		return out
+	case queueAlertWaitBelow:
+		if rule.WaitMinutes <= 0 {
+			return nil
+		}
+		rule.NotifyAtNos = nil
+		rule.NotifyAtNo = 0
+		return []QueueAlertRule{rule}
+	default:
+		return nil
+	}
+}
+
+func positiveUniqueInts(values []int) []int {
+	out := make([]int, 0, len(values))
+	for _, value := range values {
+		if value > 0 {
+			out = appendUniqueInt(out, value)
+		}
+	}
+	return out
+}
+
+func appendUniqueInt(values []int, value int) []int {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func loadQueueAlertState() map[string]queueAlertRuleState {
@@ -163,12 +258,13 @@ func queueAlertEvaluateRule(rule QueueAlertRule, obs QueueObservation, state map
 		if st.FiredOnce || calledNo <= 0 {
 			return "", "", false
 		}
-		if calledNo >= rule.TargetNo-rule.LeadGroups {
+		threshold := rule.calledReachThreshold()
+		if threshold > 0 && calledNo >= threshold {
 			st.FiredOnce = true
 			st.FiredAt = time.Now().Format(time.RFC3339)
 			state[key] = st
 			return "🔔 快叫到你了",
-				fmt.Sprintf("当前叫号 %d，你的号 %d，还差 %d 桌，请尽快回店。", calledNo, rule.TargetNo, max(0, rule.TargetNo-calledNo)),
+				fmt.Sprintf("当前叫号 %d，已达到提醒点 %d；你的号 %d，还差 %d 桌，请尽快回店。", calledNo, threshold, rule.TargetNo, max(0, rule.TargetNo-calledNo)),
 				true
 		}
 		return "", "", false

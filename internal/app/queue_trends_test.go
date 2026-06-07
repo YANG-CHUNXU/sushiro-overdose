@@ -302,8 +302,8 @@ func TestQueueObservationFromStoreInfoCapturesGroupQueues(t *testing.T) {
 	if !ok {
 		t.Fatal("observation should be captured")
 	}
-	if observation.DisplayCalledNo != 1 {
-		t.Fatalf("display called no = %d, want 1", observation.DisplayCalledNo)
+	if observation.DisplayCalledNo != 3 {
+		t.Fatalf("display called no = %d, want 3", observation.DisplayCalledNo)
 	}
 	if strings.Join(observation.GroupQueues.MixedQueue, ",") != "001,002,003" {
 		t.Fatalf("mixed queue = %#v, want 001/002/003", observation.GroupQueues.MixedQueue)

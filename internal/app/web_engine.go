@@ -377,7 +377,7 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 		noteAuthResult(err) // 认证失败则标记 stale
 		if isTicketAlreadyIssuedError(err) {
 			plan := LoadNetTicketPlan()
-			plan.Enabled = true
+			plan.Enabled = false
 			plan.StoreID = storeID
 			plan.Status = "issued_unknown"
 			plan.FiredDate = time.Now().Format("2006-01-02")
@@ -396,7 +396,7 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	markAuthHealthy() // 取号成功 → 认证有效
 	plan := LoadNetTicketPlan()
-	plan.Enabled = true
+	plan.Enabled = false
 	plan.StoreID = storeID
 	plan.FiredDate = time.Now().Format("2006-01-02")
 	plan.FiredAt = time.Now().Format(time.RFC3339)
