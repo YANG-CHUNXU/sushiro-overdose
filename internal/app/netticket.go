@@ -239,6 +239,14 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 			sendQueueAlert(ctx, "⚠️ 已有排队号", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError)
 			return
 		}
+		if isCredentialRefreshLikelyError(err) {
+			plan.Enabled = false
+			plan.Status = "error"
+			plan.LastError = friendlyNetTicketError(err)
+			_ = SaveNetTicketPlan(plan)
+			sendQueueAlert(ctx, "⚠️ 定时取号需要重置认证", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError+"。寿司郎凭证会过期或被手机端登录顶掉，请重置认证后重新启用自动取号。")
+			return
+		}
 		if isOfficialServerHTTPError(err) {
 			plan.Status = "retrying"
 			plan.FiredDate = ""
@@ -259,6 +267,23 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 	applyNetTicketSuccess(ctx, client, &plan, ticket)
 	_ = SaveNetTicketPlan(plan)
 	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))
+}
+
+func resetNetTicketPlanAfterAuthReset() {
+	plan := LoadNetTicketPlan()
+	if !plan.Enabled && plan.Status == "idle" && plan.LastError == "" {
+		return
+	}
+	switch strings.TrimSpace(plan.Status) {
+	case "success", "issued_unknown":
+		return
+	}
+	plan.Enabled = false
+	if strings.TrimSpace(plan.Status) == "" || strings.TrimSpace(plan.Status) == "armed" || strings.TrimSpace(plan.Status) == "retrying" {
+		plan.Status = "error"
+	}
+	plan.LastError = "已重置本地凭证；寿司郎凭证会过期或被手机端登录顶掉，请重新获取凭证后再启用自动取号"
+	_ = SaveNetTicketPlan(plan)
 }
 
 func markNetTicketIssuedUnknown(plan *NetTicketPlan, message string) {

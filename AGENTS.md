@@ -217,6 +217,7 @@ main.go (默认启动 Web UI)
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
 | POST | `/api/auth/import` | 手动导入凭证参数，支持 JSON、curl、raw headers |
+| POST | `/api/auth/reset` | 重置本机寿司郎认证：停止当前自动操作、删除旧凭证、清内存 client、停止未执行自动取号计划，引导重新获取凭证 |
 | GET/POST | `/api/mobile-ua` | 读取/手动保存移动端 UA |
 | POST | `/api/mobile-ua/capture/start` | 启动手机扫码 UA 采集页 |
 | POST | `/api/mobile-ua/capture/stop` | 停止手机扫码 UA 采集 |

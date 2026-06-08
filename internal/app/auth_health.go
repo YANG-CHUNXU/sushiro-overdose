@@ -54,6 +54,15 @@ func markAuthHealthy() {
 	authHealth.mu.Unlock()
 }
 
+func resetAuthHealth() {
+	authHealth.mu.Lock()
+	authHealth.status = authHealthUnknown
+	authHealth.reason = ""
+	authHealth.checkedAt = time.Time{}
+	authHealth.notified = false
+	authHealth.mu.Unlock()
+}
+
 // markAuthStale：官方判定凭证失败时调用。仅在 ok/unknown→stale 跃迁时推一次通知。
 func markAuthStale(reason string) {
 	authHealth.mu.Lock()
@@ -68,7 +77,7 @@ func markAuthStale(reason string) {
 	authHealth.mu.Unlock()
 
 	if shouldNotify {
-		body := "在手机上用过寿司郎小程序后，电脑这边的凭证就会失效（同一账号只认一个会话）。请在工具里重新获取凭证。"
+		body := "寿司郎凭证会过期；在手机上用过寿司郎小程序后，电脑这边的凭证也会失效（同一账号只认一个会话）。请在工具里重置认证并重新获取凭证。"
 		if reason != "" {
 			body = reason + "。" + body
 		}

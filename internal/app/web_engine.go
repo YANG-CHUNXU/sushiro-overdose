@@ -545,6 +545,24 @@ func handleEngineState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, engine.GetState())
 }
 
+func handleAuthReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	engine.Stop()
+	DeleteLocalConfig()
+	clearWebSettings()
+	resetAuthHealth()
+	resetNetTicketPlanAfterAuthReset()
+	writeJSON(w, map[string]any{
+		"ok":          true,
+		"has_config":  false,
+		"auth_health": getAuthHealth(),
+		"message":     "已重置本地寿司郎凭证；凭证会过期或被手机端登录顶掉，请重新获取凭证。",
+	})
+}
+
 func handleEngineCapture(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")

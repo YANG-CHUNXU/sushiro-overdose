@@ -49,6 +49,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/diagnostics/bundle", handleDiagBundle)
 	mux.HandleFunc("/api/auth/probe", handleAuthProbe)
 	mux.HandleFunc("/api/auth/import", handleAuthImport)
+	mux.HandleFunc("/api/auth/reset", handleAuthReset)
 	mux.HandleFunc("/api/insights", handleInsights)
 	mux.HandleFunc("/api/queue/dashboard", handleQueueDashboard)
 	mux.HandleFunc("/api/queue/trends", handleQueueTrends)
@@ -189,6 +190,13 @@ func setWebSettings(s Settings) {
 	webSettingsMu.Unlock()
 }
 
+func clearWebSettings() {
+	webSettingsMu.Lock()
+	webSettings = Settings{}
+	webClient = nil
+	webSettingsMu.Unlock()
+}
+
 func getWebSettings() Settings {
 	webSettingsMu.RLock()
 	defer webSettingsMu.RUnlock()
@@ -204,9 +212,11 @@ func getWebClient() *Client {
 func refreshWebClient() {
 	tokens, err := LoadLocalConfig()
 	if err != nil {
+		clearWebSettings()
 		return
 	}
 	if err := tokens.ValidateForQuery(); err != nil {
+		clearWebSettings()
 		return
 	}
 	prefs := LoadPreferences()
