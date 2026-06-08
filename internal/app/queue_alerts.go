@@ -30,12 +30,15 @@ const (
 type QueueAlertRule struct {
 	StoreID     string `json:"store_id"`
 	StoreName   string `json:"store_name,omitempty"`
+	Label       string `json:"label,omitempty"`
 	Type        string `json:"type"`
 	WaitMinutes int    `json:"wait_minutes,omitempty"` // wait_below：预估等待 ≤ 此值时提醒
 	TargetNo    int    `json:"target_no,omitempty"`    // called_reach：我手里的号
 	LeadGroups  int    `json:"lead_groups,omitempty"`  // called_reach：提前多少号提醒（兼容旧配置）
 	NotifyAtNo  int    `json:"notify_at_no,omitempty"` // called_reach：叫到/超过这个号时提醒
 	NotifyAtNos []int  `json:"notify_at_nos,omitempty"`
+	TravelMin   int    `json:"travel_minutes,omitempty"`
+	Template    string `json:"template,omitempty"`
 	Enabled     bool   `json:"enabled"`
 }
 
@@ -114,7 +117,12 @@ func normalizeQueueAlertConfig(cfg QueueAlertConfig) QueueAlertConfig {
 func normalizeQueueAlertRule(rule QueueAlertRule) []QueueAlertRule {
 	rule.StoreID = strings.TrimSpace(rule.StoreID)
 	rule.StoreName = strings.TrimSpace(rule.StoreName)
+	rule.Label = strings.TrimSpace(rule.Label)
 	rule.Type = strings.TrimSpace(rule.Type)
+	rule.Template = strings.TrimSpace(rule.Template)
+	if rule.TravelMin < 0 {
+		rule.TravelMin = 0
+	}
 	if rule.StoreID == "" || rule.Type == "" {
 		return nil
 	}
@@ -263,13 +271,33 @@ func queueAlertEvaluateRule(rule QueueAlertRule, obs QueueObservation, state map
 			st.FiredOnce = true
 			st.FiredAt = time.Now().Format(time.RFC3339)
 			state[key] = st
+			label := queueAlertLabel(rule)
+			prefix := ""
+			if label != "" {
+				prefix = "【" + label + "】"
+			}
+			travel := ""
+			if rule.TravelMin > 0 {
+				travel = fmt.Sprintf(" 你填写路程约 %d 分钟，建议现在出发或尽快回店。", rule.TravelMin)
+			}
 			return "🔔 快叫到你了",
-				fmt.Sprintf("当前叫号 %d，已达到提醒点 %d；你的号 %d，还差 %d 桌，请尽快回店。", calledNo, threshold, rule.TargetNo, max(0, rule.TargetNo-calledNo)),
+				fmt.Sprintf("%s当前叫号 %d，已达到提醒点 %d；号码 %d，还差 %d 桌。%s", prefix, calledNo, threshold, rule.TargetNo, max(0, rule.TargetNo-calledNo), travel),
 				true
 		}
 		return "", "", false
 	}
 	return "", "", false
+}
+
+func queueAlertLabel(rule QueueAlertRule) string {
+	label := strings.TrimSpace(rule.Label)
+	if label != "" {
+		return label
+	}
+	if rule.TargetNo > 0 {
+		return fmt.Sprintf("%d号", rule.TargetNo)
+	}
+	return ""
 }
 
 func sendQueueAlert(ctx context.Context, title, content string) {

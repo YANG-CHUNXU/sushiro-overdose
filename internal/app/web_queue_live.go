@@ -87,6 +87,14 @@ func handleQueueAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleQueueAlertStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	writeJSON(w, BuildQueueAlertStatus(time.Now()))
+}
+
 func handleQueueLiveAreas(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET only")

@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestQueueAlertWaitBelowHysteresis(t *testing.T) {
 	rule := QueueAlertRule{StoreID: "3006", Type: queueAlertWaitBelow, WaitMinutes: 60, Enabled: true}
@@ -110,5 +113,35 @@ func TestQueueAlertCalledReachFiresAfterThresholdJump(t *testing.T) {
 	}
 	if _, _, fire := queueAlertEvaluateRule(rule, QueueObservation{DisplayCalledNo: 1160}, state); fire {
 		t.Fatal("crossed threshold should fire only once")
+	}
+}
+
+func TestQueueAlertCalledReachIncludesLabelAndTravel(t *testing.T) {
+	cfg := normalizeQueueAlertConfig(QueueAlertConfig{Rules: []QueueAlertRule{{
+		StoreID:    "3006",
+		StoreName:  "太阳宫凯德店",
+		Label:      " 我 ",
+		Type:       queueAlertCalledReach,
+		TargetNo:   1078,
+		NotifyAtNo: 1050,
+		TravelMin:  25,
+		Enabled:    true,
+	}}})
+	if len(cfg.Rules) != 1 {
+		t.Fatalf("rules len = %d, want 1", len(cfg.Rules))
+	}
+	rule := cfg.Rules[0]
+	if rule.Label != "我" || rule.TravelMin != 25 {
+		t.Fatalf("normalized rule = %#v, want trimmed label and travel minutes", rule)
+	}
+
+	title, body, fire := queueAlertEvaluateRule(rule, QueueObservation{DisplayCalledNo: 1051}, map[string]queueAlertRuleState{})
+	if !fire || title != "🔔 快叫到你了" {
+		t.Fatalf("fire/title = %v/%q, want called reminder", fire, title)
+	}
+	for _, want := range []string{"【我】", "已达到提醒点 1050", "号码 1078", "路程约 25 分钟"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body %q missing %q", body, want)
+		}
 	}
 }
