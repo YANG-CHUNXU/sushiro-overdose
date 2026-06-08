@@ -18,8 +18,11 @@ func TestKnownOfficialServerError(t *testing.T) {
 	if !isKnownOfficialServerError(err) {
 		t.Fatalf("isKnownOfficialServerError() = false")
 	}
+	if !isCredentialRefreshLikelyError(err) {
+		t.Fatalf("isCredentialRefreshLikelyError() = false")
+	}
 	msg := friendlyOfficialAPIError(err)
-	if !strings.Contains(msg, "E010") || strings.Contains(msg, "重新捕获") {
+	if !strings.Contains(msg, "E010") || !strings.Contains(msg, "重新认证") || !strings.Contains(msg, "凭证需要刷新") {
 		t.Fatalf("friendly message = %q", msg)
 	}
 }
@@ -31,6 +34,22 @@ func TestNonServerErrorIsNotOfficialServerError(t *testing.T) {
 	}
 	if isKnownOfficialServerError(err) {
 		t.Fatalf("403 should not be known server error")
+	}
+	if isCredentialRefreshLikelyError(err) {
+		t.Fatalf("403 should not be treated as credential refresh likely")
+	}
+}
+
+func TestGenericHTTP500IsNotCredentialRefreshLikely(t *testing.T) {
+	err := &api.APIError{StatusCode: 500, Body: `{"message":"temporary outage"}`}
+	if !isOfficialServerHTTPError(err) {
+		t.Fatalf("500 should be treated as official server error")
+	}
+	if isKnownOfficialServerError(err) {
+		t.Fatalf("generic 500 should not be known E010 server error")
+	}
+	if isCredentialRefreshLikelyError(err) {
+		t.Fatalf("generic 500 should not be credential refresh likely")
 	}
 }
 

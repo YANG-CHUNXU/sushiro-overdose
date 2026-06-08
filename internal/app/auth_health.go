@@ -68,13 +68,17 @@ func markAuthStale(reason string) {
 	authHealth.mu.Unlock()
 
 	if shouldNotify {
+		body := "在手机上用过寿司郎小程序后，电脑这边的凭证就会失效（同一账号只认一个会话）。请在工具里重新获取凭证。"
+		if reason != "" {
+			body = reason + "。" + body
+		}
 		sendNotification("寿司郎 - 凭证可能已过期",
-			"在手机上用过寿司郎小程序后，电脑这边的凭证就会失效（同一账号只认一个会话）。请在工具里重新获取凭证。")
+			body)
 	}
 }
 
 // noteAuthResult：被动检测入口。把一次"需要凭证的请求"的结果喂进来——
-// err 为凭证失败 → stale；err 为 nil（成功）→ healthy；其它错误不改变凭证健康。
+// err 为凭证失败或高概率需刷新凭证的官方错误 → stale；err 为 nil（成功）→ healthy；其它错误不改变凭证健康。
 func noteAuthResult(err error) {
 	if err == nil {
 		markAuthHealthy()
@@ -82,5 +86,9 @@ func noteAuthResult(err error) {
 	}
 	if isAuthError(err) {
 		markAuthStale("官方接口返回凭证失败（401/403）")
+		return
+	}
+	if isCredentialRefreshLikelyError(err) {
+		markAuthStale("官方接口返回 E010/error.server，凭证可能需要刷新")
 	}
 }

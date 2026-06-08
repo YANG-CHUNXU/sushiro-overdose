@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,6 +18,8 @@ const (
 	queueAdvisorWindow15 = 15 * time.Minute
 	queueAdvisorWindow30 = 30 * time.Minute
 	queueAdvisorWindow60 = 60 * time.Minute
+
+	queuePressureCurveLocalPreferredPoints = 8
 )
 
 type QueueTimeRange struct {
@@ -383,27 +386,104 @@ type QueuePressureCurvePoint struct {
 	PressureLevel       string   `json:"pressure_level"`
 	PressureScore       int      `json:"pressure_score"`
 	CalledSpeed15       *float64 `json:"called_speed_15,omitempty"`
+	Source              string   `json:"source,omitempty"`
+	SampleCount         int      `json:"sample_count,omitempty"`
+	Confidence          string   `json:"confidence,omitempty"`
 }
 
 type QueuePressureCurve struct {
-	StoreID     string                    `json:"store_id"`
-	Date        string                    `json:"date"`
-	GeneratedAt string                    `json:"generated_at"`
-	Points      []QueuePressureCurvePoint `json:"points"`
-	Message     string                    `json:"message,omitempty"`
+	StoreID      string                    `json:"store_id"`
+	Date         string                    `json:"date"`
+	DateType     string                    `json:"date_type,omitempty"`
+	DateTypeName string                    `json:"date_type_name,omitempty"`
+	GeneratedAt  string                    `json:"generated_at"`
+	Source       string                    `json:"source,omitempty"`
+	LocalPoints  int                       `json:"local_points"`
+	RemotePoints int                       `json:"remote_points"`
+	Baseline     QueueBaselineRemoteStatus `json:"baseline"`
+	Points       []QueuePressureCurvePoint `json:"points"`
+	Message      string                    `json:"message,omitempty"`
 }
 
-func buildQueuePressureCurve(storeID, date string, now time.Time) QueuePressureCurve {
+func buildQueuePressureCurve(ctx context.Context, storeID, date string, now time.Time) QueuePressureCurve {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if now.IsZero() {
 		now = time.Now()
 	}
-	if strings.TrimSpace(date) == "" {
-		date = now.Format("2006-01-02")
+	date, day := queuePressureCurveDate(date, now)
+	holidays, workdays, _ := loadQueueHolidayDates()
+	dateType := queueTrendDateType(day, holidays, workdays)
+	out := QueuePressureCurve{
+		StoreID:      storeID,
+		Date:         date,
+		DateType:     dateType,
+		DateTypeName: queueTrendDateTypeName(dateType),
+		GeneratedAt:  now.Format(time.RFC3339),
 	}
-	out := QueuePressureCurve{StoreID: storeID, Date: date, GeneratedAt: now.Format(time.RFC3339)}
 
+	localPoints := buildLocalQueuePressureCurvePoints(storeID, date)
+	out.LocalPoints = len(localPoints)
+
+	baseline, baselineStatus, baselineErr := loadRemoteQueuePressureBaseline(ctx, storeID, now)
+	out.Baseline = baselineStatus
+	remotePoints := buildRemoteQueuePressureCurvePoints(storeID, date, dateType, baseline)
+	out.RemotePoints = len(remotePoints)
+
+	switch {
+	case len(localPoints) >= queuePressureCurveLocalPreferredPoints:
+		out.Points = localPoints
+		out.Source = "local"
+		if len(remotePoints) > 0 {
+			out.Message = "当前曲线使用本机实际采样；线上 Turso 基准已连接，本机样本不足时会自动兜底。"
+		}
+	case len(localPoints) > 0 && len(remotePoints) > 0:
+		out.Points = mergeQueuePressureCurvePoints(remotePoints, localPoints)
+		out.Source = "mixed"
+		out.Message = fmt.Sprintf("本机今天只有 %d 个采样点，已用线上 Turso 基准补全排队压力；带“本机采样”的点按实际数据覆盖，远端基准不等同实时叫号。", len(localPoints))
+	case len(remotePoints) > 0:
+		out.Points = remotePoints
+		out.Source = "remote_baseline"
+		out.Message = "本机今天还没有足够采样，当前使用线上 Turso 基准的排队压力；实时叫号判断仍以上方官方当前状态为准。"
+	case len(localPoints) > 0:
+		out.Points = localPoints
+		out.Source = "local"
+		if baselineErr != nil {
+			out.Message = "线上 Turso 基准暂时不可用，当前只显示本机采样曲线。"
+		}
+	default:
+		out.Source = "none"
+		out.Message = "还没有这家店今天的本机采样曲线。开启本机数据收集后会逐步补齐。"
+		if baselineErr != nil {
+			out.Message += " 线上 Turso 基准暂时不可用。"
+		} else if baselineStatus.Configured && !baselineStatus.Used {
+			out.Message += " 线上 Turso 基准未返回可用数据。"
+		} else if !baselineStatus.Configured {
+			out.Message += " 未配置线上 Turso 基准。"
+		}
+	}
+	return out
+}
+
+func queuePressureCurveDate(raw string, now time.Time) (string, time.Time) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	loc := now.Location()
+	if loc == nil {
+		loc = time.Local
+	}
+	if day, ok := parseTrendDateParam(raw, loc); ok {
+		return day.Format("2006-01-02"), day
+	}
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	return day.Format("2006-01-02"), day
+}
+
+func buildLocalQueuePressureCurvePoints(storeID, date string) []QueuePressureCurvePoint {
 	all := loadQueueObservations()
-	day := make([]QueueObservation, 0, len(all))
+	dayObservations := make([]QueueObservation, 0, len(all))
 	for _, o := range all {
 		if o.StoreID != storeID {
 			continue
@@ -412,31 +492,181 @@ func buildQueuePressureCurve(storeID, date string, now time.Time) QueuePressureC
 		if !ok || at.Format("2006-01-02") != date {
 			continue
 		}
-		day = append(day, o)
+		dayObservations = append(dayObservations, o)
 	}
-	if len(day) == 0 {
-		out.Message = "还没有这家店今天的本机采样曲线。开启本机数据收集后会逐步补齐。"
-		return out
+	if len(dayObservations) == 0 {
+		return nil
 	}
-	sort.SliceStable(day, func(i, j int) bool {
-		li, _ := parseRFC3339Local(queueObservationCollectedAt(day[i]))
-		lj, _ := parseRFC3339Local(queueObservationCollectedAt(day[j]))
+	sort.SliceStable(dayObservations, func(i, j int) bool {
+		li, _ := parseRFC3339Local(queueObservationCollectedAt(dayObservations[i]))
+		lj, _ := parseRFC3339Local(queueObservationCollectedAt(dayObservations[j]))
 		return li.Before(lj)
 	})
-	for _, o := range day {
+	points := make([]QueuePressureCurvePoint, 0, len(dayObservations))
+	for _, o := range dayObservations {
 		at, _ := parseRFC3339Local(queueObservationCollectedAt(o))
 		level := queuePressureLevel(o.GroupQueuesCount, o.WaitMinutes)
-		out.Points = append(out.Points, QueuePressureCurvePoint{
+		points = append(points, QueuePressureCurvePoint{
 			Time:                at.Format("15:04"),
 			CalledNo:            o.DisplayCalledNo,
 			WaitingGroups:       o.GroupQueuesCount,
 			OfficialWaitMinutes: o.WaitMinutes,
 			PressureLevel:       level,
 			PressureScore:       queuePressureScore(o.GroupQueuesCount, o.WaitMinutes),
-			CalledSpeed15:       calledRateOverWindow(day, storeID, at, queueAdvisorWindow15),
+			CalledSpeed15:       calledRateOverWindow(dayObservations, storeID, at, queueAdvisorWindow15),
+			Source:              "local",
+			SampleCount:         1,
+			Confidence:          "live",
 		})
 	}
+	return points
+}
+
+type queuePressureCurveRemoteAcc struct {
+	samples   int
+	calledSum float64
+	calledN   int
+	groupsSum float64
+	groupsN   int
+	waitSum   float64
+	waitN     int
+}
+
+func buildRemoteQueuePressureCurvePoints(storeID, date, dateType string, baseline QueueBaselineExport) []QueuePressureCurvePoint {
+	storeID = strings.TrimSpace(storeID)
+	if storeID == "" || len(baseline.Rollups) == 0 && len(baseline.Latest) == 0 {
+		return nil
+	}
+	byBucket := map[string]*queuePressureCurveRemoteAcc{}
+	for _, rollup := range baseline.Rollups {
+		if strconv.Itoa(rollup.StoreID) != storeID {
+			continue
+		}
+		if !queueDashboardRollupDateTypeAllowed(rollup.DateType, dateType, false) || !queueDashboardCalledBucketInRange(rollup.TimeBucket) {
+			continue
+		}
+		if rollup.CalledNoTypical == nil && rollup.QueueGroupsTypical == nil && rollup.WaitTypicalMinutes == nil {
+			continue
+		}
+		acc := byBucket[rollup.TimeBucket]
+		if acc == nil {
+			acc = &queuePressureCurveRemoteAcc{}
+			byBucket[rollup.TimeBucket] = acc
+		}
+		acc.samples += maxInt(rollup.SampleCount, 1)
+		if rollup.CalledNoTypical != nil {
+			weight := maxInt(rollup.CalledSampleCount, 1)
+			acc.calledSum += *rollup.CalledNoTypical * float64(weight)
+			acc.calledN += weight
+		}
+		if rollup.QueueGroupsTypical != nil {
+			weight := maxInt(rollup.SampleCount, 1)
+			acc.groupsSum += *rollup.QueueGroupsTypical * float64(weight)
+			acc.groupsN += weight
+		}
+		if rollup.WaitTypicalMinutes != nil {
+			weight := maxInt(rollup.SampleCount, 1)
+			acc.waitSum += *rollup.WaitTypicalMinutes * float64(weight)
+			acc.waitN += weight
+		}
+	}
+
+	buckets := make([]string, 0, len(byBucket))
+	for bucket := range byBucket {
+		buckets = append(buckets, bucket)
+	}
+	sort.Strings(buckets)
+	points := make([]QueuePressureCurvePoint, 0, len(buckets)+1)
+	for _, bucket := range buckets {
+		acc := byBucket[bucket]
+		point := QueuePressureCurvePoint{
+			Time:        bucket,
+			Source:      "remote_baseline",
+			SampleCount: acc.samples,
+			Confidence:  queueDashboardConfidence(acc.samples),
+		}
+		if acc.calledN > 0 {
+			point.CalledNo = int(math.Round(acc.calledSum / float64(acc.calledN)))
+		}
+		if acc.groupsN > 0 {
+			point.WaitingGroups = int(math.Round(acc.groupsSum / float64(acc.groupsN)))
+		}
+		if acc.waitN > 0 {
+			point.OfficialWaitMinutes = int(math.Round(acc.waitSum / float64(acc.waitN)))
+		}
+		point.PressureLevel = queuePressureLevel(point.WaitingGroups, point.OfficialWaitMinutes)
+		point.PressureScore = queuePressureScore(point.WaitingGroups, point.OfficialWaitMinutes)
+		points = append(points, point)
+	}
+
+	for _, latest := range baseline.Latest {
+		if strconv.Itoa(latest.StoreID) != storeID {
+			continue
+		}
+		at, ok := parseRFC3339Local(latest.CollectedAt)
+		if !ok || at.Format("2006-01-02") != date || !queueDashboardCalledTimeInRange(at) {
+			continue
+		}
+		level := queuePressureLevel(latest.GroupQueuesCount, latest.WaitMinutes)
+		points = append(points, QueuePressureCurvePoint{
+			Time:                at.Format("15:04"),
+			CalledNo:            latest.DisplayCalledNo,
+			WaitingGroups:       latest.GroupQueuesCount,
+			OfficialWaitMinutes: latest.WaitMinutes,
+			PressureLevel:       level,
+			PressureScore:       queuePressureScore(latest.GroupQueuesCount, latest.WaitMinutes),
+			Source:              "remote_latest",
+			SampleCount:         1,
+			Confidence:          "live",
+		})
+	}
+	return sortAndDedupQueuePressureCurvePoints(points)
+}
+
+func mergeQueuePressureCurvePoints(remotePoints, localPoints []QueuePressureCurvePoint) []QueuePressureCurvePoint {
+	points := make([]QueuePressureCurvePoint, 0, len(remotePoints)+len(localPoints))
+	points = append(points, remotePoints...)
+	points = append(points, localPoints...)
+	return sortAndDedupQueuePressureCurvePoints(points)
+}
+
+func sortAndDedupQueuePressureCurvePoints(points []QueuePressureCurvePoint) []QueuePressureCurvePoint {
+	sort.SliceStable(points, func(i, j int) bool {
+		mi := queueDashboardBucketMinute(points[i].Time)
+		mj := queueDashboardBucketMinute(points[j].Time)
+		if mi != mj {
+			return mi < mj
+		}
+		return queuePressureCurveSourceRank(points[i].Source) > queuePressureCurveSourceRank(points[j].Source)
+	})
+	out := make([]QueuePressureCurvePoint, 0, len(points))
+	seen := map[string]bool{}
+	for _, point := range points {
+		minute := queueDashboardBucketMinute(point.Time)
+		if minute < 0 {
+			continue
+		}
+		key := point.Time
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, point)
+	}
 	return out
+}
+
+func queuePressureCurveSourceRank(source string) int {
+	switch source {
+	case "local":
+		return 3
+	case "remote_latest":
+		return 2
+	case "remote_baseline":
+		return 1
+	default:
+		return 0
+	}
 }
 
 // ---------- 时间互推：取号 <-> 就餐 ----------

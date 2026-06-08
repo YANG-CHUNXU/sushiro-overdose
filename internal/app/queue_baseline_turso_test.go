@@ -211,3 +211,87 @@ func TestQueueBaselineRemoteConfigRoundTrip(t *testing.T) {
 		t.Fatalf("LoadQueueBaselineRemoteConfig() = %+v, want %+v", got, want)
 	}
 }
+
+func TestFetchQueueBaselineFromCloud(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/queue/baseline/export" {
+			t.Fatalf("path = %s, want /api/queue/baseline/export", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer cloud-session" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		writeJSON(w, QueueBaselineExport{
+			Version:       1,
+			GeneratedAt:   "2026-06-08T10:00:00+08:00",
+			Source:        "turso-cloudflare",
+			BucketMinutes: 10,
+			DateTypes:     []string{"weekday"},
+			Stores:        []QueueBaselineStore{{StoreID: 3006, Name: "太阳宫凯德店"}},
+			Latest:        []QueueBaselineLatest{{StoreID: 3006, Name: "太阳宫凯德店", CollectedAt: "2026-06-08T10:00:00+08:00"}},
+			Rollups:       []QueueBaselineRollup{{StoreID: 3006, DateType: "weekday", Weekday: 1, TimeBucket: "10:00", SampleCount: 5, Confidence: "medium"}},
+			Stats: QueueBaselineStats{
+				StoreCount:      1,
+				LatestCount:     1,
+				RollupCount:     1,
+				SourceUpdatedAt: "2026-06-08T10:00:00+08:00",
+			},
+		})
+	}))
+	defer server.Close()
+
+	export, err := fetchQueueBaselineFromCloud(context.Background(), CloudAuthConfig{
+		BaseURL:      server.URL,
+		SessionToken: "cloud-session",
+	}, "", time.Date(2026, 6, 8, 10, 0, 0, 0, time.FixedZone("CST", 8*3600)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if export.Source != "turso-cloudflare" || export.Stats.StoreCount != 1 || len(export.Rollups) != 1 {
+		t.Fatalf("export = %+v", export)
+	}
+}
+
+func TestLoadRemoteQueueBaselineUsesCloudWhenTursoMissing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(queueBaselineTursoURLEnv, "")
+	t.Setenv(queueBaselineTursoTokenEnv, "")
+	t.Setenv(queueBaselineTursoFallbackURL, "")
+	t.Setenv(queueBaselineTursoFallbackAuth, "")
+	t.Setenv(cloudAuthURLEnv, "")
+	t.Setenv(cloudAuthSessionTokenEnv, "")
+	queueBaselineRemoteCache.Lock()
+	queueBaselineRemoteCache.entry = queueBaselineRemoteCacheEntry{}
+	queueBaselineRemoteCache.Unlock()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/queue/baseline/export" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		writeJSON(w, QueueBaselineExport{
+			Version:       1,
+			GeneratedAt:   "2026-06-08T10:00:00+08:00",
+			Source:        "turso-cloudflare",
+			BucketMinutes: 10,
+			DateTypes:     []string{"weekday"},
+			Stores:        []QueueBaselineStore{{StoreID: 3006, Name: "太阳宫凯德店"}},
+			Stats:         QueueBaselineStats{StoreCount: 1},
+		})
+	}))
+	defer server.Close()
+	if err := SaveCloudAuthConfig(CloudAuthConfig{BaseURL: server.URL, SessionToken: "cloud-session", UserLogin: "octocat"}); err != nil {
+		t.Fatal(err)
+	}
+
+	export, status, err := loadRemoteQueueBaselineCached(context.Background(), time.Date(2026, 6, 8, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Used || status.Provider != "cloudflare" || !status.Authenticated || status.UserLogin != "octocat" {
+		t.Fatalf("status = %+v", status)
+	}
+	if export.Stats.StoreCount != 1 {
+		t.Fatalf("export = %+v", export)
+	}
+}

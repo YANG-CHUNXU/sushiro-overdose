@@ -227,6 +227,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 	}
 	ticket, err := client.CreateNetTicket(ctx, plan.StoreID)
 	if err != nil {
+		noteAuthResult(err)
 		if isTicketAlreadyIssuedError(err) {
 			if recovered, ok := recoverExistingNetTicket(ctx, client, &plan); ok {
 				plan = recovered
@@ -254,6 +255,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 		sendQueueAlert(ctx, "⚠️ 定时取号失败", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError)
 		return
 	}
+	markAuthHealthy()
 	applyNetTicketSuccess(ctx, client, &plan, ticket)
 	_ = SaveNetTicketPlan(plan)
 	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))

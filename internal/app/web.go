@@ -62,6 +62,11 @@ func cmdWeb() {
 	mux.HandleFunc("/api/queue/alerts/status", handleQueueAlertStatus)
 	mux.HandleFunc("/api/queue/areas", handleQueueLiveAreas)
 	mux.HandleFunc("/api/queue/baseline", handleQueueBaseline)
+	mux.HandleFunc("/api/cloud/auth", handleCloudAuth)
+	mux.HandleFunc("/api/cloud/auth/start", handleCloudAuthStart)
+	mux.HandleFunc("/api/cloud/auth/callback", handleCloudAuthCallback)
+	mux.HandleFunc("/api/cloud/auth/logout", handleCloudAuthLogout)
+	mux.HandleFunc("/api/cloud/auth/test", handleCloudAuthTest)
 	mux.HandleFunc("/api/update", handleUpdateCheck)
 	mux.HandleFunc("/api/stores", handleStores)
 

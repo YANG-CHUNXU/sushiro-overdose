@@ -2,7 +2,10 @@ package app
 
 import (
 	"errors"
+	"strings"
 	"testing"
+
+	api "github.com/Ryujoxys/sushiro-overdose/internal/api"
 )
 
 func TestAuthHealthStateMachine(t *testing.T) {
@@ -45,5 +48,23 @@ func TestAuthHealthStateMachine(t *testing.T) {
 	noteAuthResult(errors.New("some non-auth failure"))
 	if got := getAuthHealth().Status; got != authHealthOK {
 		t.Fatalf("noteAuthResult(non-auth) changed status to %q, want %q", got, authHealthOK)
+	}
+}
+
+func TestAuthHealthMarksKnownServerErrorStale(t *testing.T) {
+	authHealth = &authHealthTracker{status: authHealthUnknown}
+	t.Cleanup(func() { authHealth = &authHealthTracker{status: authHealthUnknown} })
+
+	noteAuthResult(&api.APIError{
+		StatusCode: 500,
+		Body:       `{"code":"E010","message":"error.server"}`,
+	})
+
+	h := getAuthHealth()
+	if h.Status != authHealthStale {
+		t.Fatalf("status = %q, want %q", h.Status, authHealthStale)
+	}
+	if !strings.Contains(h.Reason, "E010") {
+		t.Fatalf("reason = %q, want E010 context", h.Reason)
 	}
 }

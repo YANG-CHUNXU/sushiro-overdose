@@ -69,6 +69,7 @@ main.go (默认启动 Web UI)
 | `mobile_auth_capture.go` | 手机凭证捕获 API：局域网引导页 + 手机代理捕获真实微信凭证参数 |
 | `web_queue_trends.go` | 本地到店预测 API |
 | `web_queue_live.go` | 实时排队 API（公开门店等位/区域/单店详情） |
+| `web_cloud_auth.go` | 云端数据登录 API：Worker URL 配置、GitHub OAuth 本机回调、会话验证/退出 |
 | `web_events.go` | SSE 事件总线 |
 | `web_static.go` | `sushiroLogoSVG` Logo SVG 常量 + `indexHTML` 完整单页（Sushiro 品牌配色 + 官网同款布局） |
 
@@ -80,6 +81,7 @@ main.go (默认启动 Web UI)
 | `queue_live.go` | 公开排队接口客户端：门店列表、单店排队、区域列表（标准库实现，支持 `SUSHIRO_TOKEN` 覆盖）；解析 `getStoreById` 的 `groupQueues` 得到当前叫号 |
 | `queue_live_panel.go` | 单店实时面板聚合：实时叫号/在等桌数/预估等待 + 由本机采样历史算近15分钟叫号与历史均速 |
 | `queue_alerts.go` | 叫号提醒规则与去重状态：`wait_below`（预估等待降到阈值）/`called_reach`（叫号接近手中号），采样循环命中即经通知渠道推送 |
+| `cloud_auth.go` | 云端数据配置与客户端：本地只保存 Cloudflare Worker URL 和应用 session，不保存 Turso token |
 | `config.go` | `Settings` 结构体定义，`LoadSettings` 从 JSON 文件加载（备用，当前未被调用） |
 | `tokens.go` | 捕获到的凭证参数模型、本地配置读写、旧配置迁移、凭证参数 → `Settings` 转换 |
 | `preferences.go` | **用户偏好持久化**：人数/桌型/自定义时段范围/日期与时段优先级，存到 `~/.sushiro/preferences.json` |
@@ -141,6 +143,7 @@ main.go (默认启动 Web UI)
 |------|------|
 | `assets/sushiro.png` | 寿司郎官方 Logo PNG（base64 嵌入到 `web_static.go` 的 `logoBase64` 常量中） |
 | `scripts/bundle-macos.sh` | Mac .app + DMG 桌面应用打包脚本 |
+| `cloudflare/sushiro-cloud/` | Cloudflare Worker：GitHub OAuth、HMAC session、Turso secrets 和固定白名单查询 |
 | `install/install.sh` | macOS/Linux 一键安装脚本 |
 | `install/install.ps1` | Windows PowerShell 一键安装脚本 |
 
@@ -166,6 +169,7 @@ main.go (默认启动 Web UI)
 ├── notify.json          通知渠道配置
 ├── stores.json          门店昵称
 ├── sampling.json        信息收集配置
+├── cloud_auth.json      云端数据 Worker URL 与 GitHub 登录 session（不含 Turso token）
 ├── holidays.json        可选节假日/调休工作日本地表
 ├── history.jsonl        历史时段数据（JSONL 格式）
 ├── queue_observations.jsonl 实时排队/公开叫号快照（本地私有）
@@ -205,6 +209,11 @@ main.go (默认启动 Web UI)
 | GET | `/api/queue/live?store=1012` | 单店实时面板：当前叫号/在等桌数/预估等待/近15分钟叫号/历史均速 |
 | GET/POST | `/api/queue/alerts` | 读取/保存叫号提醒规则 |
 | GET | `/api/queue/areas` | 官方区域列表 |
+| GET/POST | `/api/cloud/auth` | 云端数据配置与状态：Cloudflare Worker URL、GitHub 会话状态 |
+| GET | `/api/cloud/auth/start` | 跳转到 Cloudflare Worker 的 GitHub OAuth 登录入口 |
+| GET | `/api/cloud/auth/callback` | Worker 登录后回调本机，保存应用 session |
+| POST | `/api/cloud/auth/logout` | 清除本机保存的云端 session |
+| POST | `/api/cloud/auth/test` | 验证云端 Worker 会话和 `/api/me` |
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
 | POST | `/api/auth/import` | 手动导入凭证参数，支持 JSON、curl、raw headers |

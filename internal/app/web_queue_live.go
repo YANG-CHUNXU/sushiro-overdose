@@ -102,7 +102,7 @@ func handleQueuePressureCurve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "缺少门店 ID")
 		return
 	}
-	writeJSON(w, buildQueuePressureCurve(storeID, strings.TrimSpace(q.Get("date")), time.Now()))
+	writeJSON(w, buildQueuePressureCurve(r.Context(), storeID, strings.TrimSpace(q.Get("date")), time.Now()))
 }
 
 // handleQueuePlan 时间互推：?pickup=HHMM 算几点能吃；?target_meal=HHMM 算几点取号。

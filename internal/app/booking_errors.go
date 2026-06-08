@@ -52,6 +52,10 @@ func isKnownOfficialServerError(err error) bool {
 		strings.Contains(body, "error.server")
 }
 
+func isCredentialRefreshLikelyError(err error) bool {
+	return isKnownOfficialServerError(err)
+}
+
 func isTicketAlreadyIssuedText(text string) bool {
 	body := strings.ToLower(text)
 	return strings.Contains(body, `"code":"e034"`) ||
@@ -85,8 +89,8 @@ func friendlyOfficialAPIError(err error) string {
 	if errors.Is(err, api.ErrActiveReservationExists) {
 		return "官方仍认为当前账号已有预约；如果你刚在手机上取消，请等小程序状态同步后再抢，或重新打开寿司郎小程序确认“我的预约”已清空"
 	}
-	if isKnownOfficialServerError(err) {
-		return "官方接口返回 E010/error.server，通常是该门店/时段当前不可提交或官方临时异常；已保留凭证，可稍后重试"
+	if isCredentialRefreshLikelyError(err) {
+		return "官方接口返回 E010/error.server，通常是凭证需要刷新；请在工具里重新认证/重新获取凭证后重试。已保留本地凭证配置"
 	}
 	if isOfficialServerHTTPError(err) {
 		return "官方接口返回 HTTP 500，已保留凭证；如果小程序也失败，通常是官方临时异常"
@@ -95,5 +99,8 @@ func friendlyOfficialAPIError(err error) string {
 }
 
 func bookingServerErrorLog(slotLabel string, err error) string {
+	if isCredentialRefreshLikelyError(err) {
+		return fmt.Sprintf("%s — %s，仍会短暂跳过当前时段 %d 秒；建议先重新认证", slotLabel, friendlyOfficialAPIError(err), int(reservationServerErrorCooldown.Seconds()))
+	}
 	return fmt.Sprintf("%s — %s，跳过当前时段 %d 秒后再试", slotLabel, friendlyOfficialAPIError(err), int(reservationServerErrorCooldown.Seconds()))
 }

@@ -105,15 +105,43 @@ func (c queueBaselineTursoConfig) cacheKey() string {
 func queueBaselineRemoteStatusFromConfig(cfg queueBaselineTursoConfig) QueueBaselineRemoteStatus {
 	return QueueBaselineRemoteStatus{
 		Configured:  cfg.configured(),
+		Provider:    "turso",
 		DatabaseURL: redactQueueBaselineDatabaseURL(cfg.DatabaseURL),
+		Message:     "使用本机 Turso 直连凭证；仅建议开发/私有环境使用。",
 	}
+}
+
+func queueBaselineRemoteStatusFromCloud(cfg CloudAuthConfig) QueueBaselineRemoteStatus {
+	return QueueBaselineRemoteStatus{
+		Configured:    cfg.configured(),
+		Provider:      "cloudflare",
+		CloudURL:      cfg.BaseURL,
+		Authenticated: cfg.connected(),
+		UserLogin:     cfg.UserLogin,
+		Message:       "使用 Cloudflare Worker 代理线上基准；Turso 凭证只在 Worker secrets 中。",
+	}
+}
+
+func queueBaselineRemoteStatus() QueueBaselineRemoteStatus {
+	if cfg := loadQueueBaselineTursoConfig(); cfg.configured() {
+		return queueBaselineRemoteStatusFromConfig(cfg)
+	}
+	return queueBaselineRemoteStatusFromCloud(LoadCloudAuthConfig())
 }
 
 func loadRemoteQueueBaselineCached(ctx context.Context, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
 	cfg := loadQueueBaselineTursoConfig()
+	if cfg.configured() {
+		return loadRemoteQueueBaselineTursoCached(ctx, cfg, now)
+	}
+	cloudCfg := LoadCloudAuthConfig()
+	return loadRemoteQueueBaselineCloudCached(ctx, cloudCfg, now)
+}
+
+func loadRemoteQueueBaselineTursoCached(ctx context.Context, cfg queueBaselineTursoConfig, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
 	status := queueBaselineRemoteStatusFromConfig(cfg)
-	if !cfg.configured() {
-		return QueueBaselineExport{}, status, nil
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	if now.IsZero() {
 		now = time.Now()
@@ -157,6 +185,221 @@ func loadRemoteQueueBaselineCached(ctx context.Context, now time.Time) (QueueBas
 	status.LatestCount = export.Stats.LatestCount
 	status.RollupCount = export.Stats.RollupCount
 	return export, status, nil
+}
+
+func loadRemoteQueueBaselineCloudCached(ctx context.Context, cfg CloudAuthConfig, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	status := queueBaselineRemoteStatusFromCloud(cfg)
+	if !cfg.configured() || !cfg.connected() {
+		return QueueBaselineExport{}, status, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	key := cfg.cacheKey()
+	queueBaselineRemoteCache.Lock()
+	entry := queueBaselineRemoteCache.entry
+	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
+		queueBaselineRemoteCache.Unlock()
+		status.Used = true
+		status.GeneratedAt = entry.export.GeneratedAt
+		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
+		status.StoreCount = entry.export.Stats.StoreCount
+		status.LatestCount = entry.export.Stats.LatestCount
+		status.RollupCount = entry.export.Stats.RollupCount
+		return entry.export, status, nil
+	}
+	queueBaselineRemoteCache.Unlock()
+
+	export, err := fetchQueueBaselineFromCloud(ctx, cfg, "", now)
+	if err != nil {
+		status.LastError = err.Error()
+		return QueueBaselineExport{}, status, err
+	}
+
+	queueBaselineRemoteCache.Lock()
+	queueBaselineRemoteCache.entry = queueBaselineRemoteCacheEntry{
+		key:      key,
+		loadedAt: now,
+		export:   export,
+	}
+	queueBaselineRemoteCache.Unlock()
+
+	status.Used = true
+	status.GeneratedAt = export.GeneratedAt
+	status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+	status.StoreCount = export.Stats.StoreCount
+	status.LatestCount = export.Stats.LatestCount
+	status.RollupCount = export.Stats.RollupCount
+	return export, status, nil
+}
+
+func loadRemoteQueuePressureBaseline(ctx context.Context, storeID string, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	cfg := loadQueueBaselineTursoConfig()
+	if cfg.configured() {
+		return loadRemoteQueuePressureBaselineTurso(ctx, cfg, storeID, now)
+	}
+	cloudCfg := LoadCloudAuthConfig()
+	return loadRemoteQueuePressureBaselineCloud(ctx, cloudCfg, storeID, now)
+}
+
+func loadRemoteQueuePressureBaselineTurso(ctx context.Context, cfg queueBaselineTursoConfig, storeID string, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	status := queueBaselineRemoteStatusFromConfig(cfg)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	key := cfg.cacheKey()
+	queueBaselineRemoteCache.Lock()
+	entry := queueBaselineRemoteCache.entry
+	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
+		queueBaselineRemoteCache.Unlock()
+		status.Used = true
+		status.GeneratedAt = entry.export.GeneratedAt
+		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
+		status.StoreCount = entry.export.Stats.StoreCount
+		status.LatestCount = entry.export.Stats.LatestCount
+		status.RollupCount = entry.export.Stats.RollupCount
+		return entry.export, status, nil
+	}
+	queueBaselineRemoteCache.Unlock()
+
+	storeInt, err := strconv.Atoi(strings.TrimSpace(storeID))
+	if err != nil || storeInt <= 0 {
+		status.LastError = "无效门店 ID"
+		return QueueBaselineExport{}, status, fmt.Errorf("无效门店 ID: %s", storeID)
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, queueBaselineTursoTimeout)
+	defer cancel()
+	export, err := fetchQueuePressureBaselineForStore(timeoutCtx, cfg, storeInt, now)
+	if err != nil {
+		status.LastError = err.Error()
+		return QueueBaselineExport{}, status, err
+	}
+	status.Used = true
+	status.GeneratedAt = export.GeneratedAt
+	status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+	status.StoreCount = export.Stats.StoreCount
+	status.LatestCount = export.Stats.LatestCount
+	status.RollupCount = export.Stats.RollupCount
+	return export, status, nil
+}
+
+func loadRemoteQueuePressureBaselineCloud(ctx context.Context, cfg CloudAuthConfig, storeID string, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	status := queueBaselineRemoteStatusFromCloud(cfg)
+	if !cfg.configured() || !cfg.connected() {
+		return QueueBaselineExport{}, status, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	key := cfg.cacheKey()
+	queueBaselineRemoteCache.Lock()
+	entry := queueBaselineRemoteCache.entry
+	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
+		queueBaselineRemoteCache.Unlock()
+		status.Used = true
+		status.GeneratedAt = entry.export.GeneratedAt
+		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
+		status.StoreCount = entry.export.Stats.StoreCount
+		status.LatestCount = entry.export.Stats.LatestCount
+		status.RollupCount = entry.export.Stats.RollupCount
+		return entry.export, status, nil
+	}
+	queueBaselineRemoteCache.Unlock()
+
+	storeID = strings.TrimSpace(storeID)
+	if _, err := strconv.Atoi(storeID); err != nil || storeID == "" {
+		status.LastError = "无效门店 ID"
+		return QueueBaselineExport{}, status, fmt.Errorf("无效门店 ID: %s", storeID)
+	}
+	export, err := fetchQueueBaselineFromCloud(ctx, cfg, storeID, now)
+	if err != nil {
+		status.LastError = err.Error()
+		return QueueBaselineExport{}, status, err
+	}
+	status.Used = true
+	status.GeneratedAt = export.GeneratedAt
+	status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+	status.StoreCount = export.Stats.StoreCount
+	status.LatestCount = export.Stats.LatestCount
+	status.RollupCount = export.Stats.RollupCount
+	return export, status, nil
+}
+
+func fetchQueueBaselineFromCloud(ctx context.Context, cfg CloudAuthConfig, storeID string, now time.Time) (QueueBaselineExport, error) {
+	var export QueueBaselineExport
+	path := "/api/queue/baseline/export"
+	query := neturl.Values{}
+	if strings.TrimSpace(storeID) != "" {
+		path = "/api/queue/baseline/store"
+		query.Set("store_id", strings.TrimSpace(storeID))
+	}
+	if err := cloudGETJSON(ctx, cfg, path, query, &export); err != nil {
+		return QueueBaselineExport{}, err
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if export.GeneratedAt == "" {
+		export.GeneratedAt = now.Format(time.RFC3339)
+	}
+	if export.Source == "" {
+		export.Source = "cloudflare"
+	}
+	if export.BucketMinutes <= 0 {
+		export.BucketMinutes = queueDashboardDefaultBucketMins
+	}
+	if len(export.DateTypes) == 0 {
+		export.DateTypes = []string{"weekday", "workday", "weekend", "holiday"}
+	}
+	return export, nil
+}
+
+func fetchQueuePressureBaselineForStore(ctx context.Context, cfg queueBaselineTursoConfig, storeID int, now time.Time) (QueueBaselineExport, error) {
+	latest, latestUpdatedAt, err := fetchQueueBaselineLatestForStore(ctx, cfg, storeID)
+	if err != nil {
+		return QueueBaselineExport{}, err
+	}
+	rollups, sourceUpdatedAt, err := fetchQueueBaselineRollupsForStore(ctx, cfg, storeID)
+	if err != nil {
+		return QueueBaselineExport{}, err
+	}
+	if latestUpdatedAt > sourceUpdatedAt {
+		sourceUpdatedAt = latestUpdatedAt
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	storeCount := 0
+	if len(latest) > 0 || len(rollups) > 0 {
+		storeCount = 1
+	}
+	return QueueBaselineExport{
+		Version:       1,
+		GeneratedAt:   now.Format(time.RFC3339),
+		Source:        "turso",
+		BucketMinutes: queueDashboardDefaultBucketMins,
+		DateTypes:     []string{"weekday", "workday", "weekend", "holiday"},
+		Latest:        latest,
+		Rollups:       rollups,
+		Stats: QueueBaselineStats{
+			StoreCount:      storeCount,
+			LatestCount:     len(latest),
+			RollupCount:     len(rollups),
+			SourceUpdatedAt: sourceUpdatedAt,
+		},
+	}, nil
 }
 
 func fetchQueueBaselineFromTurso(ctx context.Context, cfg queueBaselineTursoConfig, now time.Time) (QueueBaselineExport, error) {
@@ -292,6 +535,71 @@ func fetchQueueBaselineLatestColumns(ctx context.Context, cfg queueBaselineTurso
 	return out, sourceUpdatedAt, nil
 }
 
+func fetchQueueBaselineLatestForStore(ctx context.Context, cfg queueBaselineTursoConfig, storeID int) ([]QueueBaselineLatest, string, error) {
+	latest, sourceUpdatedAt, err := fetchQueueBaselineLatestForStoreColumns(ctx, cfg, storeID, true)
+	if err == nil {
+		return latest, sourceUpdatedAt, nil
+	}
+	latest, sourceUpdatedAt, fallbackErr := fetchQueueBaselineLatestForStoreColumns(ctx, cfg, storeID, false)
+	if fallbackErr == nil {
+		return latest, sourceUpdatedAt, nil
+	}
+	return nil, "", fmt.Errorf("查询门店当前排队失败: %w", err)
+}
+
+func fetchQueueBaselineLatestForStoreColumns(ctx context.Context, cfg queueBaselineTursoConfig, storeID int, includeCalled bool) ([]QueueBaselineLatest, string, error) {
+	calledColumns := ""
+	if includeCalled {
+		calledColumns = `,
+		display_called_no, group_queues_json`
+	}
+	result, err := tursoQuery(ctx, cfg, `SELECT
+		store_id, collected_at, name, city, area, wait_minutes, group_queues_count,
+		store_status, net_ticket_status, reservation_status, online_open,
+		wait_time_counter, wait_time_cap`+calledColumns+`
+	FROM store_latest
+	WHERE store_id = `+strconv.Itoa(storeID)+`
+	ORDER BY store_id`)
+	if err != nil {
+		return nil, "", err
+	}
+	minColumns := 13
+	if includeCalled {
+		minColumns = 15
+	}
+	out := make([]QueueBaselineLatest, 0, len(result.Rows))
+	sourceUpdatedAt := ""
+	for _, row := range result.Rows {
+		if len(row) < minColumns {
+			continue
+		}
+		latest := QueueBaselineLatest{
+			StoreID:           tursoInt(row[0]),
+			CollectedAt:       tursoString(row[1]),
+			Name:              tursoString(row[2]),
+			City:              tursoString(row[3]),
+			Area:              tursoString(row[4]),
+			WaitMinutes:       tursoInt(row[5]),
+			GroupQueuesCount:  tursoInt(row[6]),
+			StoreStatus:       tursoString(row[7]),
+			NetTicketStatus:   tursoString(row[8]),
+			ReservationStatus: tursoString(row[9]),
+			OnlineOpen:        tursoInt(row[10]) > 0,
+			WaitTimeCounter:   tursoInt(row[11]),
+			WaitTimeCap:       tursoInt(row[12]),
+		}
+		if includeCalled {
+			latest.DisplayCalledNo = tursoInt(row[13])
+			latest.GroupQueuesJSON = tursoString(row[14])
+		}
+		if latest.CollectedAt > sourceUpdatedAt {
+			sourceUpdatedAt = latest.CollectedAt
+		}
+		out = append(out, latest)
+	}
+	return out, sourceUpdatedAt, nil
+}
+
 func fetchQueueBaselineRollups(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineRollup, string, error) {
 	rollups, sourceUpdatedAt, err := fetchQueueBaselineRollupsColumns(ctx, cfg, true)
 	if err == nil {
@@ -315,6 +623,79 @@ func fetchQueueBaselineRollupsColumns(ctx context.Context, cfg queueBaselineTurs
 		online_open_rate, busy_rate, wait_typical_minutes, wait_safe_minutes,
 		wait_max_minutes, queue_groups_typical, queue_groups_safe`+calledColumns+`, confidence, updated_at
 	FROM store_bucket_rollups
+	ORDER BY store_id, date_type, weekday, time_bucket`)
+	if err != nil {
+		return nil, "", err
+	}
+	minColumns := 15
+	confidenceIndex := 13
+	updatedAtIndex := 14
+	if includeCalled {
+		minColumns = 19
+		confidenceIndex = 17
+		updatedAtIndex = 18
+	}
+	out := make([]QueueBaselineRollup, 0, len(result.Rows))
+	sourceUpdatedAt := ""
+	for _, row := range result.Rows {
+		if len(row) < minColumns {
+			continue
+		}
+		rollup := QueueBaselineRollup{
+			StoreID:            tursoInt(row[0]),
+			DateType:           tursoString(row[1]),
+			Weekday:            tursoInt(row[2]),
+			TimeBucket:         tursoString(row[3]),
+			SampleCount:        tursoInt(row[4]),
+			OpenRate:           tursoFloat(row[5]),
+			OnlineOpenRate:     tursoFloat(row[6]),
+			BusyRate:           tursoFloat(row[7]),
+			WaitTypicalMinutes: tursoFloatPtr(row[8]),
+			WaitSafeMinutes:    tursoFloatPtr(row[9]),
+			WaitMaxMinutes:     tursoInt(row[10]),
+			QueueGroupsTypical: tursoFloatPtr(row[11]),
+			QueueGroupsSafe:    tursoFloatPtr(row[12]),
+			Confidence:         tursoString(row[confidenceIndex]),
+			UpdatedAt:          tursoString(row[updatedAtIndex]),
+		}
+		if includeCalled {
+			rollup.CalledSampleCount = tursoInt(row[13])
+			rollup.CalledNoSlow = tursoFloatPtr(row[14])
+			rollup.CalledNoTypical = tursoFloatPtr(row[15])
+			rollup.CalledNoFast = tursoFloatPtr(row[16])
+		}
+		if rollup.UpdatedAt > sourceUpdatedAt {
+			sourceUpdatedAt = rollup.UpdatedAt
+		}
+		out = append(out, rollup)
+	}
+	return out, sourceUpdatedAt, nil
+}
+
+func fetchQueueBaselineRollupsForStore(ctx context.Context, cfg queueBaselineTursoConfig, storeID int) ([]QueueBaselineRollup, string, error) {
+	rollups, sourceUpdatedAt, err := fetchQueueBaselineRollupsForStoreColumns(ctx, cfg, storeID, true)
+	if err == nil {
+		return rollups, sourceUpdatedAt, nil
+	}
+	rollups, sourceUpdatedAt, fallbackErr := fetchQueueBaselineRollupsForStoreColumns(ctx, cfg, storeID, false)
+	if fallbackErr == nil {
+		return rollups, sourceUpdatedAt, nil
+	}
+	return nil, "", fmt.Errorf("查询门店基准聚合失败: %w", err)
+}
+
+func fetchQueueBaselineRollupsForStoreColumns(ctx context.Context, cfg queueBaselineTursoConfig, storeID int, includeCalled bool) ([]QueueBaselineRollup, string, error) {
+	calledColumns := ""
+	if includeCalled {
+		calledColumns = `,
+		called_sample_count, called_no_slow, called_no_typical, called_no_fast`
+	}
+	result, err := tursoQuery(ctx, cfg, `SELECT
+		store_id, date_type, weekday, time_bucket, sample_count, open_rate,
+		online_open_rate, busy_rate, wait_typical_minutes, wait_safe_minutes,
+		wait_max_minutes, queue_groups_typical, queue_groups_safe`+calledColumns+`, confidence, updated_at
+	FROM store_bucket_rollups
+	WHERE store_id = `+strconv.Itoa(storeID)+`
 	ORDER BY store_id, date_type, weekday, time_bucket`)
 	if err != nil {
 		return nil, "", err

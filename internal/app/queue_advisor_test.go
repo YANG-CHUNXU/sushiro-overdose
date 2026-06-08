@@ -51,6 +51,97 @@ func TestQueuePressureScore(t *testing.T) {
 	}
 }
 
+func TestBuildRemoteQueuePressureCurvePoints(t *testing.T) {
+	storeID := "3006"
+	baseline := QueueBaselineExport{
+		Rollups: []QueueBaselineRollup{
+			{
+				StoreID:            3006,
+				DateType:           "weekday",
+				TimeBucket:         "10:00",
+				SampleCount:        12,
+				WaitTypicalMinutes: floatPtr(55),
+				QueueGroupsTypical: floatPtr(32),
+				CalledSampleCount:  10,
+				CalledNoTypical:    floatPtr(120),
+			},
+			{
+				StoreID:            3006,
+				DateType:           "weekend",
+				TimeBucket:         "10:00",
+				SampleCount:        12,
+				WaitTypicalMinutes: floatPtr(120),
+				QueueGroupsTypical: floatPtr(90),
+				CalledSampleCount:  10,
+				CalledNoTypical:    floatPtr(900),
+			},
+			{
+				StoreID:            3006,
+				DateType:           "weekday",
+				TimeBucket:         "10:30",
+				SampleCount:        20,
+				WaitTypicalMinutes: floatPtr(70),
+				QueueGroupsTypical: floatPtr(64),
+				CalledSampleCount:  18,
+				CalledNoTypical:    floatPtr(180),
+			},
+		},
+		Latest: []QueueBaselineLatest{
+			{
+				StoreID:          3006,
+				CollectedAt:      "2026-06-08T11:03:00+08:00",
+				WaitMinutes:      80,
+				GroupQueuesCount: 70,
+				DisplayCalledNo:  220,
+			},
+			{
+				StoreID:          3006,
+				CollectedAt:      "2026-06-09T11:03:00+08:00",
+				WaitMinutes:      10,
+				GroupQueuesCount: 5,
+				DisplayCalledNo:  20,
+			},
+		},
+	}
+
+	points := buildRemoteQueuePressureCurvePoints(storeID, "2026-06-08", "weekday", baseline)
+	if len(points) != 3 {
+		t.Fatalf("points len=%d want 3: %+v", len(points), points)
+	}
+	if points[0].Time != "10:00" || points[0].CalledNo != 120 || points[0].WaitingGroups != 32 || points[0].OfficialWaitMinutes != 55 {
+		t.Fatalf("first point mismatch: %+v", points[0])
+	}
+	if points[0].Source != "remote_baseline" || points[0].Confidence == "" {
+		t.Fatalf("first point missing source/confidence: %+v", points[0])
+	}
+	if points[2].Time != "11:03" || points[2].Source != "remote_latest" || points[2].CalledNo != 220 {
+		t.Fatalf("latest point mismatch: %+v", points[2])
+	}
+}
+
+func TestMergeQueuePressureCurvePointsPrefersLocal(t *testing.T) {
+	remote := []QueuePressureCurvePoint{{
+		Time:          "10:00",
+		CalledNo:      100,
+		Source:        "remote_baseline",
+		PressureLevel: "medium",
+	}}
+	local := []QueuePressureCurvePoint{{
+		Time:          "10:00",
+		CalledNo:      140,
+		Source:        "local",
+		PressureLevel: "low",
+	}}
+
+	points := mergeQueuePressureCurvePoints(remote, local)
+	if len(points) != 1 {
+		t.Fatalf("merged len=%d want 1: %+v", len(points), points)
+	}
+	if points[0].Source != "local" || points[0].CalledNo != 140 {
+		t.Fatalf("local point should win: %+v", points[0])
+	}
+}
+
 func TestCalledRateOverWindow(t *testing.T) {
 	now := time.Now()
 	store := "3006"

@@ -88,13 +88,44 @@ func LoadQueueAlertConfig() QueueAlertConfig {
 }
 
 func SaveQueueAlertConfig(cfg QueueAlertConfig) error {
+	queueAlertMu.Lock()
+	defer queueAlertMu.Unlock()
+	return saveQueueAlertConfigLocked(cfg)
+}
+
+func saveQueueAlertConfigLocked(cfg QueueAlertConfig) error {
 	os.MkdirAll(AppDirPath(), 0o755)
 	cfg = normalizeQueueAlertConfig(cfg)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(queueAlertConfigPath(), data, 0o600)
+	if err := os.WriteFile(queueAlertConfigPath(), data, 0o600); err != nil {
+		return err
+	}
+	pruneQueueAlertStateLocked(cfg)
+	return nil
+}
+
+func pruneQueueAlertStateLocked(cfg QueueAlertConfig) {
+	state := loadQueueAlertState()
+	if len(state) == 0 {
+		return
+	}
+	allowed := map[string]bool{}
+	for _, rule := range cfg.Rules {
+		allowed[rule.key()] = true
+	}
+	changed := false
+	for key := range state {
+		if !allowed[key] {
+			delete(state, key)
+			changed = true
+		}
+	}
+	if changed {
+		saveQueueAlertState(state)
+	}
 }
 
 func normalizeQueueAlertConfig(cfg QueueAlertConfig) QueueAlertConfig {
@@ -201,16 +232,17 @@ func saveQueueAlertState(state map[string]queueAlertRuleState) {
 // evaluateQueueAlerts 在每轮采样写入一条排队观测后调用，评估该门店的提醒规则并推送。
 // obs 是 getStoreById 解析出的观测（含当前叫号/预估等待/在等组数）。
 func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName string) {
-	cfg := LoadQueueAlertConfig()
-	if len(cfg.Rules) == 0 {
-		return
-	}
 	storeID := strings.TrimSpace(obs.StoreID)
 
 	queueAlertMu.Lock()
 	defer queueAlertMu.Unlock()
+	cfg := LoadQueueAlertConfig()
+	if len(cfg.Rules) == 0 {
+		return
+	}
 	state := loadQueueAlertState()
 	changed := false
+	burnedKeys := map[string]bool{}
 
 	for _, rule := range cfg.Rules {
 		if !rule.Enabled || rule.StoreID != storeID {
@@ -229,6 +261,24 @@ func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName st
 			name = storeID
 		}
 		sendQueueAlert(ctx, title, name+"："+body)
+		if rule.Type == queueAlertCalledReach {
+			burnedKeys[rule.key()] = true
+		}
+	}
+	if len(burnedKeys) > 0 {
+		rules := make([]QueueAlertRule, 0, len(cfg.Rules)-len(burnedKeys))
+		for _, rule := range cfg.Rules {
+			key := rule.key()
+			if burnedKeys[key] {
+				delete(state, key)
+				continue
+			}
+			rules = append(rules, rule)
+		}
+		cfg.Rules = rules
+		if err := saveQueueAlertConfigLocked(cfg); err != nil {
+			LogMessage(time.Now(), "[排队提醒] 清理已触发提醒失败: "+err.Error())
+		}
 	}
 	if changed {
 		saveQueueAlertState(state)

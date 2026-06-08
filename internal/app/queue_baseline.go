@@ -72,13 +72,18 @@ type QueueBaselineStats struct {
 type QueueBaselineRemoteStatus struct {
 	Configured      bool   `json:"configured"`
 	Used            bool   `json:"used"`
+	Provider        string `json:"provider,omitempty"`
 	DatabaseURL     string `json:"database_url,omitempty"`
+	CloudURL        string `json:"cloud_url,omitempty"`
+	Authenticated   bool   `json:"authenticated,omitempty"`
+	UserLogin       string `json:"user_login,omitempty"`
 	GeneratedAt     string `json:"generated_at,omitempty"`
 	SourceUpdatedAt string `json:"source_updated_at,omitempty"`
 	StoreCount      int    `json:"store_count,omitempty"`
 	LatestCount     int    `json:"latest_count,omitempty"`
 	RollupCount     int    `json:"rollup_count,omitempty"`
 	LastError       string `json:"last_error,omitempty"`
+	Message         string `json:"message,omitempty"`
 }
 
 type QueueBaselineStore struct {
@@ -375,7 +380,7 @@ func handleQueueBaseline(w http.ResponseWriter, r *http.Request) {
 			"store_ids":             cfg.StoreIDs,
 			"use_preference_stores": cfg.UsePreferenceStores,
 			"effective_store_ids":   queueBaselineStoreIDs(cfg),
-			"remote":                queueBaselineRemoteStatusFromConfig(loadQueueBaselineTursoConfig()),
+			"remote":                queueBaselineRemoteStatus(),
 		})
 	case http.MethodPost:
 		var body QueueBaselineConfig

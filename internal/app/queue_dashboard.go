@@ -262,7 +262,7 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 	storeFilter := stringSet(query.StoreIDs)
 	localBaseline := loadQueueBaselineRecords()
 	localObservations := loadQueueObservations()
-	baseline, baselineStatus, baselineErr := loadRemoteQueueBaselineCached(ctx, now)
+	baseline, baselineStatus, baselineErr := loadRemoteQueueDashboardBaseline(ctx, query, now)
 	storeNames := queueDashboardStoreNames(baseline, localBaseline, localObservations)
 
 	latest := buildQueueDashboardLatestRows(query, baseline, localBaseline, localObservations, storeNames, storeFilter)
@@ -302,6 +302,13 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 		Baseline:          baselineStatus,
 		Warnings:          warnings,
 	}
+}
+
+func loadRemoteQueueDashboardBaseline(ctx context.Context, query QueueDashboardQuery, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	if len(query.StoreIDs) == 1 {
+		return loadRemoteQueuePressureBaseline(ctx, query.StoreIDs[0], now)
+	}
+	return loadRemoteQueueBaselineCached(ctx, now)
 }
 
 func normalizeQueueDashboardQuery(query QueueDashboardQuery) QueueDashboardQuery {

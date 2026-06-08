@@ -11,3 +11,4 @@ sushiro-overdose-linux
 .DS_Store
 dist/
 .claude/
+.wrangler/

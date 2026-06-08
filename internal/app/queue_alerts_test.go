@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -143,5 +144,56 @@ func TestQueueAlertCalledReachIncludesLabelAndTravel(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body %q missing %q", body, want)
 		}
+	}
+}
+
+func TestEvaluateQueueAlertsBurnsCalledReachRuleAfterFire(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := normalizeQueueAlertConfig(QueueAlertConfig{Rules: []QueueAlertRule{
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1050, Enabled: true},
+		{StoreID: "3006", StoreName: "太阳宫凯德店", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1070, Enabled: true},
+	}})
+	if err := SaveQueueAlertConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	evaluateQueueAlerts(context.Background(), QueueObservation{StoreID: "3006", DisplayCalledNo: 1051}, "太阳宫凯德店")
+
+	got := LoadQueueAlertConfig()
+	if len(got.Rules) != 1 {
+		t.Fatalf("rules len after fire = %d, want 1: %#v", len(got.Rules), got.Rules)
+	}
+	if got.Rules[0].NotifyAtNo != 1070 {
+		t.Fatalf("remaining rule = %#v, want 1070 threshold", got.Rules[0])
+	}
+	if _, exists := loadQueueAlertState()[cfg.Rules[0].key()]; exists {
+		t.Fatal("fired called_reach state should be burned with the rule")
+	}
+}
+
+func TestSaveQueueAlertConfigPrunesDeletedRuleState(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := normalizeQueueAlertConfig(QueueAlertConfig{Rules: []QueueAlertRule{
+		{StoreID: "3006", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1000, Enabled: true},
+		{StoreID: "3006", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1025, Enabled: true},
+	}})
+	if err := SaveQueueAlertConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	saveQueueAlertState(map[string]queueAlertRuleState{
+		cfg.Rules[0].key(): {FiredOnce: true},
+		cfg.Rules[1].key(): {FiredOnce: true},
+		"stale":            {FiredOnce: true},
+	})
+
+	if err := SaveQueueAlertConfig(QueueAlertConfig{Rules: []QueueAlertRule{cfg.Rules[1]}}); err != nil {
+		t.Fatal(err)
+	}
+	state := loadQueueAlertState()
+	if len(state) != 1 {
+		t.Fatalf("state len = %d, want 1: %#v", len(state), state)
+	}
+	if _, exists := state[cfg.Rules[1].key()]; !exists {
+		t.Fatalf("remaining rule state missing: %#v", state)
 	}
 }
