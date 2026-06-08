@@ -220,7 +220,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 	if client == nil {
 		plan.Enabled = false
 		plan.Status = "error"
-		plan.LastError = "尚未捕获认证参数（或已过期），无法自动取号"
+		plan.LastError = "尚未捕获凭证参数（或已过期），无法自动取号"
 		_ = SaveNetTicketPlan(plan)
 		sendQueueAlert(ctx, "⚠️ 定时取号失败", plan.LastError)
 		return
@@ -336,7 +336,7 @@ func netTicketDisplayTime(hhmm string) string {
 	return hhmm[:2] + ":" + hhmm[2:4]
 }
 
-// currentAuthedClient 从本地配置构造一个带认证的 API 客户端（headless 守护也能用）。
+// currentAuthedClient 从本地配置构造一个带凭证的 API 客户端（headless 守护也能用）。
 func currentAuthedClient() *Client {
 	tokens, err := LoadLocalConfig()
 	if err != nil {

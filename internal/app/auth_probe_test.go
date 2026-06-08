@@ -8,7 +8,7 @@ import (
 
 func TestNormalizeReservationsProbeTreatsNotFoundAsSkipped(t *testing.T) {
 	result := AuthProbeResult{
-		Name:   "认证接口：当前预约",
+		Name:   "凭证接口：当前预约",
 		Method: http.MethodPost,
 		Path:   "/wechat/api_auth/2.0/ticketing/getReservations",
 		Status: http.StatusNotFound,

@@ -241,13 +241,13 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	}
 	markProxyActive(actualPort, os.Getpid())
 
-	e.setState(EngineCapturing, "等待捕获认证参数，请彻底关闭 PC 微信后重新打开，并在寿司郎小程序里点一次排队或预约...")
+	e.setState(EngineCapturing, "等待捕获凭证参数，请彻底关闭 PC 微信后重新打开，并在寿司郎小程序里点一次排队或预约...")
 	proxyHint := fmt.Sprintf("捕获代理已设置 (127.0.0.1:%d)", actualPort)
 	if GetActiveWebPort() > 0 && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
 		proxyHint += "；已使用 PAC 仅代理寿司郎域名"
 	}
 	e.addLog(proxyHint + "。请彻底关闭 PC 微信后重新打开，进入寿司郎小程序，选任意门店点一次「排队」或「预约」（不用真的提交）")
-	e.addLog("提示：如果 PC 微信小程序弹出“服务器出错/网络错误”，但本工具抓到认证并通过基础接口自检，可以直接忽略小程序弹窗。")
+	e.addLog("提示：如果 PC 微信小程序弹出“服务器出错/网络错误”，但本工具抓到凭证并通过基础接口自检，可以直接忽略小程序弹窗。")
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -263,39 +263,39 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 			bus.publish("engine", mustJSON(e.GetState()))
 			if tokens.IsComplete() {
 				prefs := LoadPreferences()
-				// 接口发现调试开启时：抓到认证先存好，但保持代理运行，让用户继续在
+				// 接口发现调试开启时：抓到凭证先存好，但保持代理运行，让用户继续在
 				// 小程序里点想记录的接口（如「排队取号」），手动「停止」前不拆代理。
-				// 否则代理会在认证一抓全就关闭，后续接口根本来不及记录。
+				// 否则代理会在凭证一抓全就关闭，后续接口根本来不及记录。
 				if APIDiscoveryEnabled() {
 					if !savedForDiscovery {
 						if err := SaveLocalConfig(tokens); err == nil {
 							setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 						}
 						savedForDiscovery = true
-						e.addLog("认证已抓到并保存；接口发现调试开启中——请在小程序里点你想记录的接口（如「排队取号」），完成后点「停止」。")
-						e.setState(EngineCapturing, "接口发现调试中：认证已抓到，代理保持运行。请在小程序里操作要记录的接口，记录完点「停止」。")
+						e.addLog("凭证已抓到并保存；接口发现调试开启中——请在小程序里点你想记录的接口（如「排队取号」），完成后点「停止」。")
+						e.setState(EngineCapturing, "接口发现调试中：凭证已抓到，代理保持运行。请在小程序里操作要记录的接口，记录完点「停止」。")
 					}
 					continue
 				}
-				// 自检只作诊断，不拦保存：抓到完整认证就落盘并完成捕获，
+				// 自检只作诊断，不拦保存：抓到完整凭证就落盘并完成捕获，
 				// 自检结果仅决定提示语。避免基础接口偶发失败/被拒时把用户卡死。
-				e.setState(EngineCapturing, "已抓到认证参数，正在自检基础接口...")
+				e.setState(EngineCapturing, "已抓到凭证参数，正在自检基础接口...")
 				report := runAuthProbeWithTokens(ctx, "", tokens, prefs)
 				if err := SaveLocalConfig(tokens); err != nil {
 					e.addLogLevel("保存配置失败: "+err.Error(), "error")
 					e.cleanupProxy()
-					e.setState(EngineError, "认证参数保存失败: "+err.Error())
+					e.setState(EngineError, "凭证参数保存失败: "+err.Error())
 					return
 				}
-				markAuthHealthy() // 重新捕获认证 → 清除"认证过期"提醒
+				markAuthHealthy() // 重新捕获凭证 → 清除"凭证过期"提醒
 				setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 				e.cleanupProxy()
 				if report.OK {
-					e.addLog("认证参数已捕获、基础接口自检通过并保存！")
-					e.setState(EngineIdle, "认证参数捕获完成！")
+					e.addLog("凭证参数已捕获、基础接口自检通过并保存！")
+					e.setState(EngineIdle, "凭证参数捕获完成！")
 				} else {
-					e.addLogLevel("认证参数已捕获并保存；基础接口自检未通过（"+authProbeFailureSummary(report)+"），可直接尝试使用，如不可用再重新捕获。", "warn")
-					e.setState(EngineIdle, "认证参数已保存；基础接口自检未通过，但可直接尝试使用。即使小程序显示服务器出错也不影响。")
+					e.addLogLevel("凭证参数已捕获并保存；基础接口自检未通过（"+authProbeFailureSummary(report)+"），可直接尝试使用，如不可用再重新捕获。", "warn")
+					e.setState(EngineIdle, "凭证参数已保存；基础接口自检未通过，但可直接尝试使用。即使小程序显示服务器出错也不影响。")
 				}
 
 				tokens.Lock()
@@ -322,8 +322,8 @@ func (e *BookingEngine) cleanupProxy() {
 }
 
 // ResetCapture 强制停止当前抓包/运行、关闭代理并清理系统代理残留，把引擎重置回
-// idle。抓到认证后会自动断连，状态可能卡在 capturing（尤其接口发现保持连接时），
-// 导致「获取认证」被 isRunningLocked 挡住而连不回来；重置后即可手动重新连接抓包。
+// idle。抓到凭证后会自动断连，状态可能卡在 capturing（尤其接口发现保持连接时），
+// 导致「获取凭证」被 isRunningLocked 挡住而连不回来；重置后即可手动重新连接抓包。
 func (e *BookingEngine) ResetCapture() {
 	e.mu.Lock()
 	cancel := e.cancel
@@ -334,8 +334,8 @@ func (e *BookingEngine) ResetCapture() {
 	}
 	e.cleanupProxy()
 	checkStaleProxy()
-	e.setState(EngineIdle, "已重置抓包状态，可点「获取认证」手动重新连接")
-	e.addLog("已重置抓包状态：代理已断开并清理，点「获取认证」可重新连接抓包。")
+	e.setState(EngineIdle, "已重置抓包状态，可点「获取凭证」手动重新连接")
+	e.addLog("已重置抓包状态：代理已断开并清理，点「获取凭证」可重新连接抓包。")
 }
 
 // StartBooking begins the automated booking loop.
@@ -391,7 +391,7 @@ func (e *BookingEngine) StartBooking() error {
 	done := make(chan struct{})
 	e.done = done
 	e.state.Status = EngineBooking
-	e.state.Message = "正在验证认证参数..."
+	e.state.Message = "正在验证凭证参数..."
 	e.state.Attempts = 0
 	e.state.Reservation = nil
 	e.mu.Unlock()
@@ -401,8 +401,8 @@ func (e *BookingEngine) StartBooking() error {
 	tokens, err := LoadLocalConfig()
 	if err != nil {
 		e.abortStart(done, cancel)
-		e.setState(EngineIdle, "暂无认证参数")
-		return fmt.Errorf("暂无认证参数，请先完成参数捕获")
+		e.setState(EngineIdle, "暂无凭证参数")
+		return fmt.Errorf("暂无凭证参数，请先完成参数捕获")
 	}
 
 	prefs := LoadPreferences()
@@ -434,7 +434,7 @@ func (e *BookingEngine) StartBooking() error {
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
 			DeleteLocalConfig()
-			return fmt.Errorf("认证参数已过期，请重新捕获")
+			return fmt.Errorf("凭证参数已过期，请重新捕获")
 		}
 		return fmt.Errorf("验证失败: %w", err)
 	}
@@ -501,10 +501,10 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			}
 			lastErr = err
 			if isAuthError(err) {
-				e.addLogLevel("认证失败", "error")
-				sendNotification("寿司郎 - 认证失败", "请重新捕获参数")
+				e.addLogLevel("凭证失败", "error")
+				sendNotification("寿司郎 - 凭证失败", "请重新捕获参数")
 				DeleteLocalConfig()
-				e.setState(EngineError, "认证参数已失效")
+				e.setState(EngineError, "凭证参数已失效")
 				return
 			}
 			if errors.Is(err, ErrActiveReservationExists) {
@@ -555,10 +555,10 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				if isAuthError(err) {
 					authErrors++
 					if authErrors >= 3 {
-						e.addLogLevel("认证失败，请重新捕获参数", "error")
-						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新捕获")
+						e.addLogLevel("凭证失败，请重新捕获参数", "error")
+						sendNotification("寿司郎 - 凭证失败", "凭证参数已失效，请重新捕获")
 						DeleteLocalConfig()
-						e.setState(EngineError, "认证参数已失效，请重新捕获")
+						e.setState(EngineError, "凭证参数已失效，请重新捕获")
 						return
 					}
 				}
@@ -620,10 +620,10 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			if isAuthError(err) {
 				authErrors++
 				if authErrors >= 3 {
-					e.addLogLevel("认证失败", "error")
-					sendNotification("寿司郎 - 认证失败", "请重新捕获参数")
+					e.addLogLevel("凭证失败", "error")
+					sendNotification("寿司郎 - 凭证失败", "请重新捕获参数")
 					DeleteLocalConfig()
-					e.setState(EngineError, "认证参数已失效")
+					e.setState(EngineError, "凭证参数已失效")
 					return
 				}
 			}

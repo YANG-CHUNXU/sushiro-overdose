@@ -536,12 +536,12 @@ func APIDiscoveryDiagnosis(record APIDiscoveryRecord) []string {
 		}
 	}
 	if strings.Contains(path, "/api_auth/") && !discoveryRecordHasHeader(record, "authorization") {
-		notes = append(notes, "api_auth 请求未看到 Authorization header；如果返回 401/403，优先重新登录/重新捕获认证。")
+		notes = append(notes, "api_auth 请求未看到 Authorization header；如果返回 401/403，优先重新登录/重新捕获凭证。")
 	}
 	if text := strings.ToLower(strings.Join(discoveryResponseErrorValues(record.ResponseErrorFields), " ")); text != "" {
 		for _, needle := range []string{"openid", "unionid", "session", "token", "login", "auth"} {
 			if strings.Contains(text, needle) {
-				notes = append(notes, "响应错误文本提到登录态/openid/session/token，优先判断 PC 微信登录态或认证参数。")
+				notes = append(notes, "响应错误文本提到登录态/openid/session/token，优先判断 PC 微信登录态或凭证参数。")
 				break
 			}
 		}

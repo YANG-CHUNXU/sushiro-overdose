@@ -83,7 +83,7 @@ func handleStores(w http.ResponseWriter, r *http.Request) {
 				address = info.Address
 			}
 		}
-		if name == id { // 认证缺失或未命中时，用公开接口兜底解析门店名
+		if name == id { // 凭证缺失或未命中时，用公开接口兜底解析门店名
 			if s, err := publicClient.GetStore(r.Context(), id); err == nil && s.Name != "" {
 				name = s.Name
 				address = s.Address

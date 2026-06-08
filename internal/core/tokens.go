@@ -171,7 +171,7 @@ func LoadLocalConfig() (*CapturedTokens, error) {
 func (t *CapturedTokens) ValidateForQuery() error {
 	missing := t.MissingFields(false)
 	if len(missing) > 0 {
-		return fmt.Errorf("认证参数不完整，缺少: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("凭证参数不完整，缺少: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -193,7 +193,7 @@ func (t *CapturedTokens) MissingFields(reservation bool) []string {
 		value string
 	}{
 		{"X-App-Code", t.XAppCode},
-		{"查询认证", t.QueryAuth},
+		{"查询凭证", t.QueryAuth},
 		{"User-Agent", t.UserAgent},
 		{"Referer", t.Referer},
 	}
@@ -202,7 +202,7 @@ func (t *CapturedTokens) MissingFields(reservation bool) []string {
 			struct {
 				name  string
 				value string
-			}{"预约认证", t.ReservationAuth},
+			}{"预约凭证", t.ReservationAuth},
 			struct {
 				name  string
 				value string

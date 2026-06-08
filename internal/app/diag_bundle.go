@@ -85,7 +85,7 @@ func diagBundleReadme() string {
 		"  wechat-processes.txt 当前运行的 WeChat 进程版本与启动时间（Windows）",
 		"  cert-stores-raw.txt  本机 Root/Disallowed 证书存储中我们的指纹原始记录（Windows）",
 		"",
-		"诊断包内容只做脱敏后的本机证据收集，不上传任何认证 token、Cookie 或预约数据。",
+		"诊断包内容只做脱敏后的本机证据收集，不上传任何凭证 token、Cookie 或预约数据。",
 	}, "\n") + "\n"
 }
 

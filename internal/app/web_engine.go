@@ -19,14 +19,15 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	pid := readPID()
 	hasConfig := HasValidConfig()
 	status := map[string]any{
-		"version":     Version,
-		"running":     isRunning(),
-		"pid":         pid,
-		"has_config":  hasConfig,
-		"platform":    runtime.GOOS,
-		"engine":      engine.GetState(),
-		"sampling":    sampler.GetState(),
-		"auth_health": getAuthHealth(),
+		"version":           Version,
+		"running":           isRunning(),
+		"pid":               pid,
+		"has_config":        hasConfig,
+		"platform":          runtime.GOOS,
+		"engine":            engine.GetState(),
+		"sampling":          sampler.GetState(),
+		"auth_health":       getAuthHealth(),
+		"notify_configured": len(configuredNotificationChannels()) > 0,
 	}
 	writeJSON(w, status)
 }
@@ -41,7 +42,7 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 	reservations, err := client.GetReservations(r.Context())
 	if err != nil {
 		if errors.Is(err, ErrReservationsEndpointUnavailable) {
-			// 端点变更（404）不代表认证失效，认证健康保持不变。
+			// 端点变更（404）不代表凭证失效，凭证健康保持不变。
 			items := loadReservationsFallback()
 			items = refreshReservationItemsWithCurrentNetTicket(r.Context(), client, items)
 			writeJSON(w, map[string]any{
@@ -51,7 +52,7 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		noteAuthResult(err) // 认证失败则标记 stale，触发提醒
+		noteAuthResult(err) // 凭证失败则标记 stale，触发提醒
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -351,7 +352,7 @@ func normalizeLocalReservationTime(value string) string {
 	return ""
 }
 
-// handleQueueTicket 远程取号（实验性）。需要已捕获的认证态。
+// handleQueueTicket 远程取号（实验性）。需要已捕获的凭证态。
 func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
@@ -369,12 +370,12 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	refreshWebClient()
 	client := getWebClient()
 	if client == nil {
-		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，请先完成认证再取号")
+		writeError(w, http.StatusBadRequest, "尚未捕获凭证参数，请先完成凭证再取号")
 		return
 	}
 	ticket, err := client.CreateNetTicket(r.Context(), storeID)
 	if err != nil {
-		noteAuthResult(err) // 认证失败则标记 stale
+		noteAuthResult(err) // 凭证失败则标记 stale
 		if isTicketAlreadyIssuedError(err) {
 			plan := LoadNetTicketPlan()
 			plan.Enabled = false
@@ -394,7 +395,7 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, friendlyNetTicketError(err))
 		return
 	}
-	markAuthHealthy() // 取号成功 → 认证有效
+	markAuthHealthy() // 取号成功 → 凭证有效
 	plan := LoadNetTicketPlan()
 	plan.Enabled = false
 	plan.StoreID = storeID
@@ -413,7 +414,7 @@ func handleQueueTicketStatus(w http.ResponseWriter, r *http.Request) {
 	refreshWebClient()
 	client := getWebClient()
 	if client == nil {
-		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，请先完成认证")
+		writeError(w, http.StatusBadRequest, "尚未捕获凭证参数，请先完成凭证")
 		return
 	}
 	ticket, err := client.GetNetTicketStatus(r.Context())
@@ -488,7 +489,7 @@ func handleCancelNetTicket(w http.ResponseWriter, r *http.Request) {
 	refreshWebClient()
 	client := getWebClient()
 	if client == nil {
-		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，无法取消")
+		writeError(w, http.StatusBadRequest, "尚未捕获凭证参数，无法取消")
 		return
 	}
 	if err := client.CancelNetTicket(r.Context()); err != nil {
@@ -528,7 +529,7 @@ func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 	refreshWebClient()
 	client := getWebClient()
 	if client == nil {
-		writeError(w, http.StatusBadRequest, "尚未捕获认证参数，无法取消")
+		writeError(w, http.StatusBadRequest, "尚未捕获凭证参数，无法取消")
 		return
 	}
 	if err := client.CancelReservation(r.Context(), body.TicketID); err != nil {

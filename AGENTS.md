@@ -9,7 +9,7 @@
 
 **sushiro-overdose** 是寿司郎 (SUSHIRO) 餐厅的自动预约抢号工具。
 
-核心流程：本地 MITM 代理拦截 PC 微信小程序流量 → 捕获认证参数 → 直连官方 API 轮询/抢号。
+核心流程：本地 MITM 代理拦截 PC 微信小程序流量 → 捕获凭证参数 → 直连官方 API 轮询/抢号。
 
 **技术栈**：Go 1.23，零外部依赖（纯标准库），单 `package main`。
 
@@ -63,10 +63,10 @@ main.go (默认启动 Web UI)
 | `web_calendar.go` | 日历/门店 API |
 | `web_engine.go` | 状态、预约、引擎控制、洞察 API |
 | `web_preferences.go` | 偏好、通知、repair/uninstall API |
-| `auth_import.go` | 手动导入认证 API：解析手机抓包导出的 JSON/curl/raw headers 并保存认证参数 |
+| `auth_import.go` | 手动导入凭证 API：解析手机抓包导出的 JSON/curl/raw headers 并保存凭证参数 |
 | `web_sniper.go` | Web 狙击计划 API |
 | `web_sampling.go` | Web 信息收集 API |
-| `mobile_auth_capture.go` | 手机认证捕获 API：局域网引导页 + 手机代理捕获真实微信认证参数 |
+| `mobile_auth_capture.go` | 手机凭证捕获 API：局域网引导页 + 手机代理捕获真实微信凭证参数 |
 | `web_queue_trends.go` | 本地到店预测 API |
 | `web_queue_live.go` | 实时排队 API（公开门店等位/区域/单店详情） |
 | `web_events.go` | SSE 事件总线 |
@@ -81,7 +81,7 @@ main.go (默认启动 Web UI)
 | `queue_live_panel.go` | 单店实时面板聚合：实时叫号/在等桌数/预估等待 + 由本机采样历史算近15分钟叫号与历史均速 |
 | `queue_alerts.go` | 叫号提醒规则与去重状态：`wait_below`（预估等待降到阈值）/`called_reach`（叫号接近手中号），采样循环命中即经通知渠道推送 |
 | `config.go` | `Settings` 结构体定义，`LoadSettings` 从 JSON 文件加载（备用，当前未被调用） |
-| `tokens.go` | 捕获到的认证参数模型、本地配置读写、旧配置迁移、认证参数 → `Settings` 转换 |
+| `tokens.go` | 捕获到的凭证参数模型、本地配置读写、旧配置迁移、凭证参数 → `Settings` 转换 |
 | `preferences.go` | **用户偏好持久化**：人数/桌型/自定义时段范围/日期与时段优先级，存到 `~/.sushiro/preferences.json` |
 | `slot.go` | `Slot`/`StoreInfo`/`ReservationRecord` 数据结构，时间格式化工具 |
 
@@ -160,8 +160,8 @@ main.go (默认启动 Web UI)
 
 ```
 ~/.sushiro/
-├── config.json          认证参数（X-App-Code, Authorization 等）
-├── mobile_ua.json       手机微信 User-Agent（手机认证捕获/扫码采集后写入）
+├── config.json          凭证参数（X-App-Code, Authorization 等）
+├── mobile_ua.json       手机微信 User-Agent（手机凭证捕获/扫码采集后写入）
 ├── preferences.json     用户偏好（人数/桌型/目标时段/优先级）
 ├── notify.json          通知渠道配置
 ├── stores.json          门店昵称
@@ -207,13 +207,13 @@ main.go (默认启动 Web UI)
 | GET | `/api/queue/areas` | 官方区域列表 |
 | GET/POST | `/api/preferences` | 读取/保存用户偏好 |
 | GET/POST | `/api/config` | 读取/保存通知配置 |
-| POST | `/api/auth/import` | 手动导入认证参数，支持 JSON、curl、raw headers |
+| POST | `/api/auth/import` | 手动导入凭证参数，支持 JSON、curl、raw headers |
 | GET/POST | `/api/mobile-ua` | 读取/手动保存移动端 UA |
 | POST | `/api/mobile-ua/capture/start` | 启动手机扫码 UA 采集页 |
 | POST | `/api/mobile-ua/capture/stop` | 停止手机扫码 UA 采集 |
-| GET | `/api/mobile-auth` | 手机认证捕获状态、二维码、局域网引导链接与字段完成度 |
-| POST | `/api/mobile-auth/start` | 启动手机认证捕获：监听局域网代理，只捕获寿司郎认证参数，不修改 Windows 系统代理 |
-| POST | `/api/mobile-auth/stop` | 停止手机认证捕获 |
+| GET | `/api/mobile-auth` | 手机凭证捕获状态、二维码、局域网引导链接与字段完成度 |
+| POST | `/api/mobile-auth/start` | 启动手机凭证捕获：监听局域网代理，只捕获寿司郎凭证参数，不修改 Windows 系统代理 |
+| POST | `/api/mobile-auth/stop` | 停止手机凭证捕获 |
 | GET | `/api/diagnostics` | 只读、脱敏的本机诊断信息 |
 | GET | `/api/update` | 检查 GitHub 最新 Release |
 | POST | `/api/notifications/test` | 发送通知渠道测试 |

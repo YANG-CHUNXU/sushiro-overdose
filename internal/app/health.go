@@ -32,8 +32,8 @@ func startHealthCheck(ctx context.Context, client *Client, storeIDs []string) ch
 					_, err := client.GetTimeslots(ctx, storeID)
 					if err != nil {
 						if isAuthError(err) {
-							LogMessage(time.Now(), "健康检查：认证参数已失效")
-							sendNotification("寿司郎 - 认证过期", "健康检测发现认证参数已失效，请重新打开 sushiro 重新捕获")
+							LogMessage(time.Now(), "健康检查：凭证参数已失效")
+							sendNotification("寿司郎 - 凭证过期", "健康检测发现凭证参数已失效，请重新打开 sushiro 重新捕获")
 							DeleteLocalConfig()
 							return
 						}

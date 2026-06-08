@@ -30,7 +30,7 @@ internal/
 
 - **core/**：`config.go`、`tokens.go`、`slot.go`、`preferences.go`、`store.go`、`state.go`、`runtime.go`、`capture.go`、`discovery.go`（接口发现调试）、`paths.go`、`ports.go`、`redact.go`（脱敏）、`util.go`
 
-- **api/**：`api.go` —— 封装官方接口调用与认证头注入。
+- **api/**：`api.go` —— 封装官方接口调用与凭证头注入。
 
 - **proxy/**：`proxy.go`（只对寿司郎 API 域名做 TLS 解密，其余 CONNECT 透传）、`cert.go`（CA 证书）。
 

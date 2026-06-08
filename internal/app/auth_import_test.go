@@ -56,7 +56,7 @@ func TestParseAuthImportReportsMissingFields(t *testing.T) {
 	}
 	finalizeImportedTokens(tokens)
 	missing := strings.Join(tokens.MissingFields(true), ",")
-	for _, want := range []string{"查询认证", "预约认证", "User-Agent", "Referer", "微信ID", "手机号", "门店"} {
+	for _, want := range []string{"查询凭证", "预约凭证", "User-Agent", "Referer", "微信ID", "手机号", "门店"} {
 		if !strings.Contains(missing, want) {
 			t.Fatalf("missing = %q, want %q", missing, want)
 		}

@@ -42,8 +42,8 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	tokens, err := LoadLocalConfig()
 	if err != nil {
 		e.abortStart(done, cancel)
-		e.setState(EngineIdle, "暂无认证参数")
-		return fmt.Errorf("暂无认证参数，请先完成参数捕获")
+		e.setState(EngineIdle, "暂无凭证参数")
+		return fmt.Errorf("暂无凭证参数，请先完成参数捕获")
 	}
 	prefs := LoadPreferences()
 	if len(prefs.SelectedStores) > 0 {
@@ -75,7 +75,7 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
 			DeleteLocalConfig()
-			return fmt.Errorf("认证参数已过期，请重新捕获")
+			return fmt.Errorf("凭证参数已过期，请重新捕获")
 		}
 		return fmt.Errorf("验证失败: %w", err)
 	}
@@ -218,10 +218,10 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					t.LastError = err.Error()
 				})
 				if isAuthError(err) {
-					e.addLogLevel("狙击认证失败，请重新捕获参数", "error")
-					sendNotification("寿司郎狙击 - 认证失败", "认证参数已失效")
+					e.addLogLevel("狙击凭证失败，请重新捕获参数", "error")
+					sendNotification("寿司郎狙击 - 凭证失败", "凭证参数已失效")
 					DeleteLocalConfig()
-					e.setState(EngineError, "认证参数已失效，请重新捕获")
+					e.setState(EngineError, "凭证参数已失效，请重新捕获")
 					return
 				}
 				if isOfficialServerHTTPError(err) {
@@ -258,10 +258,10 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 						t.LastAttemptAt = time.Now().In(settings.Location).Format(time.RFC3339)
 					})
 					if isAuthError(err) {
-						e.addLogLevel("预约认证失败，终止狙击", "error")
-						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
+						e.addLogLevel("预约凭证失败，终止狙击", "error")
+						sendNotification("寿司郎狙击 - 凭证失败", "预约凭证参数已失效")
 						DeleteLocalConfig()
-						e.setState(EngineError, "预约认证参数已失效")
+						e.setState(EngineError, "预约凭证参数已失效")
 						return
 					}
 					if errors.Is(err, ErrActiveReservationExists) {

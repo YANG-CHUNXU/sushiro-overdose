@@ -41,7 +41,7 @@ func TestAuthHealthStateMachine(t *testing.T) {
 		t.Fatalf("noteAuthResult(nil) status = %q, want %q", got, authHealthOK)
 	}
 
-	// 非认证错误不改变认证健康
+	// 非凭证错误不改变凭证健康
 	noteAuthResult(errors.New("some non-auth failure"))
 	if got := getAuthHealth().Status; got != authHealthOK {
 		t.Fatalf("noteAuthResult(non-auth) changed status to %q, want %q", got, authHealthOK)

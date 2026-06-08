@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// CaptureFromRequest 从 MITM 捕获到的请求里提取认证参数填入 CapturedTokens。
+// CaptureFromRequest 从 MITM 捕获到的请求里提取凭证参数填入 CapturedTokens。
 // 调用方需保证 req 是寿司郎域名的请求（MITM 只对该域名解密）。
 func (t *CapturedTokens) CaptureFromRequest(req *http.Request, bodyBytes []byte) {
 	t.mu.Lock()

@@ -56,8 +56,8 @@ func RunAuthProbe(ctx context.Context, requestedStore string) AuthProbeReport {
 	if err != nil {
 		report := AuthProbeReport{}
 		report.Missing = []string{"config.json"}
-		report.Advice = []string{"本地还没有认证参数；先从可用设备获取认证，或导入已有 config.json。"}
-		report.Results = append(report.Results, AuthProbeResult{Name: "读取本地认证", OK: false, Detail: err.Error()})
+		report.Advice = []string{"本地还没有凭证参数；先从可用设备获取凭证，或导入已有 config.json。"}
+		report.Results = append(report.Results, AuthProbeResult{Name: "读取本地凭证", OK: false, Detail: err.Error()})
 		return report
 	}
 
@@ -73,14 +73,14 @@ func runAuthProbeWithTokens(ctx context.Context, requestedStore string, tokens *
 
 	if missing := tokens.MissingFields(false); len(missing) > 0 {
 		report.Missing = append(report.Missing, missing...)
-		report.Results = append(report.Results, AuthProbeResult{Name: "查询认证参数", OK: false, Detail: "缺少: " + strings.Join(missing, ", ")})
-		report.Advice = append(report.Advice, "查询认证不完整，基础门店/时段接口无法验证。")
+		report.Results = append(report.Results, AuthProbeResult{Name: "查询凭证参数", OK: false, Detail: "缺少: " + strings.Join(missing, ", ")})
+		report.Advice = append(report.Advice, "查询凭证不完整，基础门店/时段接口无法验证。")
 		return report
 	}
 	if storeID == "" {
 		report.Missing = append(report.Missing, "门店")
 		report.Results = append(report.Results, AuthProbeResult{Name: "选择探测门店", OK: false, Detail: "没有可用门店 ID"})
-		report.Advice = append(report.Advice, "认证配置里没有门店 ID，先在小程序里打开目标门店，或手动补充 store_ids。")
+		report.Advice = append(report.Advice, "凭证配置里没有门店 ID，先在小程序里打开目标门店，或手动补充 store_ids。")
 		return report
 	}
 
@@ -92,7 +92,7 @@ func runAuthProbeWithTokens(ctx context.Context, requestedStore string, tokens *
 
 	if missing := tokens.MissingFields(true); len(missing) > 0 {
 		report.Results = append(report.Results, AuthProbeResult{
-			Name:    "预约认证接口",
+			Name:    "预约凭证接口",
 			Skipped: true,
 			Detail:  "缺少: " + strings.Join(missing, ", "),
 		})
@@ -180,7 +180,7 @@ func probeReservations(ctx context.Context, client *http.Client, settings Settin
 		"phoneNumber": settings.PhoneNumber,
 	}
 	result, body := probeOfficialAPI(ctx, client, http.MethodPost, settings.BaseURL+path, path, NewClient(settings).BaseHeaders(settings.ReservationAuth, "application/json"), payload)
-	result.Name = "认证接口：当前预约"
+	result.Name = "凭证接口：当前预约"
 	result = normalizeReservationsProbeResult(result)
 	if result.Skipped {
 		return result
@@ -253,7 +253,7 @@ func probeOfficialAPI(ctx context.Context, client *http.Client, method, target, 
 
 func authProbeAdvice(report AuthProbeReport) []string {
 	if report.OK {
-		return []string{"基础接口可用，认证参数本身有效；Windows 问题集中在 PC 微信代理/MITM 捕获阶段。"}
+		return []string{"基础接口可用，凭证参数本身有效；Windows 问题集中在 PC 微信代理/MITM 捕获阶段。"}
 	}
 	out := []string{}
 	for _, result := range report.Results {
@@ -261,7 +261,7 @@ func authProbeAdvice(report AuthProbeReport) []string {
 			continue
 		}
 		if result.Status == http.StatusUnauthorized || result.Status == http.StatusForbidden {
-			out = append(out, "官方接口返回认证失败，优先重新获取认证参数。")
+			out = append(out, "官方接口返回凭证失败，优先重新获取凭证参数。")
 			continue
 		}
 		if result.Status >= 500 {
@@ -321,7 +321,7 @@ func printAuthProbeReport(report AuthProbeReport) {
 	if report.OK {
 		status = "OK"
 	}
-	fmt.Printf("认证基础接口自检: %s\n", status)
+	fmt.Printf("凭证基础接口自检: %s\n", status)
 	if report.StoreID != "" {
 		fmt.Printf("门店: %s %s\n", report.StoreID, report.Store)
 	}

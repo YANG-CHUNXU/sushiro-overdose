@@ -376,7 +376,7 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 	tokens, err := LoadLocalConfig()
 	if err != nil {
 		result.Skipped = true
-		result.SkipReason = "暂无认证参数，请先完成参数捕获"
+		result.SkipReason = "暂无凭证参数，请先完成参数捕获"
 		result.FinishedAt = time.Now().Format(time.RFC3339)
 		return result
 	}
@@ -419,7 +419,7 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 			result.FinishedAt = time.Now().Format(time.RFC3339)
 			return result
 		}
-		// 排队快照：用认证态 getStoreById（含 groupQueues=当前叫号），写入观测并评估叫号提醒。
+		// 排队快照：用凭证态 getStoreById（含 groupQueues=当前叫号），写入观测并评估叫号提醒。
 		if storeInfo, err := client.GetStoreInfo(ctx, storeID); err != nil {
 			storeResult.QueueError = err.Error()
 			LogMessage(time.Now(), fmt.Sprintf("采样排队快照获取失败，门店 %s: %v", storeID, err))

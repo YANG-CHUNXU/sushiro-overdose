@@ -50,10 +50,10 @@ func handleAuthImport(w http.ResponseWriter, r *http.Request) {
 		_, _ = SaveMobileUA(rawUA, "manual-auth-import", r.RemoteAddr)
 	}
 	if err := SaveLocalConfig(tokens); err != nil {
-		writeError(w, http.StatusInternalServerError, "保存认证参数失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "保存凭证参数失败: "+err.Error())
 		return
 	}
-	markAuthHealthy() // 重新导入认证 → 清除"认证过期"提醒
+	markAuthHealthy() // 重新导入凭证 → 清除"凭证过期"提醒
 	prefs := LoadPreferences()
 	tokens.Lock()
 	if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {
@@ -64,7 +64,7 @@ func handleAuthImport(w http.ResponseWriter, r *http.Request) {
 	tokens.Unlock()
 	setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 	resp["saved"] = true
-	resp["message"] = "认证参数已导入并保存，可到本机诊断里测试基础接口。"
+	resp["message"] = "凭证参数已导入并保存，可到本机诊断里测试基础接口。"
 	resp["missing"] = []string{}
 	resp["config_complete"] = true
 	writeJSON(w, resp)
@@ -94,7 +94,7 @@ func parseAuthImportText(text string) (*CapturedTokens, []string, error) {
 		sourceList = append(sourceList, source)
 	}
 	if len(sourceList) == 0 {
-		return nil, nil, fmt.Errorf("没有识别到认证字段，请粘贴手机抓包导出的 curl、raw headers 或 JSON")
+		return nil, nil, fmt.Errorf("没有识别到凭证字段，请粘贴手机抓包导出的 curl、raw headers 或 JSON")
 	}
 	return tokens, sourceList, nil
 }

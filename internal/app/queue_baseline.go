@@ -49,7 +49,7 @@ type QueueBaselineRecord struct {
 }
 
 // QueueBaselineExport 是远端公开「全国基准」JSON 的协议结构。它只包含门店维度
-// 和聚合后的半小时基准，不包含用户票号、手机号、认证参数或个人取号记录。
+// 和聚合后的半小时基准，不包含用户票号、手机号、凭证参数或个人取号记录。
 type QueueBaselineExport struct {
 	Version       int                   `json:"version"`
 	GeneratedAt   string                `json:"generated_at"`

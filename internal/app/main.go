@@ -74,7 +74,7 @@ func printUsage() {
 	fmt.Println("  config         通知/门店配置（feishu|telegram|bark|serverchan|store）")
 	fmt.Println("  doctor         打印只读诊断")
 	fmt.Println("  diag-bundle    导出脱敏证据包（zip）")
-	fmt.Println("  auth-probe     测试已存认证连通性")
+	fmt.Println("  auth-probe     测试已存凭证连通性")
 	fmt.Println("  repair-proxy   恢复系统代理")
 	fmt.Println("  stop-processes 停止相关进程")
 	fmt.Println("  uninstall      移除本地敏感数据与证书")
@@ -366,11 +366,11 @@ func run(ctx context.Context) error {
 	client := NewClient(settings)
 
 	// Verify config still works
-	LogMessage(time.Now(), "验证认证参数...")
+	LogMessage(time.Now(), "验证凭证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
 		LogMessage(time.Now(), "验证失败: "+err.Error())
-		LogMessage(time.Now(), "认证参数可能已过期，需要重新获取...")
-		sendNotification("寿司郎 - 认证过期", "需要重新运行捕获认证参数")
+		LogMessage(time.Now(), "凭证参数可能已过期，需要重新获取...")
+		sendNotification("寿司郎 - 凭证过期", "需要重新运行捕获凭证参数")
 		DeleteLocalConfig()
 		tokens, err = runCapturePhase(ctx)
 		if err != nil {
@@ -561,8 +561,8 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 				if isAuthError(err) {
 					authErrors++
 					if authErrors >= 3 {
-						LogMessage(now, "认证失败，请重新运行获取新参数")
-						sendNotification("寿司郎 - 认证失败", "认证参数已失效，请重新打开 sushiro 重新捕获")
+						LogMessage(now, "凭证失败，请重新运行获取新参数")
+						sendNotification("寿司郎 - 凭证失败", "凭证参数已失效，请重新打开 sushiro 重新捕获")
 						DeleteLocalConfig()
 						return
 					}
@@ -623,8 +623,8 @@ func runBookingLoop(ctx context.Context, client *Client, settings Settings, stor
 			if isAuthError(err) {
 				authErrors++
 				if authErrors >= 3 {
-					LogMessage(now, "认证失败，请重新运行")
-					sendNotification("寿司郎 - 认证失败", "请重新打开 sushiro 重新捕获")
+					LogMessage(now, "凭证失败，请重新运行")
+					sendNotification("寿司郎 - 凭证失败", "请重新打开 sushiro 重新捕获")
 					DeleteLocalConfig()
 					return
 				}

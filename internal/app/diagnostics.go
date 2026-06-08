@@ -412,7 +412,7 @@ func collectProxyChainDiagnostics(marker DiagnosticProxyMarker, systemProxy Diag
 		Active: marker.Active && marker.PIDAlive,
 	}
 	if !marker.Active || marker.Port == 0 {
-		out.Summary = "捕获代理未运行；点击获取认证后再打开诊断可检查代理链路"
+		out.Summary = "捕获代理未运行；点击获取凭证后再打开诊断可检查代理链路"
 		return out
 	}
 	out.Checked = true

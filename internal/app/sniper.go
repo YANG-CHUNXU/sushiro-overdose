@@ -77,10 +77,10 @@ func cmdSniper(args []string) {
 	settings := tokens.ToSettings()
 	client := NewClient(settings)
 
-	LogMessage(time.Now(), "验证认证参数...")
+	LogMessage(time.Now(), "验证凭证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
 		LogMessage(time.Now(), "验证失败: "+err.Error())
-		fmt.Println("认证参数已过期，请重新运行 sushiro 重新捕获")
+		fmt.Println("凭证参数已过期，请重新运行 sushiro 重新捕获")
 		return
 	}
 
@@ -333,8 +333,8 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			slots, err := client.GetTimeslots(ctx, target.StoreID)
 			if err != nil {
 				if isAuthError(err) {
-					LogMessage(time.Now().In(settings.Location), "认证失败，终止狙击")
-					sendNotification("寿司郎狙击 - 认证失败", "认证参数已失效")
+					LogMessage(time.Now().In(settings.Location), "凭证失败，终止狙击")
+					sendNotification("寿司郎狙击 - 凭证失败", "凭证参数已失效")
 					return
 				}
 				if isOfficialServerHTTPError(err) {
@@ -368,8 +368,8 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 					if errors.Is(err, ErrNoReservationAvailable) {
 						fmt.Printf("\r[%s] %s - 名额已满，继续尝试...", time.Now().Format("15:04:05"), slotLabel)
 					} else if isAuthError(err) {
-						LogMessage(time.Now().In(settings.Location), "预约认证失败，终止狙击")
-						sendNotification("寿司郎狙击 - 认证失败", "预约认证参数已失效")
+						LogMessage(time.Now().In(settings.Location), "预约凭证失败，终止狙击")
+						sendNotification("寿司郎狙击 - 凭证失败", "预约凭证参数已失效")
 						DeleteLocalConfig()
 						return
 					} else if isOfficialServerHTTPError(err) {

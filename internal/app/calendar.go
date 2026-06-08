@@ -28,10 +28,10 @@ func cmdCalendar() {
 	settings := tokens.ToSettings()
 	client := NewClient(settings)
 
-	LogMessage(time.Now(), "验证认证参数...")
+	LogMessage(time.Now(), "验证凭证参数...")
 	if _, err := client.GetTimeslots(ctx, settings.StoreIDs[0]); err != nil {
 		LogMessage(time.Now(), "验证失败: "+err.Error())
-		fmt.Println("认证参数已过期，请重新运行 sushiro 重新捕获")
+		fmt.Println("凭证参数已过期，请重新运行 sushiro 重新捕获")
 		return
 	}
 

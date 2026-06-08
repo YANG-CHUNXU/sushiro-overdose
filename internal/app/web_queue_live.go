@@ -66,6 +66,72 @@ func handleQueueLivePanel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, panel)
 }
 
+func handleQueueAdvisor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	q := r.URL.Query()
+	storeID := strings.TrimSpace(q.Get("store"))
+	if storeID == "" {
+		storeID = strings.TrimSpace(q.Get("id"))
+	}
+	if storeID == "" {
+		writeError(w, http.StatusBadRequest, "缺少门店 ID")
+		return
+	}
+	advisor, err := buildQueueAdvisor(r.Context(), storeID, atoiDefault(q.Get("target_no"), 0), atoiDefault(q.Get("travel_minutes"), 0), time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, advisor)
+}
+
+func handleQueuePressureCurve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	q := r.URL.Query()
+	storeID := strings.TrimSpace(q.Get("store"))
+	if storeID == "" {
+		storeID = strings.TrimSpace(q.Get("id"))
+	}
+	if storeID == "" {
+		writeError(w, http.StatusBadRequest, "缺少门店 ID")
+		return
+	}
+	writeJSON(w, buildQueuePressureCurve(storeID, strings.TrimSpace(q.Get("date")), time.Now()))
+}
+
+// handleQueuePlan 时间互推：?pickup=HHMM 算几点能吃；?target_meal=HHMM 算几点取号。
+func handleQueuePlan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	q := r.URL.Query()
+	storeID := strings.TrimSpace(q.Get("store"))
+	if storeID == "" {
+		storeID = strings.TrimSpace(q.Get("id"))
+	}
+	if storeID == "" {
+		writeError(w, http.StatusBadRequest, "缺少门店 ID")
+		return
+	}
+	now := time.Now()
+	if pickup := strings.TrimSpace(q.Get("pickup")); pickup != "" {
+		writeJSON(w, buildQueuePickupPlan(storeID, pickup, now))
+		return
+	}
+	if meal := strings.TrimSpace(q.Get("target_meal")); meal != "" {
+		writeJSON(w, buildQueueMealPlan(storeID, meal, atoiDefault(q.Get("travel_minutes"), 0), now))
+		return
+	}
+	writeError(w, http.StatusBadRequest, "缺少 pickup 或 target_meal 参数")
+}
+
 func handleQueueAlerts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

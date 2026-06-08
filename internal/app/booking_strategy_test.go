@@ -594,7 +594,7 @@ func TestCapturedTokensValidation(t *testing.T) {
 	if err := queryOnly.ValidateForQuery(); err != nil {
 		t.Fatalf("ValidateForQuery() error = %v, want nil", err)
 	}
-	assertErrorContainsAll(t, queryOnly.ValidateForReservation(), "预约认证", "微信ID", "手机号")
+	assertErrorContainsAll(t, queryOnly.ValidateForReservation(), "预约凭证", "微信ID", "手机号")
 
 	complete := &CapturedTokens{
 		XAppCode:        "app",
@@ -617,7 +617,7 @@ func TestCapturedTokensValidation(t *testing.T) {
 		XAppCode:  "  ",
 		UserAgent: "agent",
 	}
-	assertErrorContainsAll(t, missingQuery.ValidateForQuery(), "X-App-Code", "查询认证", "Referer", "门店")
+	assertErrorContainsAll(t, missingQuery.ValidateForQuery(), "X-App-Code", "查询凭证", "Referer", "门店")
 }
 
 func validSettingsForTest() Settings {

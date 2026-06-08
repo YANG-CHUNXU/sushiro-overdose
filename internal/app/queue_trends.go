@@ -491,7 +491,7 @@ func BuildQueueTrendsWithContext(ctx context.Context, query QueueTrendQuery, now
 	if baselineStatus.Used {
 		if summary.ObservationRecords == 0 && summary.SessionRecords == 0 {
 			scope.Mode = "baseline"
-			scope.Message = "当前使用 Turso 全国基准数据；无需本机认证也可以先看门店时段基准。"
+			scope.Message = "当前使用 Turso 全国基准数据；无需本机凭证也可以先看门店时段基准。"
 		} else {
 			scope.Mode = "hybrid"
 			scope.Message = "当前混合使用 Turso 全国基准和本机真实数据。"
@@ -1103,7 +1103,7 @@ func buildQueueSamplingStatus(now time.Time, summary QueueTrendSummary) QueueSam
 	switch {
 	case status.NeedsAuth:
 		status.PermissionStatus = "needs_auth"
-		status.Message = "认证参数需要更新，重新获取后才能继续信息收集。"
+		status.Message = "凭证参数需要更新，重新获取后才能继续信息收集。"
 	case status.NeedsBackground:
 		status.PermissionStatus = "needs_background"
 		status.Message = "还没有持续信息收集。开启后会按门店积累预测数据。"
@@ -1118,10 +1118,10 @@ func buildQueueSamplingStatus(now time.Time, summary QueueTrendSummary) QueueSam
 		status.PermissionStatus = "ok"
 		status.Message = "信息收集状态正常。"
 	}
-	if state.LastError != "" && strings.Contains(strings.ToLower(state.LastError), "认证") {
+	if state.LastError != "" && strings.Contains(strings.ToLower(state.LastError), "凭证") {
 		status.PermissionStatus = "needs_auth"
 		status.NeedsAuth = true
-		status.Message = "最近信息收集提示认证异常，请重新获取认证。"
+		status.Message = "最近信息收集提示凭证异常，请重新获取凭证。"
 	}
 	return status
 }

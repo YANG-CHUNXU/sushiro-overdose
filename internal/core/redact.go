@@ -11,7 +11,7 @@ var (
 	}
 )
 
-// SanitizeDiagnosticLine 对一行文本做脱敏：手机号打码、认证类字段值替换为 ***。
+// SanitizeDiagnosticLine 对一行文本做脱敏：手机号打码、凭证类字段值替换为 ***。
 func SanitizeDiagnosticLine(s string) string {
 	s = phoneRedactor.ReplaceAllStringFunc(s, func(phone string) string {
 		return MaskPhone(phone)
