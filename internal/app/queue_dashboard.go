@@ -305,10 +305,7 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 }
 
 func loadRemoteQueueDashboardBaseline(ctx context.Context, query QueueDashboardQuery, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
-	if len(query.StoreIDs) == 1 {
-		return loadRemoteQueuePressureBaseline(ctx, query.StoreIDs[0], now)
-	}
-	return loadRemoteQueueBaselineCached(ctx, now)
+	return loadRemoteQueueBaselineForStores(ctx, query.StoreIDs, now)
 }
 
 func normalizeQueueDashboardQuery(query QueueDashboardQuery) QueueDashboardQuery {

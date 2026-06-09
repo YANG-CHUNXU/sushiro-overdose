@@ -472,7 +472,7 @@ func BuildQueueTrendsWithContext(ctx context.Context, query QueueTrendQuery, now
 
 	summary = addQueueObservationsToTrend(series, summary, query, observations, storeNames, storeFilter, holidays, workdays)
 
-	baseline, baselineStatus, baselineErr := loadRemoteQueueBaselineCached(ctx, now)
+	baseline, baselineStatus, baselineErr := loadRemoteQueueBaselineForStores(ctx, query.StoreIDs, now)
 	if baselineStatus.Used {
 		summary = addQueueBaselineToTrend(series, summary, query, baseline, storeNames, storeFilter)
 	}

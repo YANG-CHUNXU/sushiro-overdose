@@ -47,7 +47,7 @@ type queueBaselineRemoteCacheEntry struct {
 
 var queueBaselineRemoteCache struct {
 	sync.Mutex
-	entry queueBaselineRemoteCacheEntry
+	entries map[string]queueBaselineRemoteCacheEntry
 }
 
 func queueBaselineRemoteConfigPath() string {
@@ -102,6 +102,36 @@ func (c queueBaselineTursoConfig) cacheKey() string {
 	return strings.TrimSpace(c.DatabaseURL) + "\x00" + strings.TrimSpace(c.AuthToken)
 }
 
+func queueBaselineStoreCacheKey(baseKey, storeID string) string {
+	return baseKey + "\x00store\x00" + strings.TrimSpace(storeID)
+}
+
+func getQueueBaselineRemoteCache(key string, now time.Time) (QueueBaselineExport, bool) {
+	queueBaselineRemoteCache.Lock()
+	defer queueBaselineRemoteCache.Unlock()
+	if queueBaselineRemoteCache.entries == nil {
+		return QueueBaselineExport{}, false
+	}
+	entry, ok := queueBaselineRemoteCache.entries[key]
+	if !ok || entry.loadedAt.IsZero() || now.Sub(entry.loadedAt) >= queueBaselineRemoteCacheTTL {
+		return QueueBaselineExport{}, false
+	}
+	return entry.export, true
+}
+
+func setQueueBaselineRemoteCache(key string, now time.Time, export QueueBaselineExport) {
+	queueBaselineRemoteCache.Lock()
+	defer queueBaselineRemoteCache.Unlock()
+	if queueBaselineRemoteCache.entries == nil {
+		queueBaselineRemoteCache.entries = map[string]queueBaselineRemoteCacheEntry{}
+	}
+	queueBaselineRemoteCache.entries[key] = queueBaselineRemoteCacheEntry{
+		key:      key,
+		loadedAt: now,
+		export:   export,
+	}
+}
+
 func queueBaselineRemoteStatusFromConfig(cfg queueBaselineTursoConfig) QueueBaselineRemoteStatus {
 	return QueueBaselineRemoteStatus{
 		Configured:  cfg.configured(),
@@ -138,6 +168,41 @@ func loadRemoteQueueBaselineCached(ctx context.Context, now time.Time) (QueueBas
 	return loadRemoteQueueBaselineCloudCached(ctx, cloudCfg, now)
 }
 
+func loadRemoteQueueBaselineForStores(ctx context.Context, storeIDs []string, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
+	storeIDs = UniqueNonEmptyStrings(storeIDs)
+	if len(storeIDs) == 0 {
+		return loadRemoteQueueBaselineCached(ctx, now)
+	}
+	if len(storeIDs) == 1 {
+		return loadRemoteQueuePressureBaseline(ctx, storeIDs[0], now)
+	}
+
+	var exports []QueueBaselineExport
+	var status QueueBaselineRemoteStatus
+	for _, storeID := range storeIDs {
+		export, currentStatus, err := loadRemoteQueuePressureBaseline(ctx, storeID, now)
+		status = mergeQueueBaselineRemoteStatus(status, currentStatus)
+		if err != nil {
+			status.LastError = err.Error()
+			return QueueBaselineExport{}, status, err
+		}
+		if currentStatus.Used {
+			exports = append(exports, export)
+		}
+	}
+	if len(exports) == 0 {
+		return QueueBaselineExport{}, status, nil
+	}
+	merged := mergeQueueBaselineExports(exports, now)
+	status.Used = true
+	status.GeneratedAt = merged.GeneratedAt
+	status.SourceUpdatedAt = merged.Stats.SourceUpdatedAt
+	status.StoreCount = merged.Stats.StoreCount
+	status.LatestCount = merged.Stats.LatestCount
+	status.RollupCount = merged.Stats.RollupCount
+	return merged, status, nil
+}
+
 func loadRemoteQueueBaselineTursoCached(ctx context.Context, cfg queueBaselineTursoConfig, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
 	status := queueBaselineRemoteStatusFromConfig(cfg)
 	if ctx == nil {
@@ -148,19 +213,15 @@ func loadRemoteQueueBaselineTursoCached(ctx context.Context, cfg queueBaselineTu
 	}
 
 	key := cfg.cacheKey()
-	queueBaselineRemoteCache.Lock()
-	entry := queueBaselineRemoteCache.entry
-	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
-		queueBaselineRemoteCache.Unlock()
+	if export, ok := getQueueBaselineRemoteCache(key, now); ok {
 		status.Used = true
-		status.GeneratedAt = entry.export.GeneratedAt
-		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
-		status.StoreCount = entry.export.Stats.StoreCount
-		status.LatestCount = entry.export.Stats.LatestCount
-		status.RollupCount = entry.export.Stats.RollupCount
-		return entry.export, status, nil
+		status.GeneratedAt = export.GeneratedAt
+		status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+		status.StoreCount = export.Stats.StoreCount
+		status.LatestCount = export.Stats.LatestCount
+		status.RollupCount = export.Stats.RollupCount
+		return export, status, nil
 	}
-	queueBaselineRemoteCache.Unlock()
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, queueBaselineTursoTimeout)
 	defer cancel()
@@ -170,13 +231,7 @@ func loadRemoteQueueBaselineTursoCached(ctx context.Context, cfg queueBaselineTu
 		return QueueBaselineExport{}, status, err
 	}
 
-	queueBaselineRemoteCache.Lock()
-	queueBaselineRemoteCache.entry = queueBaselineRemoteCacheEntry{
-		key:      key,
-		loadedAt: now,
-		export:   export,
-	}
-	queueBaselineRemoteCache.Unlock()
+	setQueueBaselineRemoteCache(key, now, export)
 
 	status.Used = true
 	status.GeneratedAt = export.GeneratedAt
@@ -200,19 +255,15 @@ func loadRemoteQueueBaselineCloudCached(ctx context.Context, cfg CloudAuthConfig
 	}
 
 	key := cfg.cacheKey()
-	queueBaselineRemoteCache.Lock()
-	entry := queueBaselineRemoteCache.entry
-	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
-		queueBaselineRemoteCache.Unlock()
+	if export, ok := getQueueBaselineRemoteCache(key, now); ok {
 		status.Used = true
-		status.GeneratedAt = entry.export.GeneratedAt
-		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
-		status.StoreCount = entry.export.Stats.StoreCount
-		status.LatestCount = entry.export.Stats.LatestCount
-		status.RollupCount = entry.export.Stats.RollupCount
-		return entry.export, status, nil
+		status.GeneratedAt = export.GeneratedAt
+		status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+		status.StoreCount = export.Stats.StoreCount
+		status.LatestCount = export.Stats.LatestCount
+		status.RollupCount = export.Stats.RollupCount
+		return export, status, nil
 	}
-	queueBaselineRemoteCache.Unlock()
 
 	export, err := fetchQueueBaselineFromCloud(ctx, cfg, "", now)
 	if err != nil {
@@ -220,13 +271,7 @@ func loadRemoteQueueBaselineCloudCached(ctx context.Context, cfg CloudAuthConfig
 		return QueueBaselineExport{}, status, err
 	}
 
-	queueBaselineRemoteCache.Lock()
-	queueBaselineRemoteCache.entry = queueBaselineRemoteCacheEntry{
-		key:      key,
-		loadedAt: now,
-		export:   export,
-	}
-	queueBaselineRemoteCache.Unlock()
+	setQueueBaselineRemoteCache(key, now, export)
 
 	status.Used = true
 	status.GeneratedAt = export.GeneratedAt
@@ -255,20 +300,16 @@ func loadRemoteQueuePressureBaselineTurso(ctx context.Context, cfg queueBaseline
 		now = time.Now()
 	}
 
-	key := cfg.cacheKey()
-	queueBaselineRemoteCache.Lock()
-	entry := queueBaselineRemoteCache.entry
-	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
-		queueBaselineRemoteCache.Unlock()
+	key := queueBaselineStoreCacheKey(cfg.cacheKey(), strings.TrimSpace(storeID))
+	if export, ok := getQueueBaselineRemoteCache(key, now); ok {
 		status.Used = true
-		status.GeneratedAt = entry.export.GeneratedAt
-		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
-		status.StoreCount = entry.export.Stats.StoreCount
-		status.LatestCount = entry.export.Stats.LatestCount
-		status.RollupCount = entry.export.Stats.RollupCount
-		return entry.export, status, nil
+		status.GeneratedAt = export.GeneratedAt
+		status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+		status.StoreCount = export.Stats.StoreCount
+		status.LatestCount = export.Stats.LatestCount
+		status.RollupCount = export.Stats.RollupCount
+		return export, status, nil
 	}
-	queueBaselineRemoteCache.Unlock()
 
 	storeInt, err := strconv.Atoi(strings.TrimSpace(storeID))
 	if err != nil || storeInt <= 0 {
@@ -282,6 +323,9 @@ func loadRemoteQueuePressureBaselineTurso(ctx context.Context, cfg queueBaseline
 		status.LastError = err.Error()
 		return QueueBaselineExport{}, status, err
 	}
+
+	setQueueBaselineRemoteCache(key, now, export)
+
 	status.Used = true
 	status.GeneratedAt = export.GeneratedAt
 	status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
@@ -303,20 +347,16 @@ func loadRemoteQueuePressureBaselineCloud(ctx context.Context, cfg CloudAuthConf
 		now = time.Now()
 	}
 
-	key := cfg.cacheKey()
-	queueBaselineRemoteCache.Lock()
-	entry := queueBaselineRemoteCache.entry
-	if entry.key == key && !entry.loadedAt.IsZero() && now.Sub(entry.loadedAt) < queueBaselineRemoteCacheTTL {
-		queueBaselineRemoteCache.Unlock()
+	key := queueBaselineStoreCacheKey(cfg.cacheKey(), strings.TrimSpace(storeID))
+	if export, ok := getQueueBaselineRemoteCache(key, now); ok {
 		status.Used = true
-		status.GeneratedAt = entry.export.GeneratedAt
-		status.SourceUpdatedAt = entry.export.Stats.SourceUpdatedAt
-		status.StoreCount = entry.export.Stats.StoreCount
-		status.LatestCount = entry.export.Stats.LatestCount
-		status.RollupCount = entry.export.Stats.RollupCount
-		return entry.export, status, nil
+		status.GeneratedAt = export.GeneratedAt
+		status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
+		status.StoreCount = export.Stats.StoreCount
+		status.LatestCount = export.Stats.LatestCount
+		status.RollupCount = export.Stats.RollupCount
+		return export, status, nil
 	}
-	queueBaselineRemoteCache.Unlock()
 
 	storeID = strings.TrimSpace(storeID)
 	if _, err := strconv.Atoi(storeID); err != nil || storeID == "" {
@@ -328,6 +368,9 @@ func loadRemoteQueuePressureBaselineCloud(ctx context.Context, cfg CloudAuthConf
 		status.LastError = err.Error()
 		return QueueBaselineExport{}, status, err
 	}
+
+	setQueueBaselineRemoteCache(key, now, export)
+
 	status.Used = true
 	status.GeneratedAt = export.GeneratedAt
 	status.SourceUpdatedAt = export.Stats.SourceUpdatedAt
@@ -364,6 +407,90 @@ func fetchQueueBaselineFromCloud(ctx context.Context, cfg CloudAuthConfig, store
 		export.DateTypes = []string{"weekday", "workday", "weekend", "holiday"}
 	}
 	return export, nil
+}
+
+func mergeQueueBaselineRemoteStatus(base, next QueueBaselineRemoteStatus) QueueBaselineRemoteStatus {
+	if !base.Configured && next.Configured {
+		base.Configured = true
+	}
+	if base.Provider == "" {
+		base.Provider = next.Provider
+	}
+	if base.DatabaseURL == "" {
+		base.DatabaseURL = next.DatabaseURL
+	}
+	if base.CloudURL == "" {
+		base.CloudURL = next.CloudURL
+	}
+	if !base.Authenticated && next.Authenticated {
+		base.Authenticated = true
+	}
+	if base.UserLogin == "" {
+		base.UserLogin = next.UserLogin
+	}
+	if base.Message == "" {
+		base.Message = next.Message
+	}
+	if next.LastError != "" {
+		base.LastError = next.LastError
+	}
+	return base
+}
+
+func mergeQueueBaselineExports(exports []QueueBaselineExport, now time.Time) QueueBaselineExport {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	merged := QueueBaselineExport{
+		Version:       1,
+		GeneratedAt:   now.Format(time.RFC3339),
+		BucketMinutes: queueDashboardDefaultBucketMins,
+		DateTypes:     []string{"weekday", "workday", "weekend", "holiday"},
+	}
+	storeSet := map[int]bool{}
+	sourceUpdatedAt := ""
+	for _, export := range exports {
+		if merged.Source == "" {
+			merged.Source = export.Source
+		}
+		if export.BucketMinutes > 0 {
+			merged.BucketMinutes = export.BucketMinutes
+		}
+		if len(export.DateTypes) > 0 {
+			merged.DateTypes = export.DateTypes
+		}
+		for _, store := range export.Stores {
+			merged.Stores = append(merged.Stores, store)
+			if store.StoreID > 0 {
+				storeSet[store.StoreID] = true
+			}
+		}
+		for _, latest := range export.Latest {
+			merged.Latest = append(merged.Latest, latest)
+			if latest.StoreID > 0 {
+				storeSet[latest.StoreID] = true
+			}
+		}
+		for _, rollup := range export.Rollups {
+			merged.Rollups = append(merged.Rollups, rollup)
+			if rollup.StoreID > 0 {
+				storeSet[rollup.StoreID] = true
+			}
+		}
+		if export.Stats.SourceUpdatedAt > sourceUpdatedAt {
+			sourceUpdatedAt = export.Stats.SourceUpdatedAt
+		}
+	}
+	if merged.Source == "" {
+		merged.Source = "remote"
+	}
+	merged.Stats = QueueBaselineStats{
+		StoreCount:      len(storeSet),
+		LatestCount:     len(merged.Latest),
+		RollupCount:     len(merged.Rollups),
+		SourceUpdatedAt: sourceUpdatedAt,
+	}
+	return merged
 }
 
 func fetchQueuePressureBaselineForStore(ctx context.Context, cfg queueBaselineTursoConfig, storeID int, now time.Time) (QueueBaselineExport, error) {
