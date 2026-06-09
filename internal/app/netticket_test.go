@@ -90,3 +90,128 @@ func TestActiveNetTicketPlanStaysArmed(t *testing.T) {
 		t.Fatal("armed net ticket plan should stay enabled")
 	}
 }
+
+func TestNetTicketRoutinePlansTodayFromHistoricalMealPlan(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	observedAt := time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local)
+	if err := appendQueueObservation(QueueObservation{
+		CollectedAt:       observedAt.Format(time.RFC3339),
+		StoreID:           "3006",
+		WaitMinutes:       60,
+		GroupQueuesCount:  24,
+		StoreStatus:       "OPEN",
+		NetTicketStatus:   "ONLINE",
+		OnlineOpen:        true,
+		SourceEndpoint:    queueSourceEndpointStoreByID,
+		APIProfileVersion: queueAPIProfileStoreDetailV1,
+	}); err != nil {
+		t.Fatalf("appendQueueObservation() error = %v", err)
+	}
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        true,
+		StoreID:        "3006",
+		StoreName:      "太阳宫凯德店",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Routine.Status != netTicketRoutineStatusArmed {
+		t.Fatalf("routine status = %q, want armed; error=%q", resp.Routine.Status, resp.Routine.LastError)
+	}
+	if resp.Plan.Source != netTicketPlanSourceRoutine {
+		t.Fatalf("plan source = %q, want routine", resp.Plan.Source)
+	}
+	if resp.Plan.TargetTime != "1150" {
+		t.Fatalf("plan target time = %q, want 1150", resp.Plan.TargetTime)
+	}
+	if resp.Plan.TargetMealTime != "1300" || resp.Plan.RoutinePlannedDate != now.Format("2006-01-02") {
+		t.Fatalf("routine metadata missing on plan: %+v", resp.Plan)
+	}
+}
+
+func TestNetTicketRoutineDoesNotOverwriteManualPlan(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	if err := SaveNetTicketPlan(NetTicketPlan{
+		Enabled:    true,
+		StoreID:    "manual",
+		StoreName:  "手动门店",
+		TargetTime: "1800",
+		Status:     "armed",
+	}); err != nil {
+		t.Fatalf("SaveNetTicketPlan() error = %v", err)
+	}
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        true,
+		StoreID:        "3006",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Routine.Status != netTicketRoutineStatusBlocked {
+		t.Fatalf("routine status = %q, want blocked", resp.Routine.Status)
+	}
+	if resp.Plan.StoreID != "manual" || !resp.Plan.Enabled {
+		t.Fatalf("manual plan was overwritten: %+v", resp.Plan)
+	}
+}
+
+func TestDisablingNetTicketRoutineClearsPendingRoutinePlan(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	if err := SaveNetTicketPlan(NetTicketPlan{
+		Enabled:            true,
+		StoreID:            "3006",
+		TargetTime:         "1150",
+		Source:             netTicketPlanSourceRoutine,
+		TargetMealTime:     "1300",
+		RoutinePlannedDate: now.Format("2006-01-02"),
+		Status:             "armed",
+	}); err != nil {
+		t.Fatalf("SaveNetTicketPlan() error = %v", err)
+	}
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        false,
+		StoreID:        "3006",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Plan.Enabled {
+		t.Fatalf("routine plan should be disabled: %+v", resp.Plan)
+	}
+	if resp.Routine.Enabled || resp.Routine.Status != netTicketRoutineStatusIdle {
+		t.Fatalf("routine should be idle: %+v", resp.Routine)
+	}
+}
+
+func TestNetTicketRoutineWaitsForDataInsteadOfGuessing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        true,
+		StoreID:        "3006",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Routine.Status != netTicketRoutineStatusWaitingData {
+		t.Fatalf("routine status = %q, want waiting_data", resp.Routine.Status)
+	}
+	if resp.Plan.Enabled {
+		t.Fatalf("routine should not arm a plan without data: %+v", resp.Plan)
+	}
+}

@@ -80,6 +80,7 @@ func cmdWeb() {
 	mux.HandleFunc("/api/queue/ticket/status", handleQueueTicketStatus)
 	mux.HandleFunc("/api/queue/ticket/cancel", handleCancelNetTicket)
 	mux.HandleFunc("/api/queue/ticket/plan", handleNetTicketPlan)
+	mux.HandleFunc("/api/queue/ticket/routine", handleNetTicketRoutine)
 
 	// Preferences
 	mux.HandleFunc("/api/preferences", handlePreferences)

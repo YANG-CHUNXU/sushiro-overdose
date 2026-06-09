@@ -458,6 +458,9 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 		plan.StoreName = strings.TrimSpace(body.StoreName)
 		plan.TriggerMode = mode
 		plan.TargetTime = strings.TrimSpace(body.TargetTime)
+		plan.Source = ""
+		plan.TargetMealTime = ""
+		plan.RoutinePlannedDate = ""
 		// 重新设定即重置当天执行状态，允许（重新）到点取号。
 		plan.FiredDate = ""
 		plan.FiredAt = ""
@@ -475,6 +478,65 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, plan)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST only")
+	}
+}
+
+// handleNetTicketRoutine 读取/设置「每天想几点吃」Routine。
+func handleNetTicketRoutine(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		netTicketMu.Lock()
+		resp := NetTicketRoutineResponse{Routine: LoadNetTicketRoutine(), Plan: LoadNetTicketPlan()}
+		netTicketMu.Unlock()
+		writeJSON(w, resp)
+	case http.MethodPost:
+		var body struct {
+			Enabled        bool   `json:"enabled"`
+			Store          string `json:"store"`
+			StoreID        string `json:"store_id"`
+			StoreName      string `json:"store_name"`
+			TargetMeal     string `json:"target_meal"`
+			TargetMealTime string `json:"target_meal_time"`
+			TravelMinutes  int    `json:"travel_minutes"`
+			SafetyMinutes  *int   `json:"safety_minutes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
+			return
+		}
+		storeID := strings.TrimSpace(DefaultString(body.StoreID, body.Store))
+		targetMeal := strings.TrimSpace(DefaultString(body.TargetMealTime, body.TargetMeal))
+		if body.Enabled {
+			if storeID == "" {
+				writeError(w, http.StatusBadRequest, "请先选择门店")
+				return
+			}
+			if _, ok := parseHHMM(targetMeal, time.Now()); !ok {
+				writeError(w, http.StatusBadRequest, "请提供有效的目标就餐时间，例如 1300 或 13:00")
+				return
+			}
+		}
+		safety := netTicketRoutineDefaultSafetyMins
+		if body.SafetyMinutes != nil {
+			safety = *body.SafetyMinutes
+		}
+		if safety < 0 {
+			safety = 0
+		}
+		routine := NetTicketRoutine{
+			Enabled:        body.Enabled,
+			StoreID:        storeID,
+			StoreName:      strings.TrimSpace(body.StoreName),
+			TargetMealTime: targetMeal,
+			TravelMinutes:  max(0, body.TravelMinutes),
+			SafetyMinutes:  safety,
+		}
+		netTicketMu.Lock()
+		resp := saveNetTicketRoutineConfigLocked(routine, time.Now())
+		netTicketMu.Unlock()
+		writeJSON(w, resp)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "GET or POST only")
 	}

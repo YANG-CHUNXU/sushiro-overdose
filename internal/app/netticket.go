@@ -16,24 +16,28 @@ import (
 )
 
 const (
-	netTicketPlanFile      = "netticket_plan.json"
-	netTicketWindowMinutes = 12 // 到点后多久内仍尝试取号；过窗口则放弃
-	netTicketTickSeconds   = 20
+	netTicketPlanFile          = "netticket_plan.json"
+	netTicketPlanSourceRoutine = "routine"
+	netTicketWindowMinutes     = 12 // 到点后多久内仍尝试取号；过窗口则放弃
+	netTicketTickSeconds       = 20
 )
 
 // NetTicketPlan 是「定时取号」计划：到指定时间自动远程取号。
 type NetTicketPlan struct {
-	Enabled     bool   `json:"enabled"`
-	StoreID     string `json:"store_id"`
-	StoreName   string `json:"store_name,omitempty"`
-	TriggerMode string `json:"trigger_mode,omitempty"` // "time"(默认到点) / "on_open"(一开放就取号)
-	TargetTime  string `json:"target_time"`            // "HHMM"，仅 time 模式使用
-	Status      string `json:"status"`                 // idle/armed/success/error/expired
-	Number      string `json:"number,omitempty"`
-	TicketID    int64  `json:"ticket_id,omitempty"`
-	FiredDate   string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
-	FiredAt     string `json:"fired_at,omitempty"`
-	LastError   string `json:"last_error,omitempty"`
+	Enabled            bool   `json:"enabled"`
+	StoreID            string `json:"store_id"`
+	StoreName          string `json:"store_name,omitempty"`
+	TriggerMode        string `json:"trigger_mode,omitempty"` // "time"(默认到点) / "on_open"(一开放就取号)
+	TargetTime         string `json:"target_time"`            // "HHMM"，仅 time 模式使用
+	Source             string `json:"source,omitempty"`       // 空/手动，或 routine
+	TargetMealTime     string `json:"target_meal_time,omitempty"`
+	RoutinePlannedDate string `json:"routine_planned_date,omitempty"`
+	Status             string `json:"status"` // idle/armed/success/error/expired
+	Number             string `json:"number,omitempty"`
+	TicketID           int64  `json:"ticket_id,omitempty"`
+	FiredDate          string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
+	FiredAt            string `json:"fired_at,omitempty"`
+	LastError          string `json:"last_error,omitempty"`
 }
 
 func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
@@ -137,11 +141,12 @@ func netTicketTick(ctx context.Context) {
 	netTicketMu.Lock()
 	defer netTicketMu.Unlock()
 
+	now := time.Now()
+	refreshNetTicketRoutineLocked(now)
 	plan := LoadNetTicketPlan()
 	if !plan.Enabled || strings.TrimSpace(plan.StoreID) == "" {
 		return
 	}
-	now := time.Now()
 	today := now.Format("2006-01-02")
 	if plan.FiredDate == today {
 		return // 今天已处理过
