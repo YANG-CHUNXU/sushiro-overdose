@@ -1,9 +1,8 @@
 package app
 
-import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -94,122 +93,53 @@ func TestActiveNetTicketPlanStaysArmed(t *testing.T) {
 	}
 }
 
-func TestNetTicketRoutinePlansTodayFromHistoricalMealPlan(t *testing.T) {
+func TestNetTicketRoutinePlansReminderFromHistoricalMealPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Cleanup(resetAuthHealth)
 	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
-	saveRoutineAuthForTest(t, now)
-	observedAt := time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local)
-	if err := appendQueueObservation(QueueObservation{
-		CollectedAt:       observedAt.Format(time.RFC3339),
-		StoreID:           "3006",
-		WaitMinutes:       60,
-		GroupQueuesCount:  24,
-		StoreStatus:       "OPEN",
-		NetTicketStatus:   "ONLINE",
-		OnlineOpen:        true,
-		SourceEndpoint:    queueSourceEndpointStoreByID,
-		APIProfileVersion: queueAPIProfileStoreDetailV1,
-	}); err != nil {
-		t.Fatalf("appendQueueObservation() error = %v", err)
-	}
+	saveRoutineNotifyForTest(t)
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
 
 	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        true,
-		StoreID:        "3006",
-		StoreName:      "太阳宫凯德店",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
+		Enabled:             true,
+		StoreID:             "3006",
+		StoreName:           "太阳宫凯德店",
+		TargetMealTime:      "1300",
+		NotifyBeforeMinutes: 10,
 	}, now)
 
 	if resp.Routine.Status != netTicketRoutineStatusArmed {
 		t.Fatalf("routine status = %q, want armed; error=%q", resp.Routine.Status, resp.Routine.LastError)
 	}
-	if resp.Plan.Source != netTicketPlanSourceRoutine {
-		t.Fatalf("plan source = %q, want routine", resp.Plan.Source)
+	if resp.Routine.PlannedPickupTime != "12:00" || resp.Routine.ReminderTime != "11:50" {
+		t.Fatalf("routine planned pickup/reminder = %q/%q, want 12:00/11:50", resp.Routine.PlannedPickupTime, resp.Routine.ReminderTime)
 	}
-	if resp.Plan.TargetTime != "1150" {
-		t.Fatalf("plan target time = %q, want 1150", resp.Plan.TargetTime)
-	}
-	if resp.Plan.TargetMealTime != "1300" || resp.Plan.RoutinePlannedDate != now.Format("2006-01-02") {
-		t.Fatalf("routine metadata missing on plan: %+v", resp.Plan)
+	if resp.Plan.Enabled || resp.Plan.Source == netTicketPlanSourceRoutine {
+		t.Fatalf("routine reminder should not arm an auto-ticket plan: %+v", resp.Plan)
 	}
 }
 
-func TestNetTicketRoutineRequiresAuthBeforeArming(t *testing.T) {
+func TestNetTicketRoutineRequiresNotificationBeforeArming(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Cleanup(resetAuthHealth)
 	now := time.Date(2026, 6, 9, 11, 0, 0, 0, time.Local)
 	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
 
 	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        true,
-		StoreID:        "3006",
-		StoreName:      "太阳宫凯德店",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
+		Enabled:             true,
+		StoreID:             "3006",
+		StoreName:           "太阳宫凯德店",
+		TargetMealTime:      "1300",
+		NotifyBeforeMinutes: 10,
 	}, now)
 
-	if resp.Routine.Status != netTicketRoutineStatusNeedsAuth {
-		t.Fatalf("routine status = %q, want needs_auth; error=%q", resp.Routine.Status, resp.Routine.LastError)
+	if resp.Routine.Status != netTicketRoutineStatusNeedsNotify {
+		t.Fatalf("routine status = %q, want needs_notify; error=%q", resp.Routine.Status, resp.Routine.LastError)
 	}
 	if resp.Plan.Enabled {
-		t.Fatalf("routine should not arm without auth: %+v", resp.Plan)
-	}
-}
-
-func TestNetTicketRoutineRequiresTodayAuth(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Cleanup(resetAuthHealth)
-	now := time.Date(2026, 6, 9, 11, 0, 0, 0, time.Local)
-	saveRoutineAuthForTest(t, now.AddDate(0, 0, -1))
-	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
-
-	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        true,
-		StoreID:        "3006",
-		StoreName:      "太阳宫凯德店",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
-	}, now)
-
-	if resp.Routine.Status != netTicketRoutineStatusNeedsAuth {
-		t.Fatalf("routine status = %q, want needs_auth; error=%q", resp.Routine.Status, resp.Routine.LastError)
-	}
-	if resp.Plan.Enabled {
-		t.Fatalf("routine should not arm with previous-day auth: %+v", resp.Plan)
-	}
-}
-
-func TestNetTicketRoutineAcceptsTodayAuthHealthWithOldConfig(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Cleanup(resetAuthHealth)
-	now := time.Date(2026, 6, 9, 11, 0, 0, 0, time.Local)
-	saveRoutineAuthForTest(t, now.AddDate(0, 0, -1))
-	authHealth = &authHealthTracker{status: authHealthOK, checkedAt: now}
-	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
-
-	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        true,
-		StoreID:        "3006",
-		StoreName:      "太阳宫凯德店",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
-	}, now)
-
-	if resp.Routine.Status != netTicketRoutineStatusArmed {
-		t.Fatalf("routine status = %q, want armed; error=%q", resp.Routine.Status, resp.Routine.LastError)
-	}
-	if !resp.Plan.Enabled || resp.Plan.Source != netTicketPlanSourceRoutine {
-		t.Fatalf("routine plan should be armed after today's auth health: %+v", resp.Plan)
+		t.Fatalf("routine should not arm an auto-ticket plan without notify: %+v", resp.Plan)
 	}
 }
 
@@ -218,6 +148,8 @@ func TestNetTicketRoutineDoesNotOverwriteManualPlan(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	saveRoutineNotifyForTest(t)
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
 	if err := SaveNetTicketPlan(NetTicketPlan{
 		Enabled:    true,
 		StoreID:    "manual",
@@ -229,14 +161,14 @@ func TestNetTicketRoutineDoesNotOverwriteManualPlan(t *testing.T) {
 	}
 
 	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        true,
-		StoreID:        "3006",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
+		Enabled:             true,
+		StoreID:             "3006",
+		TargetMealTime:      "1300",
+		NotifyBeforeMinutes: 10,
 	}, now)
 
-	if resp.Routine.Status != netTicketRoutineStatusBlocked {
-		t.Fatalf("routine status = %q, want blocked", resp.Routine.Status)
+	if resp.Routine.Status != netTicketRoutineStatusArmed {
+		t.Fatalf("routine status = %q, want armed", resp.Routine.Status)
 	}
 	if resp.Plan.StoreID != "manual" || !resp.Plan.Enabled {
 		t.Fatalf("manual plan was overwritten: %+v", resp.Plan)
@@ -261,14 +193,17 @@ func TestDisablingNetTicketRoutineClearsPendingRoutinePlan(t *testing.T) {
 	}
 
 	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        false,
-		StoreID:        "3006",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
+		Enabled:             false,
+		StoreID:             "3006",
+		TargetMealTime:      "1300",
+		NotifyBeforeMinutes: 10,
 	}, now)
 
 	if resp.Plan.Enabled {
 		t.Fatalf("routine plan should be disabled: %+v", resp.Plan)
+	}
+	if resp.Plan.Source == netTicketPlanSourceRoutine {
+		t.Fatalf("legacy routine plan source should be cleared: %+v", resp.Plan)
 	}
 	if resp.Routine.Enabled || resp.Routine.Status != netTicketRoutineStatusIdle {
 		t.Fatalf("routine should be idle: %+v", resp.Routine)
@@ -282,10 +217,10 @@ func TestNetTicketRoutineWaitsForDataInsteadOfGuessing(t *testing.T) {
 	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
 
 	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
-		Enabled:        true,
-		StoreID:        "3006",
-		TargetMealTime: "1300",
-		SafetyMinutes:  10,
+		Enabled:             true,
+		StoreID:             "3006",
+		TargetMealTime:      "1300",
+		NotifyBeforeMinutes: 10,
 	}, now)
 
 	if resp.Routine.Status != netTicketRoutineStatusWaitingData {
@@ -296,24 +231,13 @@ func TestNetTicketRoutineWaitsForDataInsteadOfGuessing(t *testing.T) {
 	}
 }
 
-func saveRoutineAuthForTest(t *testing.T, savedAt time.Time) {
+func saveRoutineNotifyForTest(t *testing.T) {
 	t.Helper()
-	if err := SaveLocalConfig(&CapturedTokens{
-		XAppCode:        "app-code",
-		QueryAuth:       "Bearer query",
-		ReservationAuth: "Bearer reservation",
-		UserAgent:       "ua",
-		Referer:         "https://servicewechat.com/",
-		WechatID:        "wechat-id",
-		PhoneNumber:     "13800138000",
-		StoreIDs:        []string{"3006"},
-	}); err != nil {
-		t.Fatalf("SaveLocalConfig() error = %v", err)
+	cfg := &NotifyConfig{}
+	cfg.Feishu.Webhook = "https://example.invalid/feishu"
+	if err := SaveNotifyConfig(cfg); err != nil {
+		t.Fatalf("SaveNotifyConfig() error = %v", err)
 	}
-	if err := os.Chtimes(LocalConfigPath(), savedAt, savedAt); err != nil {
-		t.Fatalf("chtimes local config: %v", err)
-	}
-	resetAuthHealth()
 }
 
 func appendRoutineHistoryForTest(t *testing.T, observedAt time.Time) {

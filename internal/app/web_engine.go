@@ -501,6 +501,7 @@ func handleNetTicketRoutine(w http.ResponseWriter, r *http.Request) {
 			TargetMealTime string `json:"target_meal_time"`
 			TravelMinutes  int    `json:"travel_minutes"`
 			SafetyMinutes  *int   `json:"safety_minutes"`
+			NotifyBefore   *int   `json:"notify_before_minutes"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "无效的请求格式: "+err.Error())
@@ -517,21 +518,27 @@ func handleNetTicketRoutine(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "请提供有效的目标就餐时间，例如 1300 或 13:00")
 				return
 			}
+			if !routineNotifyConfigured() {
+				writeError(w, http.StatusBadRequest, "启用 Routine 前必须先配置通知渠道，否则无法提醒你取号")
+				return
+			}
 		}
-		safety := netTicketRoutineDefaultSafetyMins
-		if body.SafetyMinutes != nil {
-			safety = *body.SafetyMinutes
+		notifyBefore := netTicketRoutineDefaultNotifyBeforeMins
+		if body.NotifyBefore != nil {
+			notifyBefore = *body.NotifyBefore
+		} else if body.SafetyMinutes != nil {
+			notifyBefore = *body.SafetyMinutes
 		}
-		if safety < 0 {
-			safety = 0
+		if notifyBefore < 0 {
+			notifyBefore = 0
 		}
 		routine := NetTicketRoutine{
-			Enabled:        body.Enabled,
-			StoreID:        storeID,
-			StoreName:      strings.TrimSpace(body.StoreName),
-			TargetMealTime: targetMeal,
-			TravelMinutes:  max(0, body.TravelMinutes),
-			SafetyMinutes:  safety,
+			Enabled:             body.Enabled,
+			StoreID:             storeID,
+			StoreName:           strings.TrimSpace(body.StoreName),
+			TargetMealTime:      targetMeal,
+			TravelMinutes:       max(0, body.TravelMinutes),
+			NotifyBeforeMinutes: notifyBefore,
 		}
 		netTicketMu.Lock()
 		resp := saveNetTicketRoutineConfigLocked(routine, time.Now())
