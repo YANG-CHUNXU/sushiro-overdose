@@ -250,6 +250,12 @@ func TestComputeQueueEta(t *testing.T) {
 	if none.EstimatedCalledAt != "" || none.WaitMinutesRange != nil {
 		t.Errorf("insufficient data should not estimate: %+v", none)
 	}
+
+	// 只有官方等待：只能作为门店压力参考，不能包装成到号码的 ETA。
+	officialOnly := computeQueueEta(1078, 900, 0, 90, 0, nil, now)
+	if officialOnly.WaitMinutesRange != nil || officialOnly.Source != "official" || officialOnly.Risk != "high" {
+		t.Fatalf("official-only ETA should not estimate target number: %+v", officialOnly)
+	}
 }
 
 func TestParseHHMM(t *testing.T) {

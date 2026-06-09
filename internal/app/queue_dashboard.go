@@ -1568,24 +1568,24 @@ func queueDashboardScope(query QueueDashboardQuery, rows []QueueDashboardStoreRo
 func queueDashboardWarnings(query QueueDashboardQuery, baselineStatus QueueBaselineRemoteStatus, baselineErr error, localBaselineRecords, localObservationRecords, trendPoints, heatmapPoints, calledCurvePoints int) []string {
 	warnings := []string{}
 	if baselineErr != nil {
-		warnings = append(warnings, "全国基准数据库暂时不可用，已退回本机数据。")
+		warnings = append(warnings, "线上排队基准暂时不可用，已退回本机数据。")
 	}
 	if !baselineStatus.Used {
-		warnings = append(warnings, "未连接全国基准时，只能看到本机已采集门店。")
+		warnings = append(warnings, "未连接线上排队基准时，只能看到本机已采集门店。")
 	}
 	if query.DateType == "all" {
 		warnings = append(warnings, "默认已把节假日从周一到周日规律里剔出；要看节假日请切换到“节假日”。")
 	}
 	if trendPoints == 0 && localBaselineRecords+localObservationRecords == 0 {
-		warnings = append(warnings, "本机还没有实时趋势样本；开启全国基准采集或信息收集后会出现近 1/3/6/12 小时曲线。")
+		warnings = append(warnings, "本机还没有实时趋势样本；连接线上排队基准或开启本机采集后会出现近 1/3/6/12 小时曲线。")
 	}
 	if calledCurvePoints == 0 && localObservationRecords == 0 {
-		warnings = append(warnings, "本机和线上基准都没有叫号明细；叫号曲线需要 getStoreById 快照里的 display_called_no。")
+		warnings = append(warnings, "本机和线上排队基准都没有叫号明细；先换门店，或开启本机采集积累叫号曲线。")
 	} else if calledCurvePoints == 0 {
 		warnings = append(warnings, "当前筛选下没有 10:00-22:00 的叫号点；换门店或日期类型再看。")
 	}
 	if heatmapPoints == 0 && baselineStatus.Used {
-		warnings = append(warnings, "全国基准还在积累，日期类型补充暂时没有足够样本。")
+		warnings = append(warnings, "线上排队基准还在积累，日期类型补充暂时没有足够样本。")
 	}
 	return warnings
 }

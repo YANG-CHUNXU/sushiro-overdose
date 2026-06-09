@@ -24,6 +24,7 @@ const (
 	cloudAuthConfigFile       = "cloud_auth.json"
 	cloudAuthURLEnv           = "SUSHIRO_CLOUD_URL"
 	cloudAuthSessionTokenEnv  = "SUSHIRO_CLOUD_SESSION_TOKEN"
+	defaultCloudAuthBaseURL   = "https://sushiro-cloud.ryujo.online"
 	cloudAuthTimeout          = 12 * time.Second
 	cloudOAuthStateTTL        = 10 * time.Minute
 	cloudAuthSessionTokenSize = 32
@@ -93,6 +94,9 @@ func LoadCloudAuthConfig() CloudAuthConfig {
 	}
 	if value := strings.TrimSpace(os.Getenv(cloudAuthSessionTokenEnv)); value != "" {
 		cfg.SessionToken = value
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		cfg.BaseURL = defaultCloudAuthBaseURL
 	}
 	cfg.BaseURL = normalizeCloudBaseURL(cfg.BaseURL)
 	cfg.SessionToken = strings.TrimSpace(cfg.SessionToken)
@@ -225,7 +229,7 @@ func cloudAuthStatusFromConfig(cfg CloudAuthConfig) CloudAuthStatus {
 		ExpiresAt:       cfg.ExpiresAt,
 		LastVerifiedAt:  cfg.LastVerifiedAt,
 		SessionFromEnv:  strings.TrimSpace(os.Getenv(cloudAuthSessionTokenEnv)) != "",
-		ProviderMessage: "GitHub 登录只用于认证 Cloudflare Worker；Turso 凭证只保存在 Worker secrets。",
+		ProviderMessage: "GitHub 登录只用于读取线上排队基准；数据库密钥不会写入本机。",
 	}
 }
 

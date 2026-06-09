@@ -63,6 +63,9 @@ type QueueAdvisorEta struct {
 	EstimatedCalledAtRange *QueueTimeRange `json:"estimated_called_at_range,omitempty"`
 	WaitMinutesRange       *QueueWaitRange `json:"wait_minutes_range,omitempty"`
 	ArrivalSuggestion      string          `json:"arrival_suggestion,omitempty"`
+	Source                 string          `json:"source,omitempty"`
+	SourceLabel            string          `json:"source_label,omitempty"`
+	SourceNote             string          `json:"source_note,omitempty"`
 	Risk                   string          `json:"risk"` // low/medium/high/unknown
 }
 
@@ -330,6 +333,14 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait int, rate f
 		eta.ArrivalSuggestion = "已轮到或即将轮到你，请尽快到店。"
 		return eta
 	}
+	eta.Source = source
+	eta.SourceLabel = queueEtaSourceLabel(source)
+	eta.SourceNote = queueEtaSourceNote(source)
+	if source == "official" {
+		eta.Risk = "high"
+		eta.ArrivalSuggestion = "当前缺少叫号速度，官方等待只能代表门店排队压力，暂时不能可靠判断你的号码几点叫到。"
+		return eta
+	}
 	if waitRange == nil {
 		eta.ArrivalSuggestion = "实时和历史数据都不足，暂时无法预估叫到时间。"
 		return eta
@@ -349,6 +360,32 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait int, rate f
 	}
 	eta.Risk = queueEtaRisk(source, officialWait, remaining, rate)
 	return eta
+}
+
+func queueEtaSourceLabel(source string) string {
+	switch source {
+	case "recent_speed":
+		return "近实时叫号速度"
+	case "history":
+		return "同门店历史"
+	case "official":
+		return "官方等待参考"
+	default:
+		return "数据不足"
+	}
+}
+
+func queueEtaSourceNote(source string) string {
+	switch source {
+	case "recent_speed":
+		return "按本机近期采样的叫号推进速度估算，适合判断你手里号码的大概叫到时间。"
+	case "history":
+		return "按同门店同日型历史等待估算，适合作参考，建议配合实时叫号一起看。"
+	case "official":
+		return "官方等待不等同于到你号码的等待时间，只能说明当前门店压力。"
+	default:
+		return "缺少叫号速度和历史样本。"
+	}
 }
 
 func queueEtaRisk(source string, officialWait, remaining int, rate float64) string {
@@ -768,7 +805,7 @@ func buildQueuePickupPlan(storeID, pickupRaw string, now time.Time) QueuePickupP
 		Early: pickup.Add(time.Duration(wr.Low) * time.Minute).Format("15:04"),
 		Late:  pickup.Add(time.Duration(wr.High) * time.Minute).Format("15:04"),
 	}
-	out.Basis = "同门店同星期历史 + 今日实时压力"
+	out.Basis = "同门店同日型历史等待；今日实时压力仅修正风险"
 	out.Risk = queuePlanRisk(storeID, now, wr)
 	return out
 }
@@ -825,7 +862,7 @@ func buildQueueMealPlan(storeID, mealRaw string, travelMinutes int, now time.Tim
 	} else {
 		out.RecommendPickupRange = &QueueTimeRange{Early: best.Format("15:04"), Late: best.Format("15:04")}
 	}
-	out.Basis = "同门店同星期历史 + 今日实时压力"
+	out.Basis = "同门店同日型历史等待；今日实时压力仅修正风险"
 	out.Risk = queuePlanRisk(storeID, now, bestWR)
 	return out
 }

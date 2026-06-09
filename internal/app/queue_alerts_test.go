@@ -102,6 +102,20 @@ func TestQueueAlertCalledReachExpandsNotifyAtNos(t *testing.T) {
 	}
 }
 
+func TestQueueAlertNormalizeDuplicateUsesLatestRule(t *testing.T) {
+	cfg := normalizeQueueAlertConfig(QueueAlertConfig{Rules: []QueueAlertRule{
+		{StoreID: "3006", Label: "旧", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1050, TravelMin: 10, Template: "normal", Enabled: true},
+		{StoreID: "3006", Label: "新", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1050, TravelMin: 25, Template: "conservative", Enabled: true},
+	}})
+	if len(cfg.Rules) != 1 {
+		t.Fatalf("rules len = %d, want 1: %#v", len(cfg.Rules), cfg.Rules)
+	}
+	rule := cfg.Rules[0]
+	if rule.Label != "新" || rule.TravelMin != 25 || rule.Template != "conservative" {
+		t.Fatalf("duplicate should keep latest mutable fields: %#v", rule)
+	}
+}
+
 func TestQueueAlertCalledReachFiresAfterThresholdJump(t *testing.T) {
 	rule := QueueAlertRule{StoreID: "3006", Type: queueAlertCalledReach, TargetNo: 1269, NotifyAtNo: 1150, Enabled: true}
 	state := map[string]queueAlertRuleState{}

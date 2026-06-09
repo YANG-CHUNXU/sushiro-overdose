@@ -76,7 +76,7 @@ func TestHandleCloudAuthCallbackSavesVerifiedSession(t *testing.T) {
 	}
 }
 
-func TestHandleCloudAuthStartRequiresWorkerURL(t *testing.T) {
+func TestHandleCloudAuthStartUsesDefaultCloudURL(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -88,7 +88,11 @@ func TestHandleCloudAuthStartRequiresWorkerURL(t *testing.T) {
 
 	handleCloudAuthStart(rr, req)
 
-	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Cloudflare Worker URL") {
-		t.Fatalf("unexpected response: %d %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302: %s", rr.Code, rr.Body.String())
+	}
+	location := rr.Header().Get("Location")
+	if !strings.HasPrefix(location, defaultCloudAuthBaseURL+"/auth/github/start?") {
+		t.Fatalf("Location = %q, want default cloud auth URL", location)
 	}
 }

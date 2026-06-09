@@ -130,15 +130,19 @@ func pruneQueueAlertStateLocked(cfg QueueAlertConfig) {
 
 func normalizeQueueAlertConfig(cfg QueueAlertConfig) QueueAlertConfig {
 	out := QueueAlertConfig{Rules: make([]QueueAlertRule, 0, len(cfg.Rules))}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for _, rule := range cfg.Rules {
 		rules := normalizeQueueAlertRule(rule)
 		for _, normalized := range rules {
 			key := normalized.key()
-			if key == "" || seen[key] {
+			if key == "" {
 				continue
 			}
-			seen[key] = true
+			if idx, ok := seen[key]; ok {
+				out.Rules[idx] = normalized
+				continue
+			}
+			seen[key] = len(out.Rules)
 			out.Rules = append(out.Rules, normalized)
 		}
 	}
@@ -234,55 +238,68 @@ func saveQueueAlertState(state map[string]queueAlertRuleState) {
 func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName string) {
 	storeID := strings.TrimSpace(obs.StoreID)
 
-	queueAlertMu.Lock()
-	defer queueAlertMu.Unlock()
-	cfg := LoadQueueAlertConfig()
-	if len(cfg.Rules) == 0 {
-		return
-	}
-	state := loadQueueAlertState()
-	changed := false
-	burnedKeys := map[string]bool{}
+	notifications := func() []queueAlertNotification {
+		queueAlertMu.Lock()
+		defer queueAlertMu.Unlock()
+		cfg := LoadQueueAlertConfig()
+		if len(cfg.Rules) == 0 {
+			return nil
+		}
+		state := loadQueueAlertState()
+		changed := false
+		burnedKeys := map[string]bool{}
+		out := []queueAlertNotification{}
 
-	for _, rule := range cfg.Rules {
-		if !rule.Enabled || rule.StoreID != storeID {
-			continue
-		}
-		title, body, fire := queueAlertEvaluateRule(rule, obs, state)
-		if !fire {
-			continue
-		}
-		changed = true
-		name := strings.TrimSpace(rule.StoreName)
-		if name == "" {
-			name = strings.TrimSpace(storeName)
-		}
-		if name == "" {
-			name = storeID
-		}
-		sendQueueAlert(ctx, title, name+"："+body)
-		if rule.Type == queueAlertCalledReach {
-			burnedKeys[rule.key()] = true
-		}
-	}
-	if len(burnedKeys) > 0 {
-		rules := make([]QueueAlertRule, 0, len(cfg.Rules)-len(burnedKeys))
 		for _, rule := range cfg.Rules {
-			key := rule.key()
-			if burnedKeys[key] {
-				delete(state, key)
+			if !rule.Enabled || rule.StoreID != storeID {
 				continue
 			}
-			rules = append(rules, rule)
+			title, body, fire := queueAlertEvaluateRule(rule, obs, state)
+			if !fire {
+				continue
+			}
+			changed = true
+			name := strings.TrimSpace(rule.StoreName)
+			if name == "" {
+				name = strings.TrimSpace(storeName)
+			}
+			if name == "" {
+				name = storeID
+			}
+			out = append(out, queueAlertNotification{Title: title, Content: name + "：" + body})
+			if rule.Type == queueAlertCalledReach {
+				burnedKeys[rule.key()] = true
+			}
 		}
-		cfg.Rules = rules
-		if err := saveQueueAlertConfigLocked(cfg); err != nil {
-			LogMessage(time.Now(), "[排队提醒] 清理已触发提醒失败: "+err.Error())
+		if len(burnedKeys) > 0 {
+			rules := make([]QueueAlertRule, 0, len(cfg.Rules)-len(burnedKeys))
+			for _, rule := range cfg.Rules {
+				key := rule.key()
+				if burnedKeys[key] {
+					delete(state, key)
+					continue
+				}
+				rules = append(rules, rule)
+			}
+			cfg.Rules = rules
+			if err := saveQueueAlertConfigLocked(cfg); err != nil {
+				LogMessage(time.Now(), "[排队提醒] 清理已触发提醒失败: "+err.Error())
+			}
 		}
+		if changed {
+			saveQueueAlertState(state)
+		}
+		return out
+	}()
+
+	for _, item := range notifications {
+		sendQueueAlert(ctx, item.Title, item.Content)
 	}
-	if changed {
-		saveQueueAlertState(state)
-	}
+}
+
+type queueAlertNotification struct {
+	Title   string
+	Content string
 }
 
 // queueAlertEvaluateRule 评估单条规则，更新 state，返回是否需要推送及内容。

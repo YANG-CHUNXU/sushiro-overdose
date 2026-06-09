@@ -41,6 +41,10 @@ func handleQueueDashboard(w http.ResponseWriter, r *http.Request) {
 		BucketMinutes: atoiDefault(q.Get("bucket"), queueDashboardDefaultBucketMins),
 		TargetNo:      atoiDefault(q.Get("target_no"), 0),
 	}
+	if query.TargetNo > 0 && len(query.StoreIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "已填写手里号码，请先选择门店，避免用其他门店曲线误判。")
+		return
+	}
 	writeJSON(w, BuildQueueDashboardWithContext(r.Context(), query, time.Now()))
 }
 
