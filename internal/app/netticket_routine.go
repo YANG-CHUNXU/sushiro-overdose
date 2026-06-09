@@ -3,6 +3,7 @@ package app
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,12 +15,14 @@ const (
 	netTicketRoutineFile              = "netticket_routine.json"
 	netTicketRoutineDefaultSafetyMins = 10
 	netTicketRoutineRefreshThrottle   = 5 * time.Minute
+	netTicketRoutineAuthReminderLead  = 90 * time.Minute
 	netTicketRoutineStatusIdle        = "idle"
 	netTicketRoutineStatusArmed       = "armed"
 	netTicketRoutineStatusWaitingData = "waiting_data"
 	netTicketRoutineStatusBlocked     = "blocked"
 	netTicketRoutineStatusMissed      = "missed"
 	netTicketRoutineStatusDone        = "done"
+	netTicketRoutineStatusNeedsAuth   = "needs_auth"
 )
 
 // NetTicketRoutine 是「每天想几点吃」配置：每天按历史等待倒推取号时间，再写入一次性的取号计划。
@@ -38,6 +41,7 @@ type NetTicketRoutine struct {
 	Risk                 string          `json:"risk,omitempty"`
 	Basis                string          `json:"basis,omitempty"`
 	LastPlannedAt        string          `json:"last_planned_at,omitempty"`
+	LastAuthReminderDate string          `json:"last_auth_reminder_date,omitempty"`
 	LastError            string          `json:"last_error,omitempty"`
 }
 
@@ -132,6 +136,19 @@ func refreshNetTicketRoutineLocked(now time.Time) NetTicketRoutineResponse {
 		routine.Status = netTicketRoutineStatusArmed
 		routine.PlannedDate = today
 		routine.PlannedPickupTime = displayTrendTime(plan.TargetTime)
+		if ok, reason, _ := authReadyForDailyRoutine(now); !ok {
+			plan.Enabled = false
+			plan.Status = "idle"
+			plan.LastError = reason
+			_ = SaveNetTicketPlan(plan)
+			routine.Status = netTicketRoutineStatusNeedsAuth
+			routine.LastError = reason
+			if pickup, ok := netTicketTargetToday(plan.TargetTime, now); ok {
+				maybeNotifyRoutineAuthRefresh(&routine, pickup, now, reason)
+			}
+			_ = SaveNetTicketRoutine(routine)
+			return NetTicketRoutineResponse{Routine: routine, Plan: plan}
+		}
 		if strings.TrimSpace(routine.LastError) != "" {
 			routine.LastError = ""
 			routine.LastPlannedAt = now.Format(time.RFC3339)
@@ -182,6 +199,19 @@ func planNetTicketRoutineForTodayLocked(routine NetTicketRoutine, existing NetTi
 		_ = SaveNetTicketRoutine(routine)
 		return routine, existing
 	}
+	if ok, reason, _ := authReadyForDailyRoutine(now); !ok {
+		if existing.Source == netTicketPlanSourceRoutine && !netTicketPlanTerminal(existing.Status) {
+			existing.Enabled = false
+			existing.Status = "idle"
+			existing.LastError = reason
+			_ = SaveNetTicketPlan(existing)
+		}
+		routine.Status = netTicketRoutineStatusNeedsAuth
+		routine.LastError = reason
+		maybeNotifyRoutineAuthRefresh(&routine, pickup, now, reason)
+		_ = SaveNetTicketRoutine(routine)
+		return routine, existing
+	}
 
 	plan := existing
 	plan.Enabled = true
@@ -209,6 +239,24 @@ func planNetTicketRoutineForTodayLocked(routine NetTicketRoutine, existing NetTi
 	routine.LastError = ""
 	_ = SaveNetTicketRoutine(routine)
 	return routine, plan
+}
+
+func maybeNotifyRoutineAuthRefresh(routine *NetTicketRoutine, pickup, now time.Time, reason string) {
+	if routine == nil || pickup.IsZero() {
+		return
+	}
+	today := now.Format("2006-01-02")
+	if routine.LastAuthReminderDate == today {
+		return
+	}
+	if now.Before(pickup.Add(-netTicketRoutineAuthReminderLead)) {
+		return
+	}
+	routine.LastAuthReminderDate = today
+	store := DefaultString(routine.StoreName, routine.StoreID)
+	sendQueueAlert(context.Background(),
+		"⚠️ Routine 需要刷新认证",
+		store+"：今天预计 "+routine.PlannedPickupTime+" 自动取号，但寿司郎凭证需要今天重新认证。"+DefaultString(reason, "请重新获取凭证后再让 Routine 自动取号。"))
 }
 
 func routinePickupFromMealPlan(plan QueueMealPlan) string {

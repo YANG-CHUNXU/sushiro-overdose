@@ -1,6 +1,9 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -95,7 +98,9 @@ func TestNetTicketRoutinePlansTodayFromHistoricalMealPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Cleanup(resetAuthHealth)
 	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	saveRoutineAuthForTest(t, now)
 	observedAt := time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local)
 	if err := appendQueueObservation(QueueObservation{
 		CollectedAt:       observedAt.Format(time.RFC3339),
@@ -130,6 +135,81 @@ func TestNetTicketRoutinePlansTodayFromHistoricalMealPlan(t *testing.T) {
 	}
 	if resp.Plan.TargetMealTime != "1300" || resp.Plan.RoutinePlannedDate != now.Format("2006-01-02") {
 		t.Fatalf("routine metadata missing on plan: %+v", resp.Plan)
+	}
+}
+
+func TestNetTicketRoutineRequiresAuthBeforeArming(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Cleanup(resetAuthHealth)
+	now := time.Date(2026, 6, 9, 11, 0, 0, 0, time.Local)
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        true,
+		StoreID:        "3006",
+		StoreName:      "太阳宫凯德店",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Routine.Status != netTicketRoutineStatusNeedsAuth {
+		t.Fatalf("routine status = %q, want needs_auth; error=%q", resp.Routine.Status, resp.Routine.LastError)
+	}
+	if resp.Plan.Enabled {
+		t.Fatalf("routine should not arm without auth: %+v", resp.Plan)
+	}
+}
+
+func TestNetTicketRoutineRequiresTodayAuth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Cleanup(resetAuthHealth)
+	now := time.Date(2026, 6, 9, 11, 0, 0, 0, time.Local)
+	saveRoutineAuthForTest(t, now.AddDate(0, 0, -1))
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        true,
+		StoreID:        "3006",
+		StoreName:      "太阳宫凯德店",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Routine.Status != netTicketRoutineStatusNeedsAuth {
+		t.Fatalf("routine status = %q, want needs_auth; error=%q", resp.Routine.Status, resp.Routine.LastError)
+	}
+	if resp.Plan.Enabled {
+		t.Fatalf("routine should not arm with previous-day auth: %+v", resp.Plan)
+	}
+}
+
+func TestNetTicketRoutineAcceptsTodayAuthHealthWithOldConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Cleanup(resetAuthHealth)
+	now := time.Date(2026, 6, 9, 11, 0, 0, 0, time.Local)
+	saveRoutineAuthForTest(t, now.AddDate(0, 0, -1))
+	authHealth = &authHealthTracker{status: authHealthOK, checkedAt: now}
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
+
+	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
+		Enabled:        true,
+		StoreID:        "3006",
+		StoreName:      "太阳宫凯德店",
+		TargetMealTime: "1300",
+		SafetyMinutes:  10,
+	}, now)
+
+	if resp.Routine.Status != netTicketRoutineStatusArmed {
+		t.Fatalf("routine status = %q, want armed; error=%q", resp.Routine.Status, resp.Routine.LastError)
+	}
+	if !resp.Plan.Enabled || resp.Plan.Source != netTicketPlanSourceRoutine {
+		t.Fatalf("routine plan should be armed after today's auth health: %+v", resp.Plan)
 	}
 }
 
@@ -213,5 +293,42 @@ func TestNetTicketRoutineWaitsForDataInsteadOfGuessing(t *testing.T) {
 	}
 	if resp.Plan.Enabled {
 		t.Fatalf("routine should not arm a plan without data: %+v", resp.Plan)
+	}
+}
+
+func saveRoutineAuthForTest(t *testing.T, savedAt time.Time) {
+	t.Helper()
+	if err := SaveLocalConfig(&CapturedTokens{
+		XAppCode:        "app-code",
+		QueryAuth:       "Bearer query",
+		ReservationAuth: "Bearer reservation",
+		UserAgent:       "ua",
+		Referer:         "https://servicewechat.com/",
+		WechatID:        "wechat-id",
+		PhoneNumber:     "13800138000",
+		StoreIDs:        []string{"3006"},
+	}); err != nil {
+		t.Fatalf("SaveLocalConfig() error = %v", err)
+	}
+	if err := os.Chtimes(LocalConfigPath(), savedAt, savedAt); err != nil {
+		t.Fatalf("chtimes local config: %v", err)
+	}
+	resetAuthHealth()
+}
+
+func appendRoutineHistoryForTest(t *testing.T, observedAt time.Time) {
+	t.Helper()
+	if err := appendQueueObservation(QueueObservation{
+		CollectedAt:       observedAt.Format(time.RFC3339),
+		StoreID:           "3006",
+		WaitMinutes:       60,
+		GroupQueuesCount:  24,
+		StoreStatus:       "OPEN",
+		NetTicketStatus:   "ONLINE",
+		OnlineOpen:        true,
+		SourceEndpoint:    queueSourceEndpointStoreByID,
+		APIProfileVersion: queueAPIProfileStoreDetailV1,
+	}); err != nil {
+		t.Fatalf("appendQueueObservation() error = %v", err)
 	}
 }

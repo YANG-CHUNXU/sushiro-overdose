@@ -1,6 +1,9 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
+	"os"
 	"sync"
 	"time"
 )
@@ -29,18 +32,27 @@ var authHealth = &authHealthTracker{status: authHealthUnknown}
 
 // AuthHealthJSON 是 /api/status 暴露的凭证健康。
 type AuthHealthJSON struct {
-	Status    string `json:"status"`
-	Reason    string `json:"reason,omitempty"`
-	CheckedAt string `json:"checked_at,omitempty"`
+	Status            string `json:"status"`
+	Reason            string `json:"reason,omitempty"`
+	CheckedAt         string `json:"checked_at,omitempty"`
+	CredentialSavedAt string `json:"credential_saved_at,omitempty"`
+	RoutineReady      bool   `json:"routine_ready"`
+	RoutineReason     string `json:"routine_reason,omitempty"`
 }
 
 func getAuthHealth() AuthHealthJSON {
 	authHealth.mu.RLock()
-	defer authHealth.mu.RUnlock()
 	out := AuthHealthJSON{Status: authHealth.status, Reason: authHealth.reason}
 	if !authHealth.checkedAt.IsZero() {
 		out.CheckedAt = authHealth.checkedAt.Format(time.RFC3339)
 	}
+	authHealth.mu.RUnlock()
+	if savedAt, ok := localCredentialSavedAt(); ok {
+		out.CredentialSavedAt = savedAt.Format(time.RFC3339)
+	}
+	ready, reason, _ := authReadyForDailyRoutine(time.Now())
+	out.RoutineReady = ready
+	out.RoutineReason = reason
 	return out
 }
 
@@ -100,4 +112,46 @@ func noteAuthResult(err error) {
 	if isCredentialRefreshLikelyError(err) {
 		markAuthStale("官方接口返回 E010/error.server，凭证可能需要刷新")
 	}
+}
+
+func localCredentialSavedAt() (time.Time, bool) {
+	info, err := os.Stat(LocalConfigPath())
+	if err != nil {
+		return time.Time{}, false
+	}
+	return info.ModTime(), true
+}
+
+func authHealthStatusForRoutine() (string, string, time.Time) {
+	authHealth.mu.RLock()
+	defer authHealth.mu.RUnlock()
+	return authHealth.status, authHealth.reason, authHealth.checkedAt
+}
+
+func authReadyForDailyRoutine(now time.Time) (bool, string, time.Time) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	tokens, err := LoadLocalConfig()
+	if err != nil {
+		return false, "今天还没有寿司郎认证；Routine 需要先重新获取凭证。", time.Time{}
+	}
+	if err := tokens.ValidateForReservation(); err != nil {
+		return false, "寿司郎认证字段不完整：" + err.Error(), time.Time{}
+	}
+	status, reason, checkedAt := authHealthStatusForRoutine()
+	if status == authHealthStale {
+		return false, DefaultString(reason, "凭证可能已过期或被手机端登录顶掉，请重新认证。"), time.Time{}
+	}
+	if status == authHealthOK && sameLocalDate(checkedAt, now) {
+		return true, "", checkedAt
+	}
+	savedAt, ok := localCredentialSavedAt()
+	if !ok {
+		return false, "无法确认寿司郎认证时间，请重新认证。", time.Time{}
+	}
+	if !sameLocalDate(savedAt, now) {
+		return false, "当前寿司郎认证不是今天获取；为避免 Routine 到点失败，请今天重新认证。", savedAt
+	}
+	return true, "", savedAt
 }
