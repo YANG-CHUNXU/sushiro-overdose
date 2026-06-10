@@ -357,8 +357,11 @@ async function tursoQuery(env, sql) {
 }
 
 function tursoPipelineURL(raw) {
-  const u = new URL(String(raw || "").trim());
-  if (u.protocol === "libsql:") u.protocol = "https:";
+  // WHATWG URL 禁止把非特殊协议（libsql:）改写成特殊协议（https:），
+  // u.protocol = "https:" 会静默失败，必须在解析前做字符串替换。
+  let normalized = String(raw || "").trim();
+  if (normalized.startsWith("libsql://")) normalized = "https://" + normalized.slice("libsql://".length);
+  const u = new URL(normalized);
   if (u.protocol !== "https:" && u.protocol !== "http:") {
     throw httpError(500, `unsupported Turso URL scheme: ${u.protocol}`);
   }
