@@ -109,7 +109,7 @@ func TestEmbeddedDOMIDsUnique(t *testing.T) {
 // TestEmbeddedCriticalAnchors 冒烟检查：核心面板/锚点必须存在，防止整页结构被误删。
 func TestEmbeddedCriticalAnchors(t *testing.T) {
 	satisfied := satisfiedDOMIDs()
-	for _, id := range []string{"qdChart", "qdKpis", "qdCalledTable", "qtLive", "qdTargetNo", "ntStore", "snRows", "rc", "lv", "toastWrap", "confirmOv"} {
+	for _, id := range []string{"qdPressChart", "qdAnswer", "qdAdvisor", "qtLive", "qdTargetNo", "ntStore", "snRows", "rc", "lv", "toastWrap", "confirmOv"} {
 		if !satisfied[id] {
 			t.Errorf("缺少关键锚点 id=%q（模板或动态创建）", id)
 		}
