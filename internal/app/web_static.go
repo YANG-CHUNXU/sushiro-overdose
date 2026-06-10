@@ -605,6 +605,20 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         </div>
         <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">🔔 生成提醒</button><button class="bt bt-w bt-s" onclick="focusNotifySettings()">设置通知</button></div>
       </div>
+      <div class="curve-sampling">
+        <div>
+          <b>⏱ 时间换算 <span class="tag read">只读 · 直接用</span></b>
+          <p>用这家店的等待数据互推：几点取号 ⇄ 几点吃上。没有历史样本时按当前实时等待粗估。</p>
+          <div class="fr mt8">
+            <div class="fg"><label>我想算</label><select id="qpDir" onchange="onPlanDirChange()"><option value="pickup">几点取号 → 几点能吃</option><option value="meal">想几点吃 → 几点取号</option></select></div>
+            <div class="fg" id="qpPickupWrap"><label>计划取号时间</label><input id="qpPickup" type="time" value="12:10"></div>
+            <div class="fg hid" id="qwMealWrap"><label>目标就餐时间</label><input id="qwMeal" type="time" value="13:00"></div>
+            <div class="fg hid" id="qwTravelWrap"><label>路上要多久（分钟，可选）</label><input id="qwTravel" type="number" min="0" placeholder="如 25"></div>
+            <div class="fg" style="align-self:flex-end"><button class="bt bt-r bt-s" onclick="runPlanCalc()">算一下</button></div>
+          </div>
+          <div id="qpAnswer" class="answer-card mt8"><div class="ci">用上方选中的门店；填时间点「算一下」。</div></div>
+        </div>
+      </div>
       <details class="card adv mt16" id="qdEvidence">
         <summary onclick="this.parentElement.dataset.keep='1'"><span class="setting-fold-title"><b>图表与历史依据</b><span>叫号曲线、10 分钟叫号表、日期类型拆分；有数据时自动展开。</span></span></summary>
         <div class="fl g8 fw mt16">
@@ -624,46 +638,6 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         </div>
         <div id="qdWarn" class="diag-detail hid"></div>
       </details>
-    </div>
-  </section>
-
-  <section id="p-qp" class="hid">
-    <div class="cd">
-      <div class="dash-head">
-        <div>
-          <div class="cd-t" style="margin-bottom:8px">取号 → 几点能吃 <span class="pm" data-kind="tamago" data-size="30"></span></div>
-          <div class="dash-title">打算几点取号，预计几点吃上</div>
-          <p class="dash-copy"><span class="tag read">只读 · 直接用</span> 用同门店同日型的历史等待估算就餐时间，并用今天的实时排队压力修正风险；只是参考，不会替你取号。</p>
-        </div>
-        <div class="dash-controls">
-          <label class="dash-target">计划取号 <input id="qpPickup" type="time" value="12:10"></label>
-          <button class="bt bt-w bt-s" onclick="openStorePicker({selected:qpStore?[qpStore]:[],multi:false,onConfirm:ids=>{qpStore=ids[0]||'';lsSet('sushiro_qp_store',qpStore);renderQpStore();loadQueuePickupPlan()}})">选门店</button>
-          <button class="bt bt-r bt-s" onclick="loadQueuePickupPlan()">估算</button>
-        </div>
-      </div>
-      <div id="qpStoreChip" class="chips mb16"><span class="mu">先选一家门店</span></div>
-      <div id="qpAnswer" class="answer-card"><div class="ci">选门店、填计划取号时间，这里告诉你大概几点能吃上。</div></div>
-      <div id="qpChart" class="dash-chart"><div class="empty">有历史样本时，这里画不同取号时间对应的预计等待。</div></div>
-    </div>
-  </section>
-
-  <section id="p-qw" class="hid">
-    <div class="cd">
-      <div class="dash-head">
-        <div>
-          <div class="cd-t" style="margin-bottom:8px">想几点吃 → 几点取号 <span class="pm" data-kind="ebi" data-size="30"></span></div>
-          <div class="dash-title">定个就餐时间，倒推取号窗口</div>
-          <p class="dash-copy"><span class="tag read">只读 · 直接用</span> 按历史等待倒推建议取号时间，并提示最晚别拖过几点；今天实时压力只用于修正风险等级。</p>
-        </div>
-        <div class="dash-controls">
-          <label class="dash-target">目标就餐 <input id="qwMeal" type="time" value="13:00"></label>
-          <label class="dash-target">路程(分钟) <input id="qwTravel" type="number" min="0" placeholder="如 25" style="width:90px"></label>
-          <button class="bt bt-w bt-s" onclick="openStorePicker({selected:qwStore?[qwStore]:[],multi:false,onConfirm:ids=>{qwStore=ids[0]||'';lsSet('sushiro_qw_store',qwStore);renderQwStore();loadQueueMealPlan()}})">选门店</button>
-          <button class="bt bt-r bt-s" onclick="loadQueueMealPlan()">倒推</button>
-        </div>
-      </div>
-      <div id="qwStoreChip" class="chips mb16"><span class="mu">先选一家门店</span></div>
-      <div id="qwAnswer" class="answer-card"><div class="ci">选门店、填目标就餐时间，这里给你建议取号窗口。</div></div>
     </div>
   </section>
 
@@ -847,7 +821,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 <footer class="ft">由 <a href="https://github.com/Ryujoxys/sushiro-overdose">sushiro-overdose</a> 驱动 · 非官方工具，仅供学习</footer>
 
 <script>
-let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qdSelected=[],qtSelected=[],qtTrendStores=[],qaStatus={},ah={},nfc=true,notifyChannels=[],cloudAuth={},qpStore='',qwStore='';
+let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qdSelected=[],qtSelected=[],qtTrendStores=[],qaStatus={},ah={},nfc=true,notifyChannels=[],cloudAuth={};
 const W=['日','一','二','三','四','五','六'];
 const need=['x_app_code','query_auth','reservation_auth','user_agent','referer','wechat_id','phone_number','store_ids'];
 const csrfToken=document.querySelector('meta[name="sushiro-csrf"]')?.content||'';
@@ -902,7 +876,7 @@ function escA(s){return esc(s).replaceAll('"','&quot;')}
 const NAV_GROUPS=[
   {id:'home',label:'首页',pages:[['da','概览']]},
   {id:'eat',label:'现在去吃',pages:[['qt','门店排队']]},
-  {id:'number',label:'我有号码',pages:[['qd','叫号预测'],['qp','取号→几点吃'],['qw','想几点吃→几点取号']]},
+  {id:'number',label:'我有号码',pages:[['qd','叫号预测']]},
   {id:'book',label:'约未来',pages:[['ca','可约日历'],['sn','自动蹲号']]},
   {id:'mine',label:'我的单据',pages:[['re','预约 / 排队号']]},
   {id:'settings',label:'设置',pages:[['se','设置']]}
@@ -910,7 +884,7 @@ const NAV_GROUPS=[
 const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g.id));
 function renderSubnav(g,active){const sn=el('subnav');if(!sn)return;if(!g||g.pages.length<=1){sn.innerHTML='';sn.classList.add('hid');return}sn.classList.remove('hid');sn.innerHTML=g.pages.map(([p,label])=>'<a href="#" class="'+(p===active?'on':'')+'" onclick="go(\''+p+'\');return false">'+esc(label)+'</a>').join('')}
 function goGroup(gid){const g=NAV_GROUPS.find(x=>x.id===gid);if(g)go(g.pages[0][0]);return false}
-function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({da:lDA,ca:lC,qd:lQD,qp:lQP,qw:lQW,qt:lQT,sn:lSn,re:lR,se:lS})[n]?.();return false}
+function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({da:lDA,ca:lC,qd:lQD,qt:lQT,sn:lSn,re:lR,se:lS})[n]?.();return false}
 async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};nfc=r.notify_configured!==false;uE();uD();uAuth();renderSettingsStatus();renderSettingsDataState();loadActiveTickets(false);}catch(e){el('ver').textContent='offline';}}
 function uAuth(){const pill=el('authPill'),banner=el('authBanner'),st=(ah&&ah.status)||'unknown',reason=(ah&&ah.reason)?String(ah.reason):'';
  if(pill){let cls='authpill',txt='';
@@ -1285,17 +1259,13 @@ function pressureLabelCN(level){return {low:'低',medium:'中',high:'高',extrem
 function riskLabelCN(r){return {low:'风险低',medium:'风险中',high:'风险高'}[r]||'风险未知'}
 function riskClass(r){return {low:'press-low',medium:'press-medium',high:'press-extreme'}[r]||'press-unknown'}
 // ---------- 取号→几点吃 ----------
-async function lQP(){await ensureStores();if(!qpStore)qpStore=lsGet('sushiro_qp_store');if(!qpStore&&qdSelected[0])qpStore=qdSelected[0];renderQpStore();if(qpStore)loadQueuePickupPlan()}
-function renderQpStore(){const c=el('qpStoreChip');if(!c)return;c.innerHTML=qpStore?('<button class="chip on">'+esc(storeDisplayName(qpStore))+'</button>'):'<span class="mu">先选一家门店</span>'}
-async function loadQueuePickupPlan(){const ans=el('qpAnswer'),chart=el('qpChart');if(!ans)return;if(!qpStore){ans.innerHTML='<div class="ci">先选一家门店。</div>';return}const pickup=(el('qpPickup')?.value||'').replace(':','');ans.innerHTML='<div class="ci">正在估算…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(qpStore)+'&pickup='+encodeURIComponent(pickup),null,15000);renderPickupPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueuePickupPlan()','取号规划')}}
-function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.meal_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';if(el('qpChart'))el('qpChart').innerHTML='<div class="empty">'+esc(d.message)+'</div>';return}const wr=d.wait_minutes_range||{},mr=d.meal_range||{},lead='如果 '+esc(d.pickup)+' 取号，预计 '+esc(mr.early||'?')+'-'+esc(mr.late||'?')+' 吃上（等待约 '+(wr.low||0)+'-'+(wr.high||0)+' 分钟）。';const chips=[answerChip('推荐就餐',esc((mr.early||'?')+'-'+(mr.late||'?')),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+lead+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'');renderPickupChart(el('qpChart'))}
-async function renderPickupChart(box){if(!box||!qpStore){return}box.innerHTML='<div class="empty">不同取号时间对应的预计等待（历史 P50/P80）。</div>';try{const tr=await safeFetch('/api/queue/trends?store='+encodeURIComponent(qpStore),null,15000);const series=(tr.series||[]).filter(p=>String(p.store_id)===String(qpStore)&&p.wait_p50_minutes!=null).sort((a,b)=>hhmmMinute(a.bucket)-hhmmMinute(b.bucket));if(!series.length){box.innerHTML='<div class="empty">这家店历史等待样本还不足，先开启本机采集积累几次。</div>';return}drawWaitByPickup(box,series,(el('qpPickup')?.value||'').replace(':',''))}catch(e){box.innerHTML='<div class="empty">历史等待曲线暂不可用。</div>'}}
-function drawWaitByPickup(box,series,pickupRaw){const w=1040,h=260,l=48,r=24,t=24,b=40,minM=600,maxM=1320,maxW=Math.max(20,...series.map(p=>p.wait_p80_minutes||p.wait_p50_minutes||0)),x=m=>l+(Math.min(maxM,Math.max(minM,m))-minM)/(maxM-minM)*(w-l-r),y=v=>h-b-(v/maxW)*(h-t-b);let svg='<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">';for(let i=0;i<=4;i++){const yy=t+i*(h-t-b)/4,val=Math.round(maxW*(4-i)/4);svg+='<line class="chart-grid" x1="'+l+'" y1="'+yy+'" x2="'+(w-r)+'" y2="'+yy+'"></line><text class="chart-label" x="4" y="'+(yy+4)+'">'+val+(i===0?' 分':'')+'</text>'}for(let hh=10;hh<=22;hh+=2){const xx=x(hh*60);svg+='<line class="chart-grid" x1="'+xx+'" y1="'+t+'" x2="'+xx+'" y2="'+(h-b)+'" opacity=".5"></line><text class="chart-label" x="'+xx+'" y="'+(h-9)+'" text-anchor="middle">'+(hh<10?'0':'')+hh+':00</text>'}const p80=series.filter(p=>p.wait_p80_minutes!=null).map(p=>x(hhmmMinute(p.bucket))+','+y(p.wait_p80_minutes)),p50=series.map(p=>x(hhmmMinute(p.bucket))+','+y(p.wait_p50_minutes));if(p80.length){const base=h-b;svg+='<polygon points="'+l+','+base+' '+p80.join(' ')+' '+(w-r)+','+base+'" fill="rgba(212,156,39,.16)"></polygon>'}svg+='<polyline points="'+p50.join(' ')+'" fill="none" stroke="#191817" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>';if(pickupRaw&&pickupRaw.length===4){const pm=parseInt(pickupRaw.slice(0,2),10)*60+parseInt(pickupRaw.slice(2),10);if(pm>=minM&&pm<=maxM){const px=x(pm);svg+='<line x1="'+px+'" y1="'+t+'" x2="'+px+'" y2="'+(h-b)+'" stroke="var(--red)" stroke-width="1.6"></line><text class="chart-label" x="'+(px+4)+'" y="'+(t+10)+'" fill="var(--red)">你选的取号</text>'}}svg+='</svg>';box.innerHTML=svg+'<div class="chart-legend"><span class="legend-line" style="--c:#191817">P50 预计等待</span><span class="legend-band">P50-P80 区间</span><span class="legend-now">你选的取号</span></div>'}
+function onPlanDirChange(){const d=(el('qpDir')||{}).value||'pickup';el('qpPickupWrap').classList.toggle('hid',d!=='pickup');el('qwMealWrap').classList.toggle('hid',d!=='meal');el('qwTravelWrap').classList.toggle('hid',d!=='meal')}
+function runPlanCalc(){((el('qpDir')||{}).value==='meal')?loadQueueMealPlan():loadQueuePickupPlan()}
+async function loadQueuePickupPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const pickup=(el('qpPickup')?.value||'').replace(':','');ans.innerHTML='<div class="ci">正在估算…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&pickup='+encodeURIComponent(pickup),null,15000);renderPickupPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueuePickupPlan()','取号规划')}}
+function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.meal_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const wr=d.wait_minutes_range||{},mr=d.meal_range||{},lead='如果 '+esc(d.pickup)+' 取号，预计 '+esc(mr.early||'?')+'-'+esc(mr.late||'?')+' 吃上（等待约 '+(wr.low||0)+'-'+(wr.high||0)+' 分钟）。';const chips=[answerChip('推荐就餐',esc((mr.early||'?')+'-'+(mr.late||'?')),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+lead+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'')}
 // ---------- 想几点吃→几点取号 ----------
-async function lQW(){await ensureStores();if(!qwStore)qwStore=lsGet('sushiro_qw_store');if(!qwStore&&qdSelected[0])qwStore=qdSelected[0];renderQwStore();if(qwStore)loadQueueMealPlan()}
-function renderQwStore(){const c=el('qwStoreChip');if(!c)return;c.innerHTML=qwStore?('<button class="chip on">'+esc(storeDisplayName(qwStore))+'</button>'):'<span class="mu">先选一家门店</span>'}
-async function loadQueueMealPlan(){const ans=el('qwAnswer');if(!ans)return;if(!qwStore){ans.innerHTML='<div class="ci">先选一家门店。</div>';return}const meal=(el('qwMeal')?.value||'').replace(':',''),travel=Math.max(0,parseInt(el('qwTravel')?.value||'',10)||0);ans.innerHTML='<div class="ci">正在倒推…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(qwStore)+'&target_meal='+encodeURIComponent(meal)+(travel>0?'&travel_minutes='+travel:''),null,15000);renderMealPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueueMealPlan()','取号倒推')}}
-function renderMealPlan(d){const ans=el('qwAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'')}
+async function loadQueueMealPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const meal=(el('qwMeal')?.value||'').replace(':',''),travel=Math.max(0,parseInt(el('qwTravel')?.value||'',10)||0);ans.innerHTML='<div class="ci">正在倒推…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&target_meal='+encodeURIComponent(meal)+(travel>0?'&travel_minutes='+travel:''),null,15000);renderMealPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueueMealPlan()','取号倒推')}}
+function renderMealPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'')}
 function renderQueueDashboard(d){const cs=d.called_summary||{},curve=d.called_curve||[],store=cs.store_name||cs.store_id||'还没选门店',called=cs.latest_called_no?fmtN(cs.latest_called_no)+'号':'-',latest=shortTime(cs.latest_at),range=(cs.start||'10:00')+'-'+(cs.end||'22:00'),remote=cs.source==='remote_baseline',sampleLabel=remote?(fmtN(curve.length)+' 个时间点 · 线上基准'):(fmtN(cs.day_count||0)+' 天 · '+fmtN(curve.length)+' 个时间点');renderDashboardAdvisor(d.advisor||{});el('qdKpis').innerHTML='<div class="kpi"><span>曲线门店</span><strong>'+esc(store)+'</strong><p>'+esc(cs.date_type_name||'剔除节假日')+'</p></div><div class="kpi kpi-hot"><span>当前叫号</span><strong>'+called+'</strong><p>'+(cs.latest_queue_groups?('前面 '+fmtN(cs.latest_queue_groups)+' 桌'):(remote?'线上叫号基准':'本机叫号明细'))+'</p></div><div class="kpi"><span>样本</span><strong>'+fmtN(cs.sample_count||0)+'</strong><p>'+sampleLabel+'</p></div><div class="kpi"><span>时间范围</span><strong>'+esc(range)+'</strong><p>最后采样 '+esc(latest)+'</p></div>';renderDashboardCalledCurve(curve,cs,d.advisor||{});renderDashboardCalledTable(curve);renderDashboardProfiles(d);const det=el('qdEvidence');if(det&&!det.dataset.keep&&(curve||[]).length)det.open=true;const w=el('qdWarn'),warn=d.warnings||[];if(w&&warn.length){w.classList.remove('hid');w.innerHTML='<b>数据说明</b><br>'+warn.map(esc).join('<br>')}else if(w)w.classList.add('hid')}
 function renderDashboardAdvisor(a){const box=el('qdAdvisor');if(!box)return;a=a||{};const state=a.state||'empty',bad=state==='passed'||state==='empty',warn=state==='uncovered',cls=bad?'bad':warn?'warn':state==='milestones'?'muted':'';const source=a.source==='remote_baseline'?'线上基准':a.source?'本机记录':'无数据',conf=confText(a.confidence||'none'),target=a.target_no?('我的号 '+fmtN(a.target_no)):'未输入号码',miles=(a.milestones||[]).slice(0,3).map(m=>'<div class="advisor-point"><span>'+esc(m.label||'时间点')+'</span><b>'+esc(m.bucket||'-')+'</b><strong>'+fmtN(m.called_no_typical||0)+'号</strong></div>').join('');let side=miles||'<div class="advisor-point"><span>提示</span><b>选门店</b><strong>补数据</strong></div>';box.innerHTML='<div class="advisor-card '+cls+'"><div class="advisor-main"><span class="advisor-eyebrow">'+esc(target)+' · '+esc(source)+' · 可信度'+esc(conf)+'</span><h3>'+esc(a.headline||'还不能判断叫到时间')+'</h3><p>'+esc(a.copy||'先选一个门店；如果没有曲线，开启本机采集后会逐步变准。')+'</p>'+(a.arrival_label?'<p><b>到店建议：</b>'+esc(a.arrival_label)+'</p>':'')+'</div><div class="advisor-milestones">'+side+'</div></div>'}
 function fmtN(v){return Number(v||0).toLocaleString('zh-CN')}
