@@ -618,7 +618,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
           <div id="nrStatus" class="pick-out mt8"><span class="mu">状态加载中…</span></div>
           </div>
         </div>
-        <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">🔔 生成提醒</button><button class="bt bt-w bt-s" onclick="focusNotifySettings()">设置通知</button></div>
+        <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">🔔 生成提醒</button><button class="bt bt-w bt-s" id="qdrNotifyBtn" onclick="focusNotifySettings()">设置通知</button></div>
       </div>
       <details class="card adv mt16" id="qdSamplingFold">
         <summary><span class="setting-fold-title"><b>📡 本机持续采集</b><span>让「几点叫到」的判断越用越准；数据只留在本机，不上传。</span></span></summary>
@@ -679,7 +679,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
       <div class="page-lead"><div><h2 class="ph">自动抢 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 已放出的时段「现在就抢」；还没放出的加目标「蹲」。抢到即停，启动前都会确认。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="addSn()">添加目标</button><button class="bt bt-r bt-s" onclick="saveSn()">保存计划</button><button class="bt bt-y bt-s" onclick="startSn()">启动蹲号</button></div></div>
       <div class="qbox mb16">
         <div class="fl ai jb fw g8"><label style="margin:0">现在就抢（已放出的时段）</label><span class="mu">按你的门店和时段偏好扫描可约日历，抢到第一个符合的就停止。</span></div>
-        <div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="sB()">按偏好开抢</button><button class="bt bt-w bt-s" onclick="go('ca')">先看可约日历</button><button class="bt bt-w bt-s" onclick="el('snPrefs').open=true;el('snPrefs').scrollIntoView({behavior:'smooth'})">改抢号偏好</button></div>
+        <div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="sB()">按偏好开抢</button><button class="bt bt-w bt-s" onclick="go('ca')">先看可约日历</button><button class="bt bt-w bt-s" onclick="expandSnPrefs()">改抢号偏好</button></div>
       </div>
       <div class="qbox mb16">
         <div class="fl ai jb fw g8"><label style="margin:0">蹲还没放出的时段</label><span class="mu">指定日期、门店、时间窗，开放瞬间自动尝试。</span></div>
@@ -697,7 +697,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         </div>
         <div class="fg"><label>添加门店（搜全国）</label><div class="fl g8 fw"><input id="storeSearch" placeholder="输入城市或门店名，如 北京 / 凯德" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter'){searchStores();return false}"><button class="bt bt-w bt-s" onclick="searchStores()">搜索</button></div><div id="storeSearchResults" class="mt8"></div></div>
         <div class="fg"><label>抢号门店与优先级</label><div id="bookingStores" class="store-list"><span class="mu">用上方搜索添加，或拿到通行证后自动带入</span></div><div class="ps mt8">抢预约 / 取号会按勾选门店的排序依次尝试。新加的门店若从没在小程序点过，建议刷新凭证后先试一家确认可用。</div></div>
-        <button class="bt bt-r mt8" onclick="sP()">保存偏好</button>
+        <div class="fl ai g8 fw mt8"><button class="bt bt-r" onclick="sP()">保存全部偏好</button><span class="mu">人数、门店、时段是同一份偏好；在任意一个折叠里点保存，两边都会一起保存。</span></div>
         </div>
       </details>
       <details class="adv mb16" id="snPrefsTime">
@@ -717,7 +717,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         <div class="fg"><label>工作日时段</label><div id="wd" class="tl"></div><span class="at" onclick="aT('wd')">添加时段</span></div>
         <div class="fg"><label>周六时段</label><div id="sa" class="tl"></div><span class="at" onclick="aT('sa')">添加时段</span></div>
         <div class="fg"><label>周日时段</label><div id="su" class="tl"></div><span class="at" onclick="aT('su')">添加时段</span></div>
-        <button class="bt bt-r mt8" onclick="sP()">保存偏好</button>
+        <div class="fl ai g8 fw mt8"><button class="bt bt-r" onclick="sP()">保存全部偏好</button><span class="mu">人数、门店、时段是同一份偏好；在任意一个折叠里点保存，两边都会一起保存。</span></div>
         </div>
       </details>
     </div>
@@ -877,7 +877,8 @@ function go(n,e,noPush){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wra
 window.addEventListener('popstate',()=>{const h=location.hash.slice(1);go(h&&PAGE_GROUP[h]?h:'da',null,true)});
 async function loadStatus(){const v=el('ver');try{const r=await(await fetch('/api/status')).json();v.textContent='v'+r.version;v.classList.remove('hid');hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};nfc=r.notify_configured!==false;uE();uD();uAuth();renderSettingsStatus();renderSettingsDataState();loadActiveTickets(false);}catch(e){v.textContent='offline';v.classList.remove('hid');heroLoadFailed(e)}}
 function heroLoadFailed(err){const badge=el('heroBadge'),t=el('heroTitle'),c=el('heroCopy');if(badge)badge.textContent='连接异常';if(t)t.textContent='读不到运行状态';if(c)c.innerHTML='本机服务没有响应：<code style="word-break:break-all">'+esc(String((err&&err.message)||err||'unknown'))+'</code> <button class="bt bt-w bt-s" onclick="loadStatus()">重试</button>'}
-function uAuth(){const pill=el('authPill'),banner=el('authBanner'),st=(ah&&ah.status)||'unknown',reason=(ah&&ah.reason)?String(ah.reason):'';
+function uAuth(){const mine=document.querySelector('.nav.top a[data-group="mine"]');if(mine)mine.classList.toggle('hid',!hc);
+ const pill=el('authPill'),banner=el('authBanner'),st=(ah&&ah.status)||'unknown',reason=(ah&&ah.reason)?String(ah.reason):'';
  if(pill){let cls='authpill',txt='';
   if(!hc){txt='只读模式'}
   else if(st==='stale'){cls+=' stale';txt='通行证可能失效'}
@@ -922,12 +923,13 @@ function openGuestStorePicker(){openStorePicker({selected:(pr.selected_stores||[
 async function saveStarterStores(ids){if(!ids||!ids.length){toast('先勾选至少一家门店');return}const b={...pr,selected_stores:ids,store_priority:ids};if(!await savePrefsPayload(b,true))return;qtSelected=ids.map(String);rememberStores('sushiro_qt_stores',qtSelected);toast('已记住常用门店，看看现在排多久');go('qt')}
 let activeTickets=[],activeLive={},activeLoadedAt=0,homeLiveAt=0;
 function lDA(){loadActiveTickets(false);loadHomeLive(false)}
-function homeWatchStores(){let ids=recallStores('sushiro_qt_stores');if(!ids.length)ids=(pr.selected_stores||[]).map(String);if(!ids.length&&stores.length)ids=stores.map(s=>String(s.id));return ids}
 function goQtStore(id){qtSelected=[String(id)];rememberStores('sushiro_qt_stores',qtSelected);go('qt')}
 async function loadHomeLive(force){
  const box=el('homeLive');if(!box)return;
  const now=Date.now();if(!force&&now-homeLiveAt<60000)return;homeLiveAt=now;
- const all=homeWatchStores(),ids=all.slice(0,3);
+ let all=recallStores('sushiro_qt_stores');if(!all.length)all=(pr.selected_stores||[]).map(String);
+ const fallback=!all.length;if(fallback&&stores.length)all=stores.map(s=>String(s.id));
+ const ids=all.slice(0,3);
  if(!ids.length){box.innerHTML=hc?'<div class="empty">还没选常用门店；选好后首页直接看排队。<div class="mt8"><button class="bt bt-w bt-s" onclick="openGuestStorePicker()">选常用门店</button></div></div>':'';return}
  if(!box.innerHTML)box.innerHTML='<div class="home-live">'+ids.map(()=>'<div class="hl-card"><span class="hl-name mu">读取中…</span></div>').join('')+'</div>';
  const panels=await Promise.all(ids.map(id=>safeFetch('/api/queue/live?store='+encodeURIComponent(id),null,12000).catch(()=>null)));
@@ -937,7 +939,7 @@ async function loadHomeLive(force){
  box.innerHTML='<div class="home-live">'+items.map(s=>{
   const open=s.online_open||s.store_status==='OPEN';
   const eta=(s.eta_minutes!=null)?s.eta_minutes:((s.server_wait_minutes||0)>0?s.server_wait_minutes:null);
-  return'<button type="button" class="hl-card" onclick="goQtStore(\''+escA(String(s.store_id))+'\')"><span class="hl-name">'+esc(s.store_name||s.store_id)+'</span><span class="hl-num '+(open?'':'closed')+'">'+(open?fmtN(s.wait_groups||0):'休')+'</span><span class="hl-sub">'+(open?('桌在等'+(eta!=null?' · 约 '+eta+' 分钟':'')+(s.called_no?' · 叫到 '+esc(String(s.called_no)):'')):'暂停营业 · 点开看详情')+'</span></button>'}).join('')+more+'</div>';
+  return'<button type="button" class="hl-card" onclick="goQtStore(\''+escA(String(s.store_id))+'\')"><span class="hl-name">'+esc(s.store_name||s.store_id)+'</span><span class="hl-num '+(open?'':'closed')+'">'+(open?fmtN(s.wait_groups||0):'休')+'</span><span class="hl-sub">'+(open?('桌在等'+(eta!=null?' · 约 '+eta+' 分钟':'')+(s.called_no?' · 叫到 '+esc(String(s.called_no)):'')):'暂停营业 · 点开看详情')+'</span></button>'}).join('')+more+'</div>'+(fallback?'<p class="mu mt8">还没选常用门店，暂按通行证里你去过的门店显示。<button class="bt bt-w bt-s" onclick="openGuestStorePicker()">选常用门店</button></p>':'');
 }
 async function loadActiveTickets(force){
  if(!hc){activeTickets=[];renderActiveHome();return}
@@ -1040,7 +1042,8 @@ function uE(){
   if(s.status==='capturing'&&s.capture){el('cb').classList.remove('hid');rG(s.capture)}else if(s.status!=='capturing'){el('cb').classList.add('hid')}
 }
 function remTab(t){const once=t==='once';el('remOnce').classList.toggle('hid',!once);el('remDaily').classList.toggle('hid',once);el('remTabOnce').classList.toggle('on',once);el('remTabDaily').classList.toggle('on',!once)}
-function openSnPrefs(){go('sn');setTimeout(()=>{const d=el('snPrefs');if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
+function expandSnPrefs(){const t=el('snPrefsTime');if(t)t.open=true;const d=el('snPrefs');if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}}
+function openSnPrefs(){go('sn');setTimeout(expandSnPrefs,80)}
 function openSettingsFold(id){go('se');setTimeout(()=>{const d=el(id);if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
 function focusNotifySettings(){go('se');setTimeout(()=>{const x=el('nf');if(x){x.scrollIntoView({behavior:'smooth',block:'center'});x.focus()}},60)}
 function renderSettingsStatus(){
@@ -1203,6 +1206,7 @@ function qaRuleKey(r){r=r||{};return r.type==='called_reach'?[r.store_id,r.type,
 async function loadQueueAlertStatus(){try{qaStatus=await safeFetch('/api/queue/alerts/status');renderTicketReminderCard()}catch(e){renderTicketReminderCard('提醒状态加载失败：'+String(e.message||e))}}
 function renderTicketReminderCard(err){
  const box=el('qdReminderStatus');if(!box)return;
+ const nb=el('qdrNotifyBtn');if(nb)nb.textContent=nfc?'管理通知':'设置通知';
  if(err){box.innerHTML='<div class="ci bad">'+esc(err)+'</div>';return}
  const s=qdReminderStore(),target=parseInt(el('qdTargetNo')?.value||'',10),points=target>0?reminderPointsFromInputs(target):[],n=qaStatus.notifications||{},sampling=qaStatus.sampling||{},channels=(n.channels||[]).join('、')||'未配置',notifyClass=n.configured?'ok':'bad',sampleClass=sampling.running||sampling.daemon_running||sampling.system_auto_start?.enabled?'ok':'warn',hint=!s?'先在上方选一家门店（提醒只盯这家店的叫号）。':!target?'在上方「我的号」填手里的号，提醒会按节奏自动生成。':points.length?('将为 '+esc(s.name)+' · '+fmtN(target)+' 号，在叫到 '+points.map(fmtN).join('、')+' 号时各提醒一次。'):'自定义号码无效：提醒号必须小于你手里的号。';
  const chips=chip('通知',channels,notifyClass)+chip('采集',sampling.running?'运行中':sampling.daemon_running?'后台运行':sampling.system_auto_start?.enabled?'已设开机采集':(sampling.message||'未持续采集'),sampleClass);
