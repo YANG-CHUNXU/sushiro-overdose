@@ -589,8 +589,10 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
       <div id="qdSamplingCard" class="curve-sampling"><div><b>本机持续采集</b><p>常用门店的公开排队曲线（叫号、等位）已默认自动记录，不需要通行证，越用越准；拿通行证后还能额外采集可约时段。数据只留在本机，不上传。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="openSettingsFold('fold-sm')">详细配置</button></div></div>
       <div id="qdReminderCard" class="curve-sampling">
         <div>
-          <b>🔔 多段到店提醒 <span class="tag read">只提醒 · 不取号</span></b>
-          <p>已经拿到号？快叫到前分几次提醒你出发；叫到后提醒自动消失，不会替你取号或取消号。</p>
+          <b>🔔 提醒 <span class="tag read">只提醒 · 不取号</span></b>
+          <p>两种提醒：手里有号时分几次提醒你出发；或每天按想吃的时间提醒你该取号了。都不会替你操作。</p>
+          <div class="fl g8 fw mt8"><button class="chip on" id="remTabOnce" onclick="remTab('once')">当次 · 快叫到我时</button><button class="chip" id="remTabDaily" onclick="remTab('daily')">每日 · 该取号了</button></div>
+          <div id="remOnce">
           <div class="fr mt8">
             <div class="fg"><label>提醒节奏</label><select id="qdrTemplate" onchange="renderReminderTemplateHint()"><option value="normal">标准 · 提前 80/50/25 号各提醒一次</option><option value="conservative">从容 · 提前 120/90/60/30 号</option><option value="urgent">临近 · 提前 50/25/10 号</option><option value="custom">自定义（在下方高级里填）</option></select></div>
             <div class="fg"><label>路上要多久（分钟，可选）</label><input id="qdrTravel" type="number" min="0" placeholder="如 25，用于推算出发时间"></div>
@@ -602,6 +604,19 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
             <p class="ps mt8">填了这里就按这些号码提醒，忽略上面的节奏。</p>
           </details>
           <div id="qdReminderStatus" class="mt8"><span class="mu">选门店并输入号码后，点「生成提醒」。</span></div>
+          </div>
+          <div id="remDaily" class="hid">
+          <p class="mu mt8">按想吃饭的时间倒推取号窗口，每天提前提醒你手动取号；样本不足时不会乱提醒。<span class="tag auth">需要通知</span></p>
+          <div class="fr mt8">
+            <div class="fg"><label>门店</label><select id="nrStore"></select></div>
+            <div class="fg"><label>想几点吃</label><input type="time" id="nrMeal" value="13:00"></div>
+            <div class="fg"><label>路上要多久（分钟）</label><input type="number" id="nrTravel" value="0" min="0"></div>
+            <div class="fg"><label>提前几分钟提醒</label><input type="number" id="nrSafety" value="10" min="0"></div>
+            <div class="fg" style="align-self:flex-end"><button class="bt bt-r bt-s" onclick="saveNetTicketRoutine(true)">启用每日提醒</button></div>
+            <div class="fg" style="align-self:flex-end"><button class="bt bt-o bt-s" onclick="saveNetTicketRoutine(false)">关闭</button></div>
+          </div>
+          <div id="nrStatus" class="pick-out mt8"><span class="mu">需要先配置通知渠道；开启后只是提醒你手动取号。</span></div>
+          </div>
         </div>
         <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">🔔 生成提醒</button><button class="bt bt-w bt-s" onclick="focusNotifySettings()">设置通知</button></div>
       </div>
@@ -644,25 +659,12 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
   <section id="p-qt" class="hid">
     <div class="cd">
       <div class="page-lead"><div><h2 class="ph">现在去吃 <span class="pm" data-kind="salmon" data-size="32"></span></h2><p class="ph-sub"><span class="tag read">只读 · 直接用</span> 先看门店是否营业、前面还有几桌、大概等多久；只有点击远程取号或启用自动取号时才会执行操作。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新</button></div></div>
-      <div id="qtCollect" class="mb16"></div>
       <div class="fg"><label>关注门店</label>
         <div class="fl g8 fw" style="align-items:center"><button class="bt bt-w bt-s" onclick="openStorePicker({selected:qtSelected,onConfirm:applyQueueStores})">+ 选择门店（全国）</button><span class="mu">从全国门店里搜城市/门店名直接勾选。</span></div>
         <div id="qtStores" class="chips mt8"><span class="mu">尚未选择门店</span></div>
       </div>
       <div id="qtRecommend" class="mb16"></div>
       <div id="qtLive" class="mt16"><div class="ci">实时排队待加载</div></div>
-      <div class="qbox mt16">
-        <div class="fl ai jb fw g8"><label style="margin:0">每日取号提醒 Routine <span class="tag read">只提醒</span><span class="tag auth">需要通知</span></label><span class="mu">按想吃饭时间倒推取号窗口，提前提醒你手动取号；不会自动向寿司郎提交。</span></div>
-        <div class="fl g8 fw mt8">
-          <div class="fg"><label>门店</label><select id="nrStore"></select></div>
-          <div class="fg"><label>想几点吃</label><input type="time" id="nrMeal" value="13:00"></div>
-          <div class="fg"><label>路程(分钟)</label><input type="number" id="nrTravel" value="0" min="0" style="width:90px"></div>
-          <div class="fg"><label>提前提醒(分钟)</label><input type="number" id="nrSafety" value="10" min="0" style="width:100px"></div>
-          <div class="fg" style="align-self:flex-end"><button class="bt bt-r bt-s" onclick="saveNetTicketRoutine(true)">启用提醒</button></div>
-          <div class="fg" style="align-self:flex-end"><button class="bt bt-o bt-s" onclick="saveNetTicketRoutine(false)">关闭 Routine</button></div>
-        </div>
-        <div id="nrStatus" class="pick-out mt8"><span class="mu">必须先配置通知渠道。样本不足时不会乱提醒；开启后只是提醒你手动取号。</span></div>
-      </div>
       <details class="adv mt16">
       <summary>高级 · 自动取号计划（会执行操作）</summary>
       <div class="qbox mt16">
@@ -678,32 +680,18 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         </div>
         <div id="ntStatus" class="pick-out mt8"><span class="mu">选门店和触发方式后，可启用自动取号计划；取到的号会显示在「我的单据」。启用前会再次确认。</span></div>
       </div>
-      <div class="qbox mt16">
-        <div class="fl ai jb fw g8"><label style="margin:0">多段到店提醒</label><span class="mu">已经移到“我有号码”，按手里的号生成临时提醒点。</span></div>
-        <div class="fl g8 fw mt8"><button class="bt bt-w bt-s" onclick="go('qd')">去设置多段提醒</button></div>
-      </div>
-      </details>
-      <details class="adv mt16">
-      <summary>高级 · 历史趋势分析（需先开后台收集积累数据）</summary>
-      <div class="sample-grid mt16">
-        <div class="fg"><label>日期类型</label><select id="qtType" onchange="loadQueueTrends()"><option value="all">全部</option><option value="weekday">工作日</option><option value="workday">调休工作日</option><option value="weekend">周末</option><option value="holiday">节假日</option></select></div>
-        <div class="fg"><label>开始日期</label><input type="date" id="qtFrom" onchange="loadQueueTrends()"></div>
-        <div class="fg"><label>结束日期</label><input type="date" id="qtTo" onchange="loadQueueTrends()"></div>
-        <div class="fg"><label>开始时间</label><input type="time" id="qtStart" value="10:00" onchange="loadQueueTrends()"></div>
-        <div class="fg"><label>结束时间</label><input type="time" id="qtEnd" value="22:00" onchange="loadQueueTrends()"></div>
-        <div class="fg"><label>粒度</label><select id="qtBucket" onchange="loadQueueTrends()"><option value="30">30 分钟</option><option value="60">60 分钟</option></select></div>
-      </div>
-      <div id="qtStatus" class="sample-state"><div class="ci">尚未加载</div></div>
-      <div id="qtAdvice" class="mt16"></div>
-      <div id="qtChart" class="chart mt16"><div class="empty">加载中</div></div>
-      <div id="qtTable" class="mt16"></div>
       </details>
     </div>
   </section>
 
   <section id="p-sn" class="hid">
     <div class="cd">
-      <div class="page-lead"><div><h2 class="ph">自动蹲号 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 到开放窗口自动尝试创建预约；抢到后会停止，不会一直 running。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="addSn()">添加目标</button><button class="bt bt-r bt-s" onclick="saveSn()">保存计划</button><button class="bt bt-y bt-s" onclick="startSn()">启动蹲号</button></div></div>
+      <div class="page-lead"><div><h2 class="ph">自动抢 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 已放出的时段「现在就抢」；还没放出的加目标「蹲」。抢到即停，启动前都会确认。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="addSn()">添加目标</button><button class="bt bt-r bt-s" onclick="saveSn()">保存计划</button><button class="bt bt-y bt-s" onclick="startSn()">启动蹲号</button></div></div>
+      <div class="qbox mb16">
+        <div class="fl ai jb fw g8"><label style="margin:0">现在就抢（已放出的时段）</label><span class="mu">按你的门店和时段偏好扫描可约日历，抢到第一个符合的就停止。</span></div>
+        <div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="sB()">按偏好开抢</button><button class="bt bt-w bt-s" onclick="go('ca')">先看可约日历</button><button class="bt bt-w bt-s" onclick="go('se')">改门店和时段偏好</button></div>
+      </div>
+      <div class="fl ai jb fw g8 mb16"><label style="margin:0">蹲还没放出的时段</label><span class="mu">指定日期、门店、时间窗，开放瞬间自动尝试。</span></div>
       <div id="snRows"></div>
       <div id="snPlan" class="mt16"><div class="empty">还没有蹲号目标。点“添加目标”，填日期、门店和时间窗。</div></div>
     </div>
@@ -877,7 +865,7 @@ const NAV_GROUPS=[
   {id:'home',label:'首页',pages:[['da','概览']]},
   {id:'eat',label:'现在去吃',pages:[['qt','门店排队']]},
   {id:'number',label:'我有号码',pages:[['qd','叫号预测']]},
-  {id:'book',label:'约未来',pages:[['ca','可约日历'],['sn','自动蹲号']]},
+  {id:'book',label:'约未来',pages:[['ca','可约日历'],['sn','自动抢']]},
   {id:'mine',label:'我的单据',pages:[['re','预约 / 排队号']]},
   {id:'settings',label:'设置',pages:[['se','设置']]}
 ];
@@ -1030,9 +1018,9 @@ function uD(){
     }else{
       badge.textContent='准备就绪';title.textContent='今天怎么吃？';copy.textContent='通行证和门店偏好都已就绪。可以查可约日历直接预约；目标明确就交给自动蹲号。';
       b.textContent='查可约时段';b.className='bt bt-r bt-l';b.onclick=()=>go('ca');
-      bc.textContent='开始自动抢预约';
+      bc.textContent='自动抢 / 蹲号';
       bc.className='bt bt-o';
-      bc.onclick=sB;
+      bc.onclick=()=>go('sn');
     }
   }
 }
@@ -1045,6 +1033,7 @@ function uE(){
   bs.classList.toggle('hid',!isRun());
   if(s.status==='capturing'&&s.capture){el('cb').classList.remove('hid');rG(s.capture)}else if(s.status!=='capturing'){el('cb').classList.add('hid')}
 }
+function remTab(t){const once=t==='once';el('remOnce').classList.toggle('hid',!once);el('remDaily').classList.toggle('hid',once);el('remTabOnce').classList.toggle('on',once);el('remTabDaily').classList.toggle('on',!once)}
 function openSettingsFold(id){go('se');setTimeout(()=>{const d=el(id);if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
 function focusNotifySettings(){go('se');setTimeout(()=>{const x=el('nf');if(x){x.scrollIntoView({behavior:'smooth',block:'center'});x.focus()}},60)}
 function settingsCard(title,value,copy,cls,actions){return'<div class="status-card '+(cls||'')+'"><b>'+esc(title)+'</b><strong>'+esc(value)+'</strong><p>'+esc(copy||'')+'</p>'+(actions?'<div class="fl g8 fw">'+actions+'</div>':'')+'</div>'}
@@ -1193,7 +1182,7 @@ function rS(d){const sl=as.filter(s=>s.date===d).sort((a,b)=>(a.store_name||'').
 
 async function lI(){await ensureStores();const c=el('ic');c.innerHTML='<div class="skeleton" style="height:46px;border-radius:10px;margin-bottom:8px"></div><div class="skeleton" style="height:200px;border-radius:10px"></div>';try{const d=await safeFetch('/api/insights?top=12');if(d.error){c.innerHTML=loadErrBoxHTML(d.error,'lI()','历史洞察');return}const rec=d.recommendations||[],min=d.min_recommendation_observations||3;const metrics='<div class="metric">'+chip('历史样本',d.valid_snapshots||0,'ok')+chip('推荐门槛','同一时段 '+min+' 次','warn')+chip('推荐数量',rec.length,'ok')+'</div>';const rows=rec.map(r=>'<tr><td data-label="门店">'+esc(storeName(r.store_id))+'<br><span class="mu">'+esc(r.store_id)+'</span></td><td data-label="星期">'+esc(r.weekday_name)+'</td><td data-label="时段">'+esc(fT(r.start))+'-'+esc(fT(r.end))+'</td><td data-label="开放概率">'+Math.round((r.availability_rate||0)*100)+'%</td><td data-label="售罄速度">'+(r.sold_out_minutes==null?'-':Math.round(r.sold_out_minutes)+' 分')+'</td><td data-label="样本">'+esc(r.observations)+'</td></tr>').join('');const empty=(d.valid_snapshots||0)?'<div class="empty">样本还不够稳定。保持预测准确度，等同一门店、星期、时段至少积累 '+min+' 次观察后再给推荐。<div class="mt8"><button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去预测准确度</button></div></div>':'<div class="empty">暂无历史数据。<div class="mt8"><button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去预测准确度</button></div></div>';c.innerHTML=metrics+(rows?'<table class="tbl tbl-cards"><thead><tr><th>门店</th><th>星期</th><th>时段</th><th>开放概率</th><th>售罄速度</th><th>样本</th></tr></thead><tbody>'+rows+'</tbody></table>':empty)}catch(e){c.innerHTML=loadErrBoxHTML(e,'lI()','历史洞察')}}
 
-async function lQD(){await ensureStores();if(!qdSelected.length){const saved=recallStores('sushiro_qd_store').slice(0,1);if(saved.length){qdSelected=saved;if(el('qdScope'))el('qdScope').value='local'}}renderDashboardStores();await loadSampling();await loadQueueAlerts();await loadQueueAlertStatus();await loadQueueDashboard()}
+async function lQD(){await ensureStores();if(!qdSelected.length){const saved=recallStores('sushiro_qd_store').slice(0,1);if(saved.length){qdSelected=saved;if(el('qdScope'))el('qdScope').value='local'}}renderDashboardStores();fillNetTicketStores();loadNetTicketRoutine();await loadSampling();await loadQueueAlerts();await loadQueueAlertStatus();await loadQueueDashboard()}
 function dashboardParams(){const p=new URLSearchParams();p.set('scope',el('qdScope')?.value||'all');p.set('date_type',el('qdType')?.value||'all');p.set('window','12');p.set('bucket',el('qdBucket')?.value||'10');const target=parseInt(el('qdTargetNo')?.value||'',10);if(target>0)p.set('target_no',String(target));if(qdSelected.length)p.set('stores',qdSelected.slice(0,1).join(','));return p}
 function applyDashboardStores(ids){qdSelected=(ids||[]).slice(0,1).map(String);rememberStores('sushiro_qd_store',qdSelected);if(qdSelected.length&&el('qdScope'))el('qdScope').value='local';renderDashboardStores();renderReminderTemplateHint();loadQueueDashboard();loadQueueAlertStatus()}
 function renderDashboardStores(){const c=el('qdStores');if(!c)return;if(!qdSelected.length){const target=parseInt(el('qdTargetNo')?.value||'',10);c.innerHTML='<span class="mu">'+(target>0?'已填写手里的号：请先选择门店，避免用其他门店曲线误判。':'未指定门店：可先浏览样本最多、最新的门店；填号码前建议选定门店。')+'</span>';renderTicketReminderCard();return}c.innerHTML=qdSelected.map(id=>'<button class="chip on" data-store="'+escA(String(id))+'">'+esc(storeDisplayName(id))+' ✕</button>').join('')+'<button class="chip" onclick="qdSelected=[];rememberStores(\'sushiro_qd_store\',qdSelected);renderDashboardStores();renderReminderTemplateHint();loadQueueDashboard();loadQueueAlertStatus()">清空</button>';c.querySelectorAll('.chip.on').forEach(b=>b.onclick=()=>{const id=b.dataset.store;qdSelected=qdSelected.filter(x=>x!==id);renderDashboardStores();renderReminderTemplateHint();loadQueueDashboard();loadQueueAlertStatus()})}
@@ -1306,7 +1295,7 @@ function dashNum(v){return v==null?'-':fmtN(Math.round(v))}
 function dashPct(v){return v==null?'-':Math.round(v*100)+'%'}
 
 async function lQT(){await ensureStores();initQueueTrendFilters();renderQueueTrendStores();await refreshQueueView()}
-function initQueueTrendFilters(){const now=new Date(),from=new Date(now.getTime()-14*86400000);if(!el('qtFrom').value)el('qtFrom').value=localDateInput(from);if(!el('qtTo').value)el('qtTo').value=localDateInput(now);if(!qtSelected.length)qtSelected=recallStores('sushiro_qt_stores');if(!qtSelected.length)qtSelected=(stores.length?stores.map(s=>String(s.id)):(pr.selected_stores||[]).map(String))}
+function initQueueTrendFilters(){if(!qtSelected.length)qtSelected=recallStores('sushiro_qt_stores');if(!qtSelected.length)qtSelected=(stores.length?stores.map(s=>String(s.id)):(pr.selected_stores||[]).map(String))}
 function renderQueueTrendStores(){const c=el('qtStores');if(!c)return;if(!qtSelected.length){c.innerHTML='<span class="mu">尚未选择门店，点上方「选择门店（全国）」从全国门店里挑。</span>';return}c.innerHTML=qtSelected.map(id=>'<button class="chip on" data-store="'+escA(String(id))+'">'+esc(storeDisplayName(id))+' ✕</button>').join('');c.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{const id=b.dataset.store;qtSelected=qtSelected.filter(x=>x!==id);renderQueueTrendStores();refreshQueueView()})}
 function applyQueueStores(ids){qtSelected=(ids||[]).map(String);rememberStores('sushiro_qt_stores',qtSelected);renderQueueTrendStores();refreshQueueView()}
 let allStoresCache=null;
@@ -1318,7 +1307,7 @@ function renderStorePickerList(){const ov=el('storePicker');if(!ov)return;const 
 function toggleStorePick(id,on){const ov=el('storePicker');if(!ov)return;if(!ov._multi){ov._sel.clear();if(on)ov._sel.add(String(id));renderStorePickerList();return}if(on)ov._sel.add(String(id));else ov._sel.delete(String(id));el('spCount').textContent='已选 '+ov._sel.size+' 家'}
 function confirmStorePicker(){const ov=el('storePicker');if(!ov)return;const ids=Array.from(ov._sel);closeStorePicker();(ov._onConfirm||function(){})(ids)}
 function onNtModeChange(){const m=el('ntMode')?el('ntMode').value:'time',w=el('ntTimeWrap');if(w)w.classList.toggle('hid',m==='on_open')}
-async function refreshQueueView(){await loadQueueLive();loadQueueRecommend();await loadNetTicketRoutine();await loadNetTicketPlan();await loadQueueAlerts();await loadQueueAlertStatus();await loadQueueTrends()}
+async function refreshQueueView(){await loadQueueLive();loadQueueRecommend();await loadNetTicketRoutine();await loadNetTicketPlan();await loadQueueAlerts();await loadQueueAlertStatus()}
 // 多门店排队压力推荐：复用单店 advisor，按压力从低到高排序。
 async function loadQueueRecommend(){const box=el('qtRecommend');if(!box)return;const ids=(qtSelected||[]).slice(0,6);if(ids.length<2){box.innerHTML='';return}box.innerHTML='<div class="ci">正在比较各店排队压力…</div>';try{const advs=await Promise.all(ids.map(id=>safeFetch('/api/queue/advisor?store='+encodeURIComponent(id)).catch(()=>null)));const items=advs.filter(Boolean).map(a=>{const p=a.pressure||{},c=a.current||{};return{name:a.store_name||a.store_id,level:p.level||'unknown',score:p.level==='unknown'?9999:(p.score||0),label:p.label||'数据不足',trend:p.trend_label||'',wait:c.official_wait_minutes||0,groups:c.waiting_groups||0,open:(c.store_status||'').toUpperCase()==='OPEN'}});if(!items.length){box.innerHTML='';return}items.sort((a,b)=>a.score-b.score);const best=items[0];const cards=items.map((x,i)=>'<div class="rec-card'+(i===0&&x.level!=='unknown'?' rec-best':'')+'"><div class="fl ai jb g8"><b>'+esc(x.name)+'</b><span class="answer-chip" style="padding:2px 8px"><strong class="'+pressureClass(x.level)+'">'+esc(x.label)+'</strong></span></div><div class="mu mt8">'+(x.level==='unknown'?'实时数据不足':('前面约 '+fmtN(x.groups)+' 桌 · 官方等待 '+fmtN(x.wait)+' 分'+(x.trend?' · '+esc(x.trend):'')))+'</div></div>').join('');const lead=best.level==='unknown'?'各店实时数据暂不足，先看下方实时排队。':('压力最低：<b>'+esc(best.name)+'</b>（'+esc(best.label)+'），更可能快点吃上。');box.innerHTML='<div class="cd-t" style="margin-bottom:8px">去哪家更快 <span class="tag read">只读</span></div><div class="answer-lead" style="font-size:15px">'+lead+'</div><div class="rec-grid mt8">'+cards+'</div>'}catch(e){box.innerHTML=''}}
 let qtAlerts=[];
@@ -1329,7 +1318,7 @@ async function saveQueueAlerts(){try{const d=await safeFetch('/api/queue/alerts'
 async function loadQueueLive(){const box=el('qtLive');if(!box)return;box.innerHTML='<div class="ci">实时排队加载中…</div>';if(qtSelected.length){try{const ids=qtSelected.slice(0,6);const panels=await Promise.all(ids.map(id=>safeFetch('/api/queue/live?store='+encodeURIComponent(id)).catch(()=>null)));qtPanels=panels.filter(Boolean);renderQueueLivePanels(qtPanels);fillNetTicketStores()}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}return}qtPanels=[];fillNetTicketStores();const p=new URLSearchParams();p.set('limit','8');try{const d=await safeFetch('/api/queue/stores?'+p.toString());renderQueueLive(d.stores||[])}catch(e){box.innerHTML='<div class="ci bad">实时排队加载失败</div>'}}
 let qtPanels=[],ntPlan={},ntRoutine={};
 function netTimeDisp(hhmm){hhmm=String(hhmm||'');while(hhmm.length<4)hhmm='0'+hhmm;return hhmm.slice(0,2)+':'+hhmm.slice(2,4)}
-function fillNetTicketStores(){const ids=(qtSelected&&qtSelected.length)?qtSelected.map(String):qtPanels.map(p=>String(p.store_id));const opts=ids.length?ids.map(id=>{const p=qtPanels.find(x=>String(x.store_id)===id);const nm=p?(p.store_name||id):storeDisplayName(id);return'<option value="'+escA(id)+'">'+esc(nm)+'</option>'}).join(''):'<option value="">先在上方选关注门店</option>';const sel=el('ntStore');if(sel){const prev=sel.value||(ntPlan&&ntPlan.store_id?String(ntPlan.store_id):'');sel.innerHTML=opts;if(prev&&ids.includes(prev))sel.value=prev}const rsel=el('nrStore');if(rsel){const prev=rsel.value||(ntRoutine&&ntRoutine.store_id?String(ntRoutine.store_id):'');rsel.innerHTML=opts;if(prev&&ids.includes(prev))rsel.value=prev}}
+function fillNetTicketStores(){const ids=(qtSelected&&qtSelected.length)?qtSelected.map(String):(qdSelected&&qdSelected.length?qdSelected.map(String):qtPanels.map(p=>String(p.store_id)));const opts=ids.length?ids.map(id=>{const p=qtPanels.find(x=>String(x.store_id)===id);const nm=p?(p.store_name||id):storeDisplayName(id);return'<option value="'+escA(id)+'">'+esc(nm)+'</option>'}).join(''):'<option value="">先在上方选关注门店</option>';const sel=el('ntStore');if(sel){const prev=sel.value||(ntPlan&&ntPlan.store_id?String(ntPlan.store_id):'');sel.innerHTML=opts;if(prev&&ids.includes(prev))sel.value=prev}const rsel=el('nrStore');if(rsel){const prev=rsel.value||(ntRoutine&&ntRoutine.store_id?String(ntRoutine.store_id):'');rsel.innerHTML=opts;if(prev&&ids.includes(prev))rsel.value=prev}}
 async function loadNetTicketPlan(){try{const p=await safeFetch('/api/queue/ticket/plan');ntPlan=p||{};fillNetTicketStores();if(el('ntTime')&&p.target_time)el('ntTime').value=netTimeDisp(p.target_time);if(el('ntStore')&&p.store_id)el('ntStore').value=String(p.store_id);if(el('ntMode'))el('ntMode').value=(p.trigger_mode==='on_open')?'on_open':'time';onNtModeChange();renderNetTicketStatus(p)}catch(e){}}
 async function loadNetTicketRoutine(){try{const d=await safeFetch('/api/queue/ticket/routine');ntRoutine=(d&&d.routine)||{};if(d&&d.plan)ntPlan=d.plan;fillNetTicketStores();if(el('nrStore')&&ntRoutine.store_id)el('nrStore').value=String(ntRoutine.store_id);if(el('nrMeal')&&ntRoutine.target_meal_time)el('nrMeal').value=netTimeDisp(ntRoutine.target_meal_time);if(el('nrTravel'))el('nrTravel').value=ntRoutine.travel_minutes||0;if(el('nrSafety'))el('nrSafety').value=(ntRoutine.notify_before_minutes==null?(ntRoutine.safety_minutes==null?10:ntRoutine.safety_minutes):ntRoutine.notify_before_minutes);renderNetTicketRoutineStatus(ntRoutine)}catch(e){}}
 function renderNetTicketRoutineStatus(r){
@@ -1372,15 +1361,8 @@ function sparkSVG(arr){if(!arr||arr.length<2)return'';const w=140,h=34,mn=Math.m
 function waitLevel(s){const eta=(s.eta_minutes!=null)?s.eta_minutes:(s.server_wait_minutes||0),cap=s.wait_time_cap||180,pct=eta<=0?0:Math.max(5,Math.min(100,Math.round(eta/cap*100))),lvl=eta<=0?'g':eta<=30?'g':eta<=90?'y':'r';return{eta:eta,pct:pct,lvl:lvl}}
 function renderQueueLivePanels(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">还没拿到实时排队数据，请刷新或换一家门店。</div>';return}box.innerHTML='<div class="queue-live-grid">'+rows.map(s=>{const open=s.online_open||s.store_status==='OPEN',card=open?'open':'closed',status=open?'可取号':'暂停',etaTxt=(s.eta_minutes!=null)?(s.eta_minutes+' 分钟'):(s.server_wait_minutes?(s.server_wait_minutes+' 分钟*'):'—'),called15=s.called_15m!=null?('+'+s.called_15m):'待收集',rate=s.rate_per_min!=null?(s.rate_per_min.toFixed(1)+' 桌/分'):'待收集',wl=waitLevel(s),trend=(s.called_15m>0)?'↑':'';return'<article class="queue-live-card '+card+'"><div class="queue-live-top"><div class="queue-live-name"><b>'+esc(s.store_name||s.store_id)+'</b><span>'+esc([s.store_status||'-',s.net_ticket_status||'-'].join(' · '))+'</span></div><span class="queue-status '+(open?'ok':'bad')+'">'+esc(status)+'</span></div><div class="queue-live-main"><div class="queue-call"><span>当前叫号</span><strong>'+esc(s.called_no||'—')+' <em>'+esc(trend)+'</em></strong></div><div class="queue-spark">'+(sparkSVG(s.spark)||'<span class="mu">小折线待收集</span>')+'</div></div><div class="queue-metrics"><div class="queue-metric"><span>前面</span><b>'+fmtN(s.wait_groups||0)+' 桌</b></div><div class="queue-metric"><span>约等待</span><b>'+esc(etaTxt)+'</b></div><div class="queue-metric"><span>近15分钟</span><b>'+esc(called15)+'</b></div></div><div class="queue-meter" title="拥挤度"><i class="lv-'+wl.lvl+'" style="width:'+wl.pct+'%"></i></div><div class="queue-live-foot"><span>均速 '+esc(rate)+' · 拥挤度 '+wl.pct+'%</span><button class="bt bt-r bt-s" onclick="takeTicket(\''+escA(String(s.store_id||''))+'\')">远程取号</button></div></article>'}).join('')+'</div><p class="queue-live-note">门店、叫号、在等桌数为公开实时信息；远程取号是会执行操作的实验性功能，确认后才会提交。</p>'}
 function renderQueueLive(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">还没拿到门店排队数据。可以搜索城市或门店名，手动选择关注门店。</div>';return}box.innerHTML='<div class="sg">'+rows.map(s=>{const wait=(s.wait==null?0:s.wait),groups=(s.groupQueuesCount==null?0:s.groupQueuesCount),status=s.storeStatus||'-',ticket=s.netTicketStatus||'-',cls=status==='OPEN'?'av':'full';return'<div class="sl '+cls+'"><div class="tm">预计 '+wait+' 分钟</div><div class="ss">'+esc(s.name||s.id)+' · '+esc(s.nameKana||s.area||'')+'</div><div class="mu mt8">在等 '+groups+' 桌 · '+esc(status)+' · '+esc(ticket)+(s.waitTimeCap?'<br>预估上限 '+esc(s.waitTimeCap)+' 分钟':'')+'</div></div>'}).join('')+'</div><p class="mu mt8">选中上方关注门店即可查看实时叫号、近15分钟叫号与均速。</p>'}
-function queueTrendParams(){const p=new URLSearchParams();if(qtSelected.length)p.set('stores',qtSelected.join(','));p.set('date_type',el('qtType').value||'all');p.set('from',el('qtFrom').value||'');p.set('to',el('qtTo').value||'');p.set('start',el('qtStart').value||'10:00');p.set('end',el('qtEnd').value||'22:00');p.set('bucket',el('qtBucket').value||'30');return p}
-async function loadQueueTrends(){const st=el('qtStatus'),chart=el('qtChart'),tbl=el('qtTable'),adv=el('qtAdvice');if(!st)return;st.innerHTML='<div class="ci">分析中…</div>';chart.innerHTML='<div class="empty">加载中…</div>';tbl.innerHTML='';if(adv)adv.innerHTML='';try{const d=await safeFetch('/api/queue/trends?'+queueTrendParams().toString());qtTrendStores=d.stores||qtTrendStores;if(!qtSelected.length&&!stores.length&&(d.stores||[]).length)qtSelected=d.stores.map(x=>String(x.store_id));renderQueueTrendStores();renderQueueCollectBanner(d.sampling);renderQueueTrend(d)}catch(e){const msg=String((e&&(e.message||e))||'(unknown)');st.innerHTML='<div class="ci bad">到店预测加载失败</div>';chart.innerHTML=loadErrBoxHTML(e,'loadQueueTrends()','到店预测')}}
-function renderQueueCollectBanner(s){const box=el('qtCollect');if(!box)return;s=s||{};let t='';try{if(s.last_run_at)t='上次收集 '+new Date(s.last_run_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(_){}; if(s.running||s.enabled){box.innerHTML='<div class="diag-detail"><b>本机采集运行中</b> '+esc(t)+'<br><span class="mu">叫号均速、近15分钟叫号与到店预测会随采集持续补齐。</span></div>'}else{const auth=s.needs_auth,why=auth?'需先完成寿司郎认证才能开始本机采集':'本机采集未开启，叫号均速、近15分钟和到店预测会缺少本机样本';box.innerHTML='<div class="diag-detail bad"><b>'+esc(why)+'</b><div class="fl g8 fw mt8">'+(auth?'<button class="bt bt-o bt-s" onclick="startAuth()">去获取凭证</button>':'<button class="bt bt-r bt-s" onclick="openSettingsFold(\'fold-sm\')">开启预测准确度</button>')+'<button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">预测准确度设置</button></div></div>'}}
-function renderQueueTrend(d){const s=d.summary||{},q=d.sampling||{},b=d.baseline||{};el('qtStatus').innerHTML=chip('门店排队',b.used?(b.latest_count||0)+' 店':(b.configured?'连接中':'未配置'),b.used?'ok':b.configured?'warn':'warn')+chip('全国基准',b.used?(s.baseline_samples||b.rollup_count||0):(b.configured?'连接中':'未配置'),b.used?'ok':b.configured?'warn':'warn')+chip('实际过号',s.actual_passed_total||0,(s.actual_samples||0)?'ok':'warn')+chip('全局过号',s.global_passed_total||0,(s.global_samples||0)?'ok':'warn')+chip('真实取号',s.session_records||0,(s.session_records||0)?'ok':'warn')+chip('公开快照',s.observation_records||0,(s.observation_records||0)?'ok':'warn')+chip('收集权限',queueStatusText(q),q.permission_status==='ok'?'ok':q.needs_auth?'bad':'warn')+chip('开机自启',q.system_auto_start?.enabled?'已配置':q.system_auto_start?.supported?'未配置':'不支持',q.system_auto_start?.enabled?'ok':'warn');renderQueueAdvice(d);renderQueueChart(d.series||[]);renderQueueTable(d.series||[])}
-function renderQueueAdvice(d){const box=el('qtAdvice');if(!box)return;const rec=d.recommendations||[],q=d.sampling||{},warn=d.warnings||[];let html='';if(rec.length){html+='<div class="sg">'+rec.map(r=>{const wait=r.predicted_wait_minutes==null?'等待待确认':'预计等待 '+Math.round(r.predicted_wait_minutes)+' 分钟',meta=esc(r.date_type_name||r.date_type)+' · '+esc(r.bucket)+' · '+esc(confText(r.confidence))+'可信度';return'<div class="sl av"><div class="tm">'+esc(r.action_label||'候选时段')+'</div><div class="ss">'+esc(r.store_name||r.store_id)+' · '+meta+'</div><div class="mu mt8">'+wait+'<br>'+esc(r.reason||'预测仅供参考。')+'</div></div>'}).join('')+'</div><p class="mu mt8">预测仅供参考；每家门店会按本机收集的数据单独计算。</p>'}else{const msg=q.needs_auth?'先重新获取凭证，再选择门店开始预测准确度。':'先收集 2-3 次午餐、晚餐和周末时段，页面会开始给出门店级预测。';html+='<div class="empty">'+msg+'<div class="mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取凭证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去预测准确度</button></div></div>'}const steps=[];if(q.message)steps.push(q.message);if(warn.length&&!rec.length)steps.push(warn[0]);if(steps.length)html+='<div class="diag-detail"><b>下一步</b><br>'+esc(steps.join(' '))+'<div class="fl g8 fw mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取凭证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">调整预测准确度</button></div></div>';box.innerHTML=html}
 function queueStatusText(q){if(!q)return'未知';if(q.needs_auth)return'凭证需更新';if(q.needs_background)return'需开启';if(q.needs_data_refresh)return'需更新';return'正常'}
-function renderQueueChart(series){const box=el('qtChart');if(!series.length){box.innerHTML='<div class="empty">还没有趋势曲线。先开启本机采集，午餐、晚餐和周末各积累几次后会出现。</div>';return}const buckets=[...new Set(series.map(x=>x.bucket))].sort(),rank={weekday:1,workday:2,weekend:3,holiday:4},types=[...new Set(series.map(x=>x.date_type))].sort((a,b)=>(rank[a]||9)-(rank[b]||9)),by={};series.forEach(x=>{const k=x.date_type+'|'+x.bucket;if(!by[k])by[k]={actual:0,global:0,name:x.date_type_name||x.date_type};by[k].actual+=x.actual_passed||0;by[k].global+=x.global_passed||0});let max=1;Object.values(by).forEach(v=>{max=Math.max(max,v.actual,v.global)});const w=720,h=230,pad=34,step=buckets.length>1?(w-pad*2)/(buckets.length-1):1,y=v=>h-pad-(v/max)*(h-pad*2),x=i=>pad+i*step,colors={weekday:'#B81C22',workday:'#6F4E37',weekend:'#B67800',holiday:'#2B5B83'};let svg='<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none"><line class="chart-axis" x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad)+'" y2="'+(h-pad)+'"></line><line class="chart-axis" x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(h-pad)+'"></line>';for(let i=0;i<=4;i++){const yy=pad+i*(h-pad*2)/4;svg+='<line class="chart-grid" x1="'+pad+'" y1="'+yy+'" x2="'+(w-pad)+'" y2="'+yy+'"></line>'}buckets.forEach((b,i)=>{svg+='<text class="chart-label" x="'+x(i)+'" y="'+(h-8)+'" text-anchor="middle">'+esc(b)+'</text>'});types.forEach(t=>{const actual=buckets.map((b,i)=>x(i)+','+y((by[t+'|'+b]||{}).actual||0)).join(' '),global=buckets.map((b,i)=>x(i)+','+y((by[t+'|'+b]||{}).global||0)).join(' '),c=colors[t]||'#555';svg+='<polyline points="'+actual+'" fill="none" stroke="'+c+'" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline><polyline points="'+global+'" fill="none" stroke="'+c+'" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round" stroke-linejoin="round" opacity=".72"></polyline>'});svg+='</svg>';const legend=types.map(t=>'<span class="legend-line">'+esc(queueTypeName(t))+' 实际</span><span class="legend-line global">'+esc(queueTypeName(t))+' 全局</span>').join('');box.innerHTML=svg+'<div class="chart-legend">'+legend+'</div>'}
 function queueTypeName(t){return t==='weekday'?'工作日':t==='workday'?'调休工作日':t==='weekend'?'周末':t==='holiday'?'节假日':t}
-function renderQueueTable(series){const c=el('qtTable');if(!series.length){c.innerHTML='';return}const pct=v=>v==null?'-':Math.round(v*100)+'%';const rows=series.map(x=>'<tr><td>'+esc(x.bucket)+'</td><td>'+esc(x.date_type_name||x.date_type)+'</td><td>'+esc(x.store_name||x.store_id)+'</td><td>'+esc(x.actual_passed||0)+'<br><span class="mu">'+esc(x.actual_samples||0)+' 样本</span></td><td>'+esc(x.global_passed||0)+'<br><span class="mu">'+esc(x.global_samples||0)+' 快照段</span></td><td>'+(x.wait_p50_minutes==null?'-':Math.round(x.wait_p50_minutes)+' 分')+'<br><span class="mu">基准 '+esc(x.baseline_samples||0)+'</span></td><td>'+pct(x.online_open_rate)+'</td><td>'+pct(x.busy_rate)+'</td><td>'+Math.round((x.missed_rate||0)*100)+'%</td><td>'+esc(confText(x.confidence))+'</td></tr>').join('');c.innerHTML='<table class="tbl"><thead><tr><th>时段</th><th>日期类型</th><th>门店</th><th>实际过号</th><th>全局过号</th><th>P50等待</th><th>远程开放</th><th>拥挤率</th><th>过号率</th><th>可信度</th></tr></thead><tbody>'+rows+'</tbody></table>'}
 function confText(v){return v==='high'?'高':v==='medium'?'中':v==='low'?'低':'无'}
 
 async function lSm(){await ensureStores();await loadSampling()}
@@ -1395,7 +1377,7 @@ async function startSampling(){if(el('spEnabled'))el('spEnabled').checked=true;i
 async function stopSampling(){try{const d=await(await fetch('/api/sampling/stop',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();renderDashboardSamplingCard()}catch(e){toast('停止失败')}}
 async function runSampleOnce(){if(!await saveSampling(true))return;const box=el('sampleResult');box.classList.remove('hid');box.textContent='收集中';try{const d=await(await fetch('/api/sampling/once',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();renderDashboardSamplingCard();const r=d.result||{};box.innerHTML=r.skipped?'本轮跳过：'+esc(r.skip_reason):'<b>收集完成</b><br>'+esc((r.stores||[]).map(x=>{const parts=[];parts.push(x.error||((x.slots||0)+' 条时段'));if(x.queue_observed)parts.push('排队 '+(x.queue_wait_groups||0)+' 组');else if(x.queue_error)parts.push('排队失败');return(x.store_name||x.store_id)+': '+parts.join('，')}).join('\\n')).replaceAll('\\n','<br>');if(cp==='qd')toast(r.skipped?'本轮跳过：'+(r.skip_reason||'未知原因'):'收集完成：'+(r.queue_snapshots||0)+' 条排队快照，'+(r.snapshots||0)+' 条时段')}catch(e){box.innerHTML='收集失败';renderDashboardSamplingCard()}}
 function usePrefSamplingStores(){document.querySelectorAll('#samplingStores .chip').forEach(x=>x.classList.remove('on'));renderSamplingStoreHint()}
-async function setBootSampling(enabled){try{const d=await(await fetch('/api/sampling/autostart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})})).json();if(d.error){toast(d.error);return}spAutoStart=d.autostart||{};if(cp==='sm'||cp==='qd')await loadSampling();if(cp==='qt')await loadQueueTrends();toast(enabled?'已配置开机自启动':'已取消开机自启动')}catch(e){toast('操作失败')}}
+async function setBootSampling(enabled){try{const d=await(await fetch('/api/sampling/autostart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})})).json();if(d.error){toast(d.error);return}spAutoStart=d.autostart||{};if(cp==='sm'||cp==='qd')await loadSampling();toast(enabled?'已配置开机自启动':'已取消开机自启动')}catch(e){toast('操作失败')}}
 
 let pendingSnTarget=null;
 function snFromSlot(store_id,date,start,end){pendingSnTarget={store_id:String(store_id),date:String(date),start_after:String(start),start_before:String(end||start)};go('sn')}
@@ -1403,7 +1385,6 @@ async function bookSlotDirect(store_id,date,start,end,store_name){const when=fT(
 async function lSn(){await ensureStores();if(!el('snRows').children.length)addSn();await loadSnPlan();if(pendingSnTarget){const t=pendingSnTarget;pendingSnTarget=null;const rows=el('snRows');if(rows.children.length===1&&!rows.querySelector('input').value)rows.innerHTML='';addSn(t);rows.lastElementChild?.scrollIntoView({block:'center'})}}
 async function ensureStores(){if(stores.length)return;try{stores=await(await fetch('/api/stores')).json();selStores=stores.map(s=>String(s.id));}catch(e){}}
 function storeOpts(v){return stores.map(s=>'<option value="'+escA(String(s.id))+'" '+(String(s.id)===String(v)?'selected':'')+'>'+esc(s.nickname||s.name||s.id)+'</option>').join('')}
-function localDateInput(d){const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
 function dateInputValue(v){v=String(v||'');return /^\d{8}$/.test(v)?v.slice(0,4)+'-'+v.slice(4,6)+'-'+v.slice(6,8):v}
 function timeInputValue(v){v=String(v||'');return /^\d{6}$/.test(v)?v.slice(0,2)+':'+v.slice(2,4):/^\d{4}$/.test(v)?v.slice(0,2)+':'+v.slice(2,4):v}
 function compactDate(v){v=String(v||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(v)?v.replaceAll('-',''):v}
