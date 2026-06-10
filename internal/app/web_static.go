@@ -64,23 +64,11 @@ button,input,select{font:inherit}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--mute);box-shadow:0 0 0 4px rgba(155,150,145,.12)}
 .engine strong{font-size:15px;color:var(--ink)}
 .engine p{margin-top:8px;color:var(--sub);font-size:12px;line-height:1.6}
-.engine.capturing .dot,.step.active .mark{background:var(--yellow)}
+.engine.capturing .dot{background:var(--yellow)}
 .engine.booking .dot,.engine.sniping .dot{background:var(--blue)}
-.engine.success .dot,.step.done .mark{background:var(--green)}
+.engine.success .dot{background:var(--green)}
 .engine.error .dot{background:var(--red)}
-.track{display:grid;gap:10px}
-.step{display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:start;padding:14px;border:1px solid var(--line);border-radius:10px;background:#FBFAF8}
-.step .mark{width:28px;height:28px;border-radius:999px;background:#D8D2CC;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900}
-.step b{display:block;color:var(--ink);font-size:14px;margin-bottom:3px}
-.step span{display:block;color:var(--sub);font-size:12px;line-height:1.5}
-.step.active{border-color:#E4C05E;background:var(--yellow-soft)}
-.step.done{border-color:#B9DEC2;background:var(--green-soft)}
 .notice{margin-top:16px;padding:13px 14px;border-radius:10px;background:var(--yellow-soft);border:1px solid #ECD681;color:#6F4B00;font-size:13px;line-height:1.6}
-.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:18px}
-.mini{padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
-.mini span{display:block;color:var(--mute);font-size:12px;font-weight:800;margin-bottom:8px}
-.mini strong{display:block;color:var(--ink);font-size:20px}
-.mini p{margin-top:7px;color:var(--sub);font-size:12px;line-height:1.6}
 .ps{font-size:13px;line-height:1.9;color:var(--sub)}
 .ps b{color:var(--ink)}
 .ps .line{display:block;margin-top:4px}
@@ -303,14 +291,10 @@ body:not(.debug-mode) .debug-only{display:none!important}
 .task-card p{position:relative;color:var(--sub);font-size:13px;line-height:1.65}
 .task-foot{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px;flex-wrap:wrap}
 .task-arrow{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--ink);color:#fff;font-weight:900}
-.tag,.safe-tag{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--sub);font-size:11px;font-weight:950;white-space:nowrap}
-.tag.read,.safe-read{color:var(--green);border-color:#BFE4CC;background:var(--green-soft)}
-.tag.auth,.safe-auth{color:var(--blue);border-color:#B9D2E4;background:var(--blue-soft)}
-.tag.action,.safe-action{color:var(--red);border-color:#F0B7B9;background:var(--red-soft)}
-.safety-grid{display:grid;gap:9px}
-.safety-card{padding:12px;border:1px solid var(--line);border-radius:12px;background:#FBFAF8}
-.safety-card b{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:13px}
-.safety-card p{margin-top:6px;color:var(--sub);font-size:12px;line-height:1.55}
+.tag{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--sub);font-size:11px;font-weight:950;white-space:nowrap}
+.tag.read{color:var(--green);border-color:#BFE4CC;background:var(--green-soft)}
+.tag.auth{color:var(--blue);border-color:#B9D2E4;background:var(--blue-soft)}
+.tag.action{color:var(--red);border-color:#F0B7B9;background:var(--red-soft)}
 .section-banner{grid-column:1/-1;padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#191817 0,#3A332D 100%);color:#fff}
 .section-banner b{display:block;font-size:19px;letter-spacing:-.01em}
 .section-banner span{display:block;margin-top:6px;color:rgba(255,255,255,.72);font-size:13px;line-height:1.65}
@@ -355,7 +339,6 @@ body:not(.debug-mode) .debug-only{display:none!important}
   .curve-sampling-actions{justify-content:flex-start}
   .queue-live-main{grid-template-columns:1fr}
   .queue-metrics{grid-template-columns:1fr}
-  .summary{grid-template-columns:1fr}
   .hdr-in{height:auto;min-height:70px;flex-wrap:wrap;padding:12px 0}
   .nav{order:3;width:100%;overflow:auto}
   .nav a{flex:1;justify-content:center}
@@ -448,6 +431,10 @@ body:not(.debug-mode) .debug-only{display:none!important}
 .wnum b.n{flex:none;width:22px;height:22px;border-radius:50%;background:var(--red-soft);color:var(--red);display:flex;align-items:center;justify-content:center;font-size:12px}
 .why{margin-top:10px;padding:8px 12px;border-radius:10px;background:var(--yellow-soft);color:var(--yellow);font-size:12px;font-weight:700;line-height:1.7}
 .mascot-wrap{text-align:center;padding:10px 0}
+.mascot-row{display:flex;justify-content:center;align-items:flex-end;gap:12px}
+.mascot-row .mascot:nth-child(2n){transform:translateY(5px)}
+.mascot-row .mascot{transition:transform .25s}
+.mascot-row .mascot:hover{transform:translateY(-4px)}
 .celebrate{position:relative;overflow:hidden;text-align:center;padding:18px 0 8px}
 .confetti{position:absolute;top:-12px;width:8px;height:12px;border-radius:2px;opacity:.9;animation:cfall 1.4s ease-in forwards}
 @keyframes cfall{to{transform:translateY(240px) rotate(540deg);opacity:0}}
@@ -529,24 +516,10 @@ body:not(.debug-mode) .debug-only{display:none!important}
           <h2>通行证捕获进度</h2>
           <div id="cg" class="cg"></div>
         </div>
-        <div class="summary" id="homeSummary">
-          <div class="mini"><span>人数</span><strong id="sumPeople">2 成人</strong><p id="sumTable">桌位</p></div>
-          <div class="mini"><span>选号策略</span><strong id="sumSlot">未设置</strong><p>时段范围在设置中调整</p></div>
-          <div class="mini"><span>运行</span><strong id="sumRun">就绪</strong><p id="sumRunSub">等待下一步</p></div>
-          <div class="mini"><span>预测准确度</span><strong id="sumSampling">未启动</strong><p id="sumSamplingSub">用于到店预测</p></div>
-        </div>
       </div>
       <aside class="side">
         <div id="eb" class="engine idle"><div class="row"><span class="dot"></span><strong>就绪</strong></div><p>等待操作。</p></div>
         <div class="card hid" id="updBox"></div>
-        <details class="card adv">
-          <summary>安全分级说明</summary>
-          <div class="safety-grid" style="margin-top:12px">
-            <div class="safety-card"><b><span class="safe-tag safe-read">只读</span>不会影响账号</b><p>看门店、看排队、看叫号预测，不需要通行证。</p></div>
-            <div class="safety-card"><b><span class="safe-tag safe-auth">需要通行证</span>只读取状态</b><p>读取你的预约和排队信息，用于展示、提醒和恢复本地状态。</p></div>
-            <div class="safety-card"><b><span class="safe-tag safe-action">会执行操作</span>必须确认</b><p>抢预约、远程取号、取消预约和取消排队号都会有明确确认。</p></div>
-          </div>
-        </details>
         <div class="card" id="setupCard">
           <h2>准备清单</h2>
           <div id="setupList"></div>
@@ -593,9 +566,6 @@ body:not(.debug-mode) .debug-only{display:none!important}
           <p class="dash-copy"><span class="tag read">只读 · 直接用</span> 选门店、输入号码后，系统会直接估算大概几点叫到和建议到店时间；图表只是解释依据。</p>
         </div>
         <div class="dash-controls">
-          <select id="qdScope" onchange="loadQueueDashboard()"><option value="all">全国门店</option><option value="local">本机常用</option></select>
-          <select id="qdType" onchange="loadQueueDashboard()"><option value="all">剔除节假日</option><option value="weekday">工作日</option><option value="workday">调休工作日</option><option value="weekend">周末</option><option value="holiday">节假日</option></select>
-          <select id="qdBucket" onchange="loadQueueDashboard()"><option value="10" selected>10分钟</option><option value="5">5分钟</option><option value="15">15分钟</option><option value="30">30分钟</option></select>
           <label class="dash-target">我的号 <input id="qdTargetNo" type="number" min="1" placeholder="如 893" onchange="loadQueueDashboard();renderReminderTemplateHint()" oninput="renderReminderTemplateHint()" onkeydown="if(event.key==='Enter')loadQueueDashboard()"></label>
           <button class="bt bt-w bt-s" onclick="openStorePicker({selected:qdSelected.slice(0,1),multi:false,onConfirm:applyDashboardStores})">选门店</button>
           <button class="bt bt-r bt-s" onclick="loadQueueDashboard()">刷新</button>
@@ -604,9 +574,7 @@ body:not(.debug-mode) .debug-only{display:none!important}
       <div id="qdStores" class="chips mb16"><span class="mu">默认自动选择本机样本最多的门店</span></div>
       <div id="qdAnswer" class="answer-card"><div class="ci">先选门店、输入你手里的号；这里直接告诉你大概几点叫到、几点出发。</div></div>
       <div id="qdAdvisor" class="advisor-panel mt16"><div class="ci">先选门店，再输入你手里的号；这里会显示大概几点叫到和几点前到店。</div></div>
-      <div id="qdKpis" class="kpi-grid"><div class="ci">看板加载中</div></div>
-      <div id="qdChart" class="dash-chart"><div class="empty">加载中</div></div>
-      <div id="qdSamplingCard" class="curve-sampling"><div><b>本机持续采集</b><p>开启后会记录你关心门店的叫号、等位和可预约时段，曲线会越用越准；数据只留在本机，不上传。需要先拿通行证。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="go('sm')">详细配置</button></div></div>
+      <div id="qdSamplingCard" class="curve-sampling"><div><b>本机持续采集</b><p>常用门店的公开排队曲线（叫号、等位）已默认自动记录，不需要通行证，越用越准；拿通行证后还能额外采集可约时段。数据只留在本机，不上传。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="go('sm')">详细配置</button></div></div>
       <div id="qdReminderCard" class="curve-sampling">
         <div>
           <b>多段到店提醒 <span class="tag read">临时提醒</span></b>
@@ -622,7 +590,14 @@ body:not(.debug-mode) .debug-only{display:none!important}
         <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">生成提醒</button><button class="bt bt-w bt-s" onclick="go('se')">设置通知</button></div>
       </div>
       <details class="card adv mt16">
-        <summary><span class="setting-fold-title"><b>更多历史依据</b><span>10 分钟叫号表、日期类型拆分和数据说明；主图已经优先融合本机采集数据。</span></span></summary>
+        <summary><span class="setting-fold-title"><b>图表与历史依据</b><span>叫号曲线、10 分钟叫号表、日期类型拆分；上面的答案就是从这里算出来的，平时不用展开。</span></span></summary>
+        <div class="fl g8 fw mt16">
+          <select id="qdScope" onchange="loadQueueDashboard()"><option value="all">全国门店</option><option value="local">本机常用</option></select>
+          <select id="qdType" onchange="loadQueueDashboard()"><option value="all">剔除节假日</option><option value="weekday">工作日</option><option value="workday">调休工作日</option><option value="weekend">周末</option><option value="holiday">节假日</option></select>
+          <select id="qdBucket" onchange="loadQueueDashboard()"><option value="10" selected>10分钟</option><option value="5">5分钟</option><option value="15">15分钟</option><option value="30">30分钟</option></select>
+        </div>
+        <div id="qdKpis" class="kpi-grid mt16"><div class="ci">看板加载中</div></div>
+        <div id="qdChart" class="dash-chart"><div class="empty">加载中</div></div>
         <div class="mt16">
           <div class="cd-t mt16">10 分钟叫号表</div>
           <div id="qdCalledTable" class="heat-wrap"><div class="empty">选门店后会显示 10 分钟叫号表。</div></div>
@@ -961,15 +936,15 @@ const NAV_GROUPS=[
   {id:'home',label:'首页',pages:[['da','概览']]},
   {id:'eat',label:'现在去吃',pages:[['qt','门店排队']]},
   {id:'number',label:'我有号码',pages:[['qd','叫号预测'],['qp','取号→几点吃'],['qw','想几点吃→几点取号']]},
-  {id:'book',label:'约未来',pages:[['ca','可约日历'],['sn','自动蹲号'],['in','历史洞察']]},
+  {id:'book',label:'约未来',pages:[['ca','可约日历'],['sn','自动蹲号']]},
   {id:'mine',label:'我的单据',pages:[['re','预约 / 排队号']]},
-  {id:'settings',label:'设置',pages:[['se','设置'],['sm','预测准确度'],['lo','日志']]}
+  {id:'settings',label:'设置',pages:[['se','设置'],['sm','预测准确度'],['in','历史洞察'],['lo','日志']]}
 ];
 const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g.id));
 function renderSubnav(g,active){const sn=el('subnav');if(!sn)return;if(!g||g.pages.length<=1){sn.innerHTML='';sn.classList.add('hid');return}sn.classList.remove('hid');sn.innerHTML=g.pages.map(([p,label])=>'<a href="#" class="'+(p===active?'on':'')+'" onclick="go(\''+p+'\');return false">'+esc(label)+'</a>').join('')}
 function goGroup(gid){const g=NAV_GROUPS.find(x=>x.id===gid);if(g)go(g.pages[0][0]);return false}
 function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({da:lDA,ca:lC,in:lI,qd:lQD,qp:lQP,qw:lQW,qt:lQT,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
-async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};nfc=r.notify_configured!==false;uE();uSamplingSummary();uD();uAuth();renderSettingsStatus();renderSettingsDataState();loadActiveTickets(false);}catch(e){el('ver').textContent='offline';}}
+async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};nfc=r.notify_configured!==false;uE();uD();uAuth();renderSettingsStatus();renderSettingsDataState();loadActiveTickets(false);}catch(e){el('ver').textContent='offline';}}
 function uAuth(){const pill=el('authPill'),banner=el('authBanner'),st=(ah&&ah.status)||'unknown',reason=(ah&&ah.reason)?String(ah.reason):'';
  if(pill){let cls='authpill',txt='';
   if(!hc){txt='只读模式'}
@@ -1063,7 +1038,6 @@ function uD(){
   bc.onclick=startAuth;
   pick.classList.add('hid');
   nc.classList.add('hid');nc.textContent='';
-  const sum=el('homeSummary');if(sum)sum.classList.toggle('hid',!hc);
   renderSetupCard();
   renderActiveHome();
   if(es.status==='capturing'){
@@ -1112,10 +1086,8 @@ function uE(){
   box.className='engine '+s.status;box.innerHTML='<div class="row"><span class="dot"></span><strong>'+esc(label)+'</strong></div><p>'+esc(desc)+'</p>';
   if(s.status==='booking'&&s.attempts)box.innerHTML+='<p>已查询 '+s.attempts+' 次</p>';
   bs.classList.toggle('hid',!isRun());
-  el('sumRun').textContent=label;el('sumRunSub').textContent=desc;
   if(s.status==='capturing'&&s.capture){el('cb').classList.remove('hid');rG(s.capture)}else if(s.status!=='capturing'){el('cb').classList.add('hid')}
 }
-function uSamplingSummary(){const s=spState||{};el('sumSampling').textContent=s.running?'运行中':(s.enabled?'已启用':'未启动');el('sumSamplingSub').textContent=s.message||'用于到店预测'}
 function initDebugMode(){try{debugMode=localStorage.getItem('sushiro_debug_mode')==='1'}catch(e){debugMode=false}applyDebugMode()}
 function setDebugMode(on){debugMode=!!on;try{localStorage.setItem('sushiro_debug_mode',debugMode?'1':'0')}catch(e){}applyDebugMode();toast(debugMode?'调试模式已开启':'调试模式已关闭')}
 function applyDebugMode(){document.body.classList.toggle('debug-mode',!!debugMode);['debugModeToggle'].forEach(id=>{const x=el(id);if(x)x.checked=!!debugMode})}
@@ -1145,14 +1117,25 @@ async function sB(){if(!await confirmDialog('启动自动抢预约？\\n这会�
 async function sE(){try{await fetch('/api/engine/stop',{method:'POST'});await loadStatus();}catch(e){}}
 function startAuth(){if(hc&&(ah&&ah.status==='stale')){resetAuthAndStart();return}openAuthWizard()}
 function mA(){hc?sB():startAuth()}
-function mascotSVG(mood,size){size=size||64;
- const eyes=mood==='sleep'?'<path d="M26 41q3 3 6 0M40 41q3 3 6 0" stroke="#3A3530" stroke-width="2.4" fill="none" stroke-linecap="round"/>':'<circle cx="29" cy="41" r="2.6" fill="#3A3530"/><circle cx="43" cy="41" r="2.6" fill="#3A3530"/>';
- const mouth=mood==='sad'?'<path d="M32 49q4 -3.5 8 0" stroke="#3A3530" stroke-width="2.2" fill="none" stroke-linecap="round"/>':mood==='happy'?'<path d="M32 47q4 4.5 8 0" stroke="#3A3530" stroke-width="2.2" fill="none" stroke-linecap="round"/>':'<path d="M33 48h6" stroke="#3A3530" stroke-width="2.2" stroke-linecap="round"/>';
- const blush=mood==='happy'?'<circle cx="23" cy="46" r="2.4" fill="#F2A6A0" opacity=".75"/><circle cx="49" cy="46" r="2.4" fill="#F2A6A0" opacity=".75"/>':'';
- return '<svg class="mascot" width="'+size+'" height="'+size+'" viewBox="0 0 72 64" aria-hidden="true"><ellipse cx="36" cy="44" rx="27" ry="15" fill="#FFFDF6" stroke="#E5E0DB" stroke-width="2"/><path d="M9 36Q36 12 63 36q1 6-5 7Q36 26 14 43q-6-1-5-7z" fill="#F8875F" stroke="#E0744C" stroke-width="2" stroke-linejoin="round"/><path d="M20 33q16 -10 32 0" stroke="#FFD9C9" stroke-width="2" fill="none" stroke-linecap="round"/>'+eyes+mouth+blush+'</svg>'}
+const MASCOT_KINDS=['salmon','tamago','ebi','maki'];
+function mascotFace(mood,fy){
+ const my=fy+7;
+ const eyes=mood==='sleep'?'<path d="M26 '+fy+'q3 3 6 0M40 '+fy+'q3 3 6 0" stroke="#3A3530" stroke-width="2.4" fill="none" stroke-linecap="round"/>':'<circle cx="29" cy="'+fy+'" r="2.6" fill="#3A3530"/><circle cx="43" cy="'+fy+'" r="2.6" fill="#3A3530"/>';
+ const mouth=mood==='sad'?'<path d="M32 '+(my+2)+'q4 -3.5 8 0" stroke="#3A3530" stroke-width="2.2" fill="none" stroke-linecap="round"/>':mood==='happy'?'<path d="M32 '+my+'q4 4.5 8 0" stroke="#3A3530" stroke-width="2.2" fill="none" stroke-linecap="round"/>':'<path d="M33 '+(my+1)+'h6" stroke="#3A3530" stroke-width="2.2" stroke-linecap="round"/>';
+ const blush=mood==='happy'?'<circle cx="23" cy="'+(fy+5)+'" r="2.4" fill="#F2A6A0" opacity=".75"/><circle cx="49" cy="'+(fy+5)+'" r="2.4" fill="#F2A6A0" opacity=".75"/>':'';
+ return eyes+mouth+blush}
+function mascotSVG(mood,size,kind){size=size||64;if(!kind||kind==='rand')kind=MASCOT_KINDS[Math.floor(Math.random()*MASCOT_KINDS.length)];
+ const rice='<ellipse cx="36" cy="44" rx="27" ry="15" fill="#FFFDF6" stroke="#E5E0DB" stroke-width="2"/>';
+ let body='';
+ if(kind==='maki'){body='<circle cx="36" cy="32" r="27" fill="#33433A" stroke="#27332C" stroke-width="2"/><circle cx="36" cy="32" r="20" fill="#FFFDF6"/><circle cx="36" cy="23" r="6.5" fill="#F8875F"/><circle cx="28" cy="29" r="3.5" fill="#7FBF6C"/><circle cx="44" cy="29" r="3.5" fill="#FFD566"/>'+mascotFace(mood,37)}
+ else if(kind==='tamago'){body=rice+'<rect x="11" y="17" width="50" height="21" rx="10" fill="#FFD566" stroke="#E8B73F" stroke-width="2"/><rect x="31" y="13" width="10" height="30" rx="4" fill="#33433A"/>'+mascotFace(mood,41)}
+ else if(kind==='ebi'){body=rice+'<path d="M9 36Q36 12 63 36q1 6-5 7Q36 26 14 43q-6-1-5-7z" fill="#FB9C7C" stroke="#E27D5B" stroke-width="2" stroke-linejoin="round"/><path d="M24 32q4-4 8-5M36 26q5-1 9 0M48 27q5 1 8 4" stroke="#FFF1EA" stroke-width="3" fill="none" stroke-linecap="round"/>'+mascotFace(mood,41)}
+ else{body=rice+'<path d="M9 36Q36 12 63 36q1 6-5 7Q36 26 14 43q-6-1-5-7z" fill="#F8875F" stroke="#E0744C" stroke-width="2" stroke-linejoin="round"/><path d="M20 33q16 -10 32 0" stroke="#FFD9C9" stroke-width="2" fill="none" stroke-linecap="round"/>'+mascotFace(mood,41)}
+ return '<svg class="mascot" width="'+size+'" height="'+size+'" viewBox="0 0 72 64" aria-hidden="true">'+body+'</svg>'}
+function mascotRowHTML(mood,size){return '<div class="mascot-row">'+MASCOT_KINDS.map(k=>mascotSVG(mood,size||52,k)).join('')+'</div>'}
 function openFirstUseWizard(){let ov=el('firstUse');if(!ov){ov=document.createElement('div');ov.id='firstUse';ov.className='ov';document.body.appendChild(ov)}
  ov.innerHTML='<div class="ovc" style="width:min(720px,96vw)"><div class="fl ai jb mb16"><b>欢迎来吃寿司 🍣</b><button class="bt bt-w bt-s" onclick="closeFirstUseWizard()">跳过</button></div>'
- +'<div class="mascot-wrap">'+mascotSVG('happy',76)+'</div>'
+ +'<div class="mascot-wrap">'+mascotRowHTML('happy',56)+'</div>'
  +'<h2 style="text-align:center;margin:4px 0 6px">想吃寿司郎？先看看现在排多久</h2>'
  +'<p class="mu" style="text-align:center;line-height:1.8">选一家你常去的店，马上看到实时排队——不用登录、不用通行证。<br>选过的店会被记住，之后看排队、叫号预测、约号都自动带入。</p>'
  +'<div style="text-align:center;margin:16px 0 20px"><button class="bt bt-r bt-l" onclick="closeFirstUseWizard();openGuestStorePicker()">🔍 选我常去的门店</button></div>'
@@ -1205,7 +1188,7 @@ async function authWizImport(){const txt=(el('awImport')?.value||'').trim();if(!
   if(miss.some(x=>/查询|Referer|门店/i.test(x)))fix.push('回到第 2 步，再点一次门店/排队');
   if(st)st.innerHTML='<span class="bad">还差一点，缺：</span>'+esc(miss.join('、')||'未知')+'<br><span class="mu">'+(fix.length?esc(fix.join('；'))+'，把新抓的内容接着粘在后面（不要清空），再点解析。':'再补一段包含缺失字段的请求，接着粘在后面即可。')+'</span>'
  }catch(e){if(st)st.innerHTML='<span class="bad">导入失败：'+esc(String(e.message||e))+'</span>'}}
-function awzCelebrateHTML(){return'<div class="celebrate">'+mascotSVG('happy',88)+'<h3 style="margin:10px 0 4px;font-size:20px">通行证已生效！🍣</h3><p class="mu">抢预约、远程取号、读取我的单据都解锁了。原始凭证只保存在本机。</p><div class="fl g8 fw mt16" style="justify-content:center"><button class="bt bt-r" onclick="closeAuthWizard();go(\'ca\')">去约一个</button><button class="bt bt-w" onclick="closeAuthWizard();go(\'qt\')">先看排队</button><button class="bt bt-w bt-s" onclick="closeAuthWizard()">完成</button></div></div>'}
+function awzCelebrateHTML(){return'<div class="celebrate">'+mascotRowHTML('happy',62)+'<h3 style="margin:10px 0 4px;font-size:20px">通行证已生效！🍣</h3><p class="mu">抢预约、远程取号、读取我的单据都解锁了。原始凭证只保存在本机。</p><div class="fl g8 fw mt16" style="justify-content:center"><button class="bt bt-r" onclick="closeAuthWizard();go(\'ca\')">去约一个</button><button class="bt bt-w" onclick="closeAuthWizard();go(\'qt\')">先看排队</button><button class="bt bt-w bt-s" onclick="closeAuthWizard()">完成</button></div></div>'}
 function awzConfetti(){const host=document.querySelector('#authWiz .celebrate');if(!host)return;const colors=['#B81C22','#F2A93B','#21823F','#F8875F','#4A90D9'];for(let i=0;i<16;i++){const s=document.createElement('span');s.className='confetti';s.style.left=(5+Math.random()*90)+'%';s.style.background=colors[i%colors.length];s.style.animationDelay=(Math.random()*0.5)+'s';host.appendChild(s);setTimeout(()=>s.remove(),2400)}}
 async function awzVerify(){const box=el('awVerify');if(!box)return;box.innerHTML='<div class="mascot-wrap">'+mascotSVG('plain',64)+'</div><p class="mu" style="text-align:center">第 5 步：正在用通行证测试基础接口…</p>';
  try{const r=await fetch('/api/auth/probe',{method:'POST'}),d=await r.json();await loadStatus();
@@ -1431,16 +1414,16 @@ function renderQueueTable(series){const c=el('qtTable');if(!series.length){c.inn
 function confText(v){return v==='high'?'高':v==='medium'?'中':v==='low'?'低':'无'}
 
 async function lSm(){await ensureStores();await loadSampling()}
-async function loadSampling(){try{const d=await(await fetch('/api/sampling')).json();spCfg=d.config||{};spState=d.state||{};spAutoStart=d.autostart||{};spQueueState=d.queue_state||{};fillSamplingForm();renderSamplingStores();renderSamplingState();uSamplingSummary();renderDashboardSamplingCard()}catch(e){el('sampleState').innerHTML='<div class="ci bad">预测准确度状态加载失败</div>';renderDashboardSamplingCard()}}
+async function loadSampling(){try{const d=await(await fetch('/api/sampling')).json();spCfg=d.config||{};spState=d.state||{};spAutoStart=d.autostart||{};spQueueState=d.queue_state||{};fillSamplingForm();renderSamplingStores();renderSamplingState();renderDashboardSamplingCard()}catch(e){el('sampleState').innerHTML='<div class="ci bad">预测准确度状态加载失败</div>';renderDashboardSamplingCard()}}
 function fillSamplingForm(){el('spEnabled').checked=!!spCfg.enabled;el('spAuto').checked=!!spCfg.auto_start;el('spInterval').value=spCfg.interval_seconds||300;el('spStart').value=timeInputValue(spCfg.active_start||'100000');el('spEnd').value=timeInputValue(spCfg.active_end||'220000')}
 function renderSamplingStores(){const c=el('samplingStores'),h=el('sampleStoreHint');if(!c)return;if(!stores.length){c.innerHTML='<span class="mu">本机采集需要寿司郎认证；只看实时排队不用。</span>';if(h)h.textContent='先获取凭证后，才能记录你常去门店的历史变化。';return}const chosen=(spCfg.store_ids||[]).map(String);c.innerHTML=stores.map(s=>'<button class="chip '+(chosen.includes(String(s.id))?'on':'')+'" data-store="'+escA(String(s.id))+'">'+esc(s.nickname||s.name||s.id)+'</button>').join('');c.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{b.classList.toggle('on');renderSamplingStoreHint()});renderSamplingStoreHint()}
 function renderSamplingStoreHint(){const h=el('sampleStoreHint');if(!h)return;const chosen=Array.from(document.querySelectorAll('#samplingStores .chip.on')).map(x=>x.dataset.store);if(chosen.length){h.textContent='当前收集 '+chosen.length+' 家指定门店。';return}const pref=(pr.selected_stores||[]).map(storeName).filter(Boolean);h.textContent=pref.length?'当前跟随抢号门店：'+pref.join('、'):'当前跟随凭证里保存的门店。'}
 function samplingPayload(){const ids=Array.from(document.querySelectorAll('#samplingStores .chip.on')).map(x=>x.dataset.store);return{enabled:el('spEnabled').checked,auto_start:el('spAuto').checked,interval_seconds:+el('spInterval').value||300,active_start:compactTime(el('spStart').value||'10:00'),active_end:compactTime(el('spEnd').value||'22:00'),store_ids:ids,use_preference_stores:ids.length===0}}
 function renderSamplingState(){const s=spState||{},a=spAutoStart||{},q=spQueueState||{},next=s.next_run_at?new Date(s.next_run_at).toLocaleString():'-',last=s.last_run_at?new Date(s.last_run_at).toLocaleString():'-',msg=s.last_error||s.message||q.message||'无',bad=(s.last_error||q.needs_auth)&&!/跳过|时间窗|暂无|正在运行/.test(s.last_error||'');el('sampleState').innerHTML=chip('状态',s.running?'运行中':(s.enabled?'已启用':'未启动'),s.running?'ok':s.enabled?'warn':'')+chip('开机自启动',a.enabled?'已配置':a.supported?'未配置':'不支持',a.enabled?'ok':'warn')+chip('下次',next,'ok')+chip('上次',last,'ok')+chip('样本',s.snapshots||0,'ok')+chip('门店失败',s.store_errors||0,(s.store_errors||0)?'warn':'ok')+chip('凭证',q.auth_ok?'可用':'需更新',q.auth_ok?'ok':'bad')+chip('最近结果',msg,bad?'bad':'ok');renderSettingsStatus();renderSettingsDataState()}
-async function saveSampling(quiet){spCfg=samplingPayload();try{const d=await(await fetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spCfg)})).json();if(d.error){if(!quiet)toast(d.error);return false}spCfg=d.config||spCfg;spState=d.state||spState;renderSamplingStores();renderSamplingState();uSamplingSummary();renderDashboardSamplingCard();if(!quiet)toast(spState.running?'预测配置已保存，后台已按新配置重启':'预测配置已保存');return true}catch(e){if(!quiet)toast('保存失败');return false}}
-async function startSampling(){if(el('spEnabled'))el('spEnabled').checked=true;if(!await saveSampling(true))return;try{const d=await(await fetch('/api/sampling/start',{method:'POST'})).json();if(d.error){toast(d.error);return}spState=d.state||spState;await loadSampling();uSamplingSummary();toast('已开启本机持续采集')}catch(e){toast('启动失败')}}
-async function stopSampling(){try{const d=await(await fetch('/api/sampling/stop',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();uSamplingSummary();renderDashboardSamplingCard()}catch(e){toast('停止失败')}}
-async function runSampleOnce(){if(!await saveSampling(true))return;const box=el('sampleResult');box.classList.remove('hid');box.textContent='收集中';try{const d=await(await fetch('/api/sampling/once',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();uSamplingSummary();renderDashboardSamplingCard();const r=d.result||{};box.innerHTML=r.skipped?'本轮跳过：'+esc(r.skip_reason):'<b>收集完成</b><br>'+esc((r.stores||[]).map(x=>{const parts=[];parts.push(x.error||((x.slots||0)+' 条时段'));if(x.queue_observed)parts.push('排队 '+(x.queue_wait_groups||0)+' 组');else if(x.queue_error)parts.push('排队失败');return(x.store_name||x.store_id)+': '+parts.join('，')}).join('\\n')).replaceAll('\\n','<br>');if(cp==='qd')toast(r.skipped?'本轮跳过：'+(r.skip_reason||'未知原因'):'收集完成：'+(r.queue_snapshots||0)+' 条排队快照，'+(r.snapshots||0)+' 条时段')}catch(e){box.innerHTML='收集失败';renderDashboardSamplingCard()}}
+async function saveSampling(quiet){spCfg=samplingPayload();try{const d=await(await fetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spCfg)})).json();if(d.error){if(!quiet)toast(d.error);return false}spCfg=d.config||spCfg;spState=d.state||spState;renderSamplingStores();renderSamplingState();renderDashboardSamplingCard();if(!quiet)toast(spState.running?'预测配置已保存，后台已按新配置重启':'预测配置已保存');return true}catch(e){if(!quiet)toast('保存失败');return false}}
+async function startSampling(){if(el('spEnabled'))el('spEnabled').checked=true;if(!await saveSampling(true))return;try{const d=await(await fetch('/api/sampling/start',{method:'POST'})).json();if(d.error){toast(d.error);return}spState=d.state||spState;await loadSampling();toast('已开启本机持续采集')}catch(e){toast('启动失败')}}
+async function stopSampling(){try{const d=await(await fetch('/api/sampling/stop',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();renderDashboardSamplingCard()}catch(e){toast('停止失败')}}
+async function runSampleOnce(){if(!await saveSampling(true))return;const box=el('sampleResult');box.classList.remove('hid');box.textContent='收集中';try{const d=await(await fetch('/api/sampling/once',{method:'POST'})).json();spState=d.state||spState;renderSamplingState();renderDashboardSamplingCard();const r=d.result||{};box.innerHTML=r.skipped?'本轮跳过：'+esc(r.skip_reason):'<b>收集完成</b><br>'+esc((r.stores||[]).map(x=>{const parts=[];parts.push(x.error||((x.slots||0)+' 条时段'));if(x.queue_observed)parts.push('排队 '+(x.queue_wait_groups||0)+' 组');else if(x.queue_error)parts.push('排队失败');return(x.store_name||x.store_id)+': '+parts.join('，')}).join('\\n')).replaceAll('\\n','<br>');if(cp==='qd')toast(r.skipped?'本轮跳过：'+(r.skip_reason||'未知原因'):'收集完成：'+(r.queue_snapshots||0)+' 条排队快照，'+(r.snapshots||0)+' 条时段')}catch(e){box.innerHTML='收集失败';renderDashboardSamplingCard()}}
 function usePrefSamplingStores(){document.querySelectorAll('#samplingStores .chip').forEach(x=>x.classList.remove('on'));renderSamplingStoreHint()}
 async function setBootSampling(enabled){try{const d=await(await fetch('/api/sampling/autostart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})})).json();if(d.error){toast(d.error);return}spAutoStart=d.autostart||{};if(cp==='sm'||cp==='qd')await loadSampling();if(cp==='qt')await loadQueueTrends();toast(enabled?'已配置开机自启动':'已取消开机自启动')}catch(e){toast('操作失败')}}
 
@@ -1479,7 +1462,7 @@ function fF(p){el('pa').value=p.adult||2;el('pc').value=p.child||0;el('pt').valu
 function rangeText(rs){return !rs||!rs.length?'不预约':rs.map(r=>fT(String(r.start||''))+'-'+fT(String(r.end||''))).join('、')}
 function priText(v){return v==='weekend_first'?'周末优先':v==='weekday_first'?'工作日优先':'按日期优先'}
 function stratText(v,t){return v==='latest'?'最晚可约':v==='closest'?'接近 '+fT(t||'1930'):'最早可约'}
-function dP(p){const people=(p.adult||2)+' 成人'+((p.child||0)>0?' · '+p.child+' 儿童':'');const table=(p.table_type||'T')==='C'?'吧台':'桌位',pri=priText(p.day_priority_mode),str=stratText(p.slot_strategy,p.target_time);el('sumPeople').textContent=people;el('sumTable').textContent=table;el('sumSlot').textContent=pri+' · '+str;const notifyHint=(hc&&!nfc)?'<span class="line" style="color:#b81c22">⚠ 未配置通知，抢到预约 / 叫号提醒不会推送 —— <a href="javascript:go(\'se\')" style="color:#b81c22;text-decoration:underline">去设置</a></span>':'';el('ps').innerHTML='<b>'+esc(people)+'</b> · '+esc(table)+'<span class="line">优先级：'+esc(pri)+' · '+esc(str)+'</span><span class="line">工作日：'+esc(rangeText(p.weekday_slots))+'</span><span class="line">周六：'+esc(rangeText(p.saturday_slots))+'</span><span class="line">周日：'+esc(rangeText(p.sunday_slots))+'</span>'+notifyHint}
+function dP(p){const people=(p.adult||2)+' 成人'+((p.child||0)>0?' · '+p.child+' 儿童':'');const table=(p.table_type||'T')==='C'?'吧台':'桌位',pri=priText(p.day_priority_mode),str=stratText(p.slot_strategy,p.target_time);const notifyHint=(hc&&!nfc)?'<span class="line" style="color:#b81c22">⚠ 未配置通知，抢到预约 / 叫号提醒不会推送 —— <a href="javascript:go(\'se\')" style="color:#b81c22;text-decoration:underline">去设置</a></span>':'';el('ps').innerHTML='<b>'+esc(people)+'</b> · '+esc(table)+'<span class="line">优先级：'+esc(pri)+' · '+esc(str)+'</span><span class="line">工作日：'+esc(rangeText(p.weekday_slots))+'</span><span class="line">周六：'+esc(rangeText(p.saturday_slots))+'</span><span class="line">周日：'+esc(rangeText(p.sunday_slots))+'</span>'+notifyHint}
 function storeName(id){const s=stores.find(x=>String(x.id)===String(id));return s?(s.nickname||s.name||s.id):id}
 function orderedStoreIDs(){const all=stores.map(s=>String(s.id)),sel=(pr.selected_stores||[]).map(String).filter(id=>all.includes(id)),base=(pr.store_priority||[]).map(String).filter(id=>all.includes(id));let order=[];base.forEach(id=>{if(!order.includes(id))order.push(id)});sel.forEach(id=>{if(!order.includes(id))order.push(id)});all.forEach(id=>{if(!order.includes(id))order.push(id)});return{all,selected:sel.length?sel:all,order}}
 async function searchStores(){const q=(el('storeSearch')?.value||'').trim(),box=el('storeSearchResults');if(!box)return;if(!q){box.innerHTML='<span class="mu">输入城市或门店名再搜。</span>';return}box.innerHTML='<span class="mu">搜索中…</span>';try{const d=await safeFetch('/api/queue/stores?limit=24&q='+encodeURIComponent(q));const list=d.stores||[];if(!list.length){box.innerHTML='<span class="mu">没找到匹配门店，换个关键词试试。</span>';return}const have=new Set(stores.map(s=>String(s.id)));box.innerHTML='<div class="store-result-grid">'+list.map(s=>{const id=String(s.id),added=have.has(id),nm=String(s.name||id);return'<div class="sl av"><div class="ss"><b>'+esc(nm)+'</b></div><div class="mu mt8">'+esc([s.nameKana,s.area].filter(Boolean).join(' · ')||'门店 '+id)+'</div><div class="mt8">'+(added?'<button class="bt bt-w bt-s" disabled>已添加</button>':'<button class="bt bt-r bt-s" onclick="addStoreFromSearch(\''+escA(id)+'\',\''+escA(nm)+'\')">添加</button>')+'</div></div>'}).join('')+'</div>'}catch(e){box.innerHTML='<div class="ci bad">搜索失败</div>'}}
@@ -1537,7 +1520,7 @@ async function uninstallAll(){if(!await confirmDialog('将恢复代理、移除�
 
 async function lL(){try{const ls=await(await fetch('/api/engine/logs')).json(),v=el('lv');v.innerHTML=(ls||[]).map(l=>'<div class="ll '+(l.level==='error'?'er':'')+'"><span class="lt">'+esc(l.time)+'</span><span class="lm">'+esc(l.message)+'</span></div>').join('');v.scrollTop=v.scrollHeight}catch(e){}}
 function aL(e){const v=el('lv');if(!v)return;const d=document.createElement('div');d.className='ll '+(e.level==='error'?'er':'');d.innerHTML='<span class="lt">'+esc(e.time)+'</span><span class="lm">'+esc(e.message)+'</span>';v.appendChild(d);if(cp==='lo')v.scrollTop=v.scrollHeight}
-function sse(){if(cE)cE.close();const s=new EventSource('/api/events');cE=s;s.onopen=()=>{loadStatus()};s.addEventListener('engine',e=>{try{es=JSON.parse(e.data);uE();uD();if(cp==='sn'||['idle','success','error'].includes(es.status))loadSnPlan();if(es.status==='success'&&typeof lR==='function')lR();if(['idle','success','error'].includes(es.status))loadStatus()}catch(x){}});s.addEventListener('sampling',e=>{try{spState=JSON.parse(e.data);uSamplingSummary();renderDashboardSamplingCard();if(cp==='sm')renderSamplingState()}catch(x){}});s.addEventListener('log',e=>{try{aL(JSON.parse(e.data))}catch(x){}});s.addEventListener('calendar',e=>{try{const d=JSON.parse(e.data);if(cp==='ca'){as=[];(d.stores||[]).forEach(st=>(st.slots||[]).forEach(x=>as.push({...x,store_name:st.store_name,store_id:st.store_id})));if(as.length)rDB()}}catch(x){}});s.addEventListener('ping',()=>{});s.onerror=()=>{s.close();cE=null;setTimeout(sse,3000)}}
+function sse(){if(cE)cE.close();const s=new EventSource('/api/events');cE=s;s.onopen=()=>{loadStatus()};s.addEventListener('engine',e=>{try{es=JSON.parse(e.data);uE();uD();if(cp==='sn'||['idle','success','error'].includes(es.status))loadSnPlan();if(es.status==='success'&&typeof lR==='function')lR();if(['idle','success','error'].includes(es.status))loadStatus()}catch(x){}});s.addEventListener('sampling',e=>{try{spState=JSON.parse(e.data);renderDashboardSamplingCard();if(cp==='sm')renderSamplingState()}catch(x){}});s.addEventListener('log',e=>{try{aL(JSON.parse(e.data))}catch(x){}});s.addEventListener('calendar',e=>{try{const d=JSON.parse(e.data);if(cp==='ca'){as=[];(d.stores||[]).forEach(st=>(st.slots||[]).forEach(x=>as.push({...x,store_name:st.store_name,store_id:st.store_id})));if(as.length)rDB()}}catch(x){}});s.addEventListener('ping',()=>{});s.onerror=()=>{s.close();cE=null;setTimeout(sse,3000)}}
 init();
 </script>
 </body></html>

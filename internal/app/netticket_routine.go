@@ -143,7 +143,7 @@ func planNetTicketRoutineReminderForTodayLocked(routine NetTicketRoutine, existi
 	today := now.Format("2006-01-02")
 	routine.PlannedDate = today
 	routine.LastPlannedAt = now.Format(time.RFC3339)
-	mealPlan := buildQueueMealPlan(routine.StoreID, routine.TargetMealTime, routine.TravelMinutes, now)
+	mealPlan := buildQueueMealPlan(context.Background(), routine.StoreID, routine.TargetMealTime, routine.TravelMinutes, now, false)
 	routine.RecommendPickupRange = mealPlan.RecommendPickupRange
 	routine.WaitMinutesRange = mealPlan.WaitMinutesRange
 	routine.Risk = mealPlan.Risk

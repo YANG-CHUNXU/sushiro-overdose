@@ -173,7 +173,9 @@ func NormalizeQueueBaselineConfig(cfg QueueBaselineConfig) QueueBaselineConfig {
 }
 
 func LoadQueueBaselineConfig() QueueBaselineConfig {
-	def := QueueBaselineConfig{Enabled: false, IntervalMinutes: queueBaselineDefaultMinutes, UsePreferenceStores: true}
+	// 默认开启：走公开接口、不需要通行证、只采集常用门店并写本机。
+	// 这是“只读用户第一次打开就有曲线可看”的前提（用户可在「现在去吃」高级区关闭）。
+	def := QueueBaselineConfig{Enabled: true, IntervalMinutes: queueBaselineDefaultMinutes, UsePreferenceStores: true}
 	data, err := os.ReadFile(queueBaselinePath())
 	if err != nil {
 		return def
@@ -267,6 +269,9 @@ func collectQueueBaselineWithConfig(ctx context.Context, cfg QueueBaselineConfig
 			continue
 		}
 		records = append(records, queueBaselineRecordFromStore(s, now))
+		// 公开快照同样包含当前叫号：顺手写入排队观测，让叫号预测和到店预测
+		// 无需通行证也能积累本机曲线（与凭证态采样写入同一份观测文件）。
+		_ = appendQueueObservation(queueObservationFromLiveStore(s, time.Now()))
 	}
 	if len(records) == 0 && lastErr != nil {
 		return 0, lastErr

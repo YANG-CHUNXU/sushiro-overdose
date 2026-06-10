@@ -122,11 +122,11 @@ func handleQueuePlan(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	if pickup := strings.TrimSpace(q.Get("pickup")); pickup != "" {
-		writeJSON(w, buildQueuePickupPlan(storeID, pickup, now))
+		writeJSON(w, buildQueuePickupPlan(r.Context(), storeID, pickup, now))
 		return
 	}
 	if meal := strings.TrimSpace(q.Get("target_meal")); meal != "" {
-		writeJSON(w, buildQueueMealPlan(storeID, meal, atoiDefault(q.Get("travel_minutes"), 0), now))
+		writeJSON(w, buildQueueMealPlan(r.Context(), storeID, meal, atoiDefault(q.Get("travel_minutes"), 0), now, true))
 		return
 	}
 	writeError(w, http.StatusBadRequest, "缺少 pickup 或 target_meal 参数")

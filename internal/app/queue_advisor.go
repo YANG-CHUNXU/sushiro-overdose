@@ -782,7 +782,42 @@ func atoiStrict(s string) (int, bool) {
 	return n, true
 }
 
-func buildQueuePickupPlan(storeID, pickupRaw string, now time.Time) QueuePickupPlan {
+// liveWaitEstimate 用公开实时接口取“现在等多久”的粗估区间，作为没有历史样本时的兜底，
+// 让只读用户第一次打开就能得到答案。返回 false 表示连实时数据也拿不到。
+func liveWaitEstimate(ctx context.Context, storeID string, now time.Time) (QueueWaitRange, bool) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	panel, err := buildQueueLivePanel(timeoutCtx, storeID, now)
+	if err != nil {
+		return QueueWaitRange{}, false
+	}
+	wait := panel.ServerWaitMin
+	if panel.EtaMinutes != nil && *panel.EtaMinutes > 0 {
+		wait = *panel.EtaMinutes
+	}
+	if wait <= 0 && panel.WaitGroups > 0 {
+		wait = panel.WaitGroups * 2 // 接口没给等待分钟时按每组约 2 分钟粗估
+	}
+	if wait <= 0 {
+		if panel.OnlineOpen && panel.WaitGroups == 0 {
+			return QueueWaitRange{Low: 0, High: 10}, true
+		}
+		return QueueWaitRange{}, false
+	}
+	high := wait + wait/2
+	if high < wait+10 {
+		high = wait + 10
+	}
+	return QueueWaitRange{Low: wait, High: high}, true
+}
+
+const queuePlanLiveBasis = "按当前实时等待粗估（这家店还没有历史样本）"
+const queuePlanLiveHint = "先按此刻的实时等待粗估；开启「预测准确度」积累几天后，会自动换成更准的历史曲线。"
+
+func buildQueuePickupPlan(ctx context.Context, storeID, pickupRaw string, now time.Time) QueuePickupPlan {
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -796,6 +831,17 @@ func buildQueuePickupPlan(storeID, pickupRaw string, now time.Time) QueuePickupP
 	hist, basis := historicalWaitByBucket(storeID, now)
 	wr, found := hist[queueTrendBucket(pickup, 30)]
 	if !found {
+		if lw, ok := liveWaitEstimate(ctx, storeID, now); ok {
+			out.WaitMinutesRange = &lw
+			out.MealRange = &QueueTimeRange{
+				Early: pickup.Add(time.Duration(lw.Low) * time.Minute).Format("15:04"),
+				Late:  pickup.Add(time.Duration(lw.High) * time.Minute).Format("15:04"),
+			}
+			out.Basis = queuePlanLiveBasis
+			out.Risk = queuePlanRisk(storeID, now, lw)
+			out.Message = queuePlanLiveHint
+			return out
+		}
 		out.Message = "这家店该时段的历史样本不足，先开启本机数据收集积累几次。"
 		out.Basis = basis
 		return out
@@ -810,7 +856,9 @@ func buildQueuePickupPlan(storeID, pickupRaw string, now time.Time) QueuePickupP
 	return out
 }
 
-func buildQueueMealPlan(storeID, mealRaw string, travelMinutes int, now time.Time) QueueMealPlan {
+// buildQueueMealPlan 计算“想几点吃→几点取号”。allowLiveFallback 为 true 时（Web 只读查询），
+// 没有历史样本会退回当前实时等待粗估；Routine 提醒必须传 false，维持“样本不足不乱提醒”的承诺。
+func buildQueueMealPlan(ctx context.Context, storeID, mealRaw string, travelMinutes int, now time.Time, allowLiveFallback bool) QueueMealPlan {
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -824,6 +872,20 @@ func buildQueueMealPlan(storeID, mealRaw string, travelMinutes int, now time.Tim
 	target := meal.Add(-time.Duration(max(0, travelMinutes)) * time.Minute)
 	hist, _ := historicalWaitByBucket(storeID, now)
 	if len(hist) == 0 {
+		if allowLiveFallback {
+			if lw, ok := liveWaitEstimate(ctx, storeID, now); ok {
+				stable := target.Add(-time.Duration(lw.High) * time.Minute)
+				latest := target.Add(-time.Duration(lw.Low) * time.Minute)
+				out.StablePickup = stable.Format("15:04")
+				out.LatestPickup = latest.Format("15:04")
+				out.RecommendPickupRange = &QueueTimeRange{Early: stable.Format("15:04"), Late: latest.Format("15:04")}
+				out.WaitMinutesRange = &lw
+				out.Basis = queuePlanLiveBasis
+				out.Risk = queuePlanRisk(storeID, now, lw)
+				out.Message = queuePlanLiveHint
+				return out
+			}
+		}
 		out.Message = "这家店历史样本不足，先开启本机数据收集积累几次。"
 		return out
 	}
