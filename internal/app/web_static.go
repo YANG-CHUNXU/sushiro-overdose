@@ -88,6 +88,7 @@ input[type=number],input[type=text],input[type=time],input[type=date],select,tex
 input[type=number]{width:86px}
 textarea{height:88px;padding:10px 12px;resize:vertical;line-height:1.5}
 input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px rgba(184,28,34,.08)}
+input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weight:400}
 .settings-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
 .settings-wide{grid-column:1/-1}
 .settings-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
@@ -595,17 +596,21 @@ body:not(.debug-mode) .debug-only{display:none!important}
       <div id="qdSamplingCard" class="curve-sampling"><div><b>本机持续采集</b><p>常用门店的公开排队曲线（叫号、等位）已默认自动记录，不需要通行证，越用越准；拿通行证后还能额外采集可约时段。数据只留在本机，不上传。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="go('sm')">详细配置</button></div></div>
       <div id="qdReminderCard" class="curve-sampling">
         <div>
-          <b>多段到店提醒 <span class="tag read">临时提醒</span></b>
-          <p>适合已经在小程序或现场取到号的人：按你手里的号提前多次提醒；命中后自动删除，也可以手动删除，不会替你取号或取消号。</p>
+          <b>🔔 多段到店提醒 <span class="tag read">只提醒 · 不取号</span></b>
+          <p>已经拿到号？快叫到前分几次提醒你出发；叫到后提醒自动消失，不会替你取号或取消号。</p>
           <div class="fr mt8">
-            <div class="fg"><label>这张号叫谁</label><input id="qdrLabel" placeholder="我 / 朋友"></div>
-            <div class="fg"><label>路程(分钟)</label><input id="qdrTravel" type="number" min="0" placeholder="如 25"></div>
-            <div class="fg"><label>提醒模板</label><select id="qdrTemplate" onchange="renderReminderTemplateHint()"><option value="normal">常规三段</option><option value="conservative">提前更多</option><option value="urgent">临近提醒</option><option value="custom">自定义</option></select></div>
-            <div class="fg"><label>自定义提醒点</label><input id="qdrPoints" placeholder="如 1000,1025,1050"></div>
+            <div class="fg"><label>提醒节奏</label><select id="qdrTemplate" onchange="renderReminderTemplateHint()"><option value="normal">标准 · 提前 80/50/25 号各提醒一次</option><option value="conservative">从容 · 提前 120/90/60/30 号</option><option value="urgent">临近 · 提前 50/25/10 号</option><option value="custom">自定义（在下方高级里填）</option></select></div>
+            <div class="fg"><label>路上要多久（分钟，可选）</label><input id="qdrTravel" type="number" min="0" placeholder="如 25，用于推算出发时间"></div>
+            <div class="fg"><label>备注（可选）</label><input id="qdrLabel" placeholder="如：我的号 / 帮朋友盯"></div>
           </div>
-          <div id="qdReminderStatus" class="sample-state mt8"><span class="mu">选门店并输入号码后，可以一键生成多段提醒。</span></div>
+          <details class="adv mt8">
+            <summary>高级 · 自定义提醒号码</summary>
+            <div class="fg mt8"><label>叫到哪些号时提醒（逗号分隔，需小于你手里的号）</label><input id="qdrPoints" placeholder="如 1000,1025,1050" oninput="renderReminderTemplateHint()"></div>
+            <p class="ps mt8">填了这里就按这些号码提醒，忽略上面的节奏。</p>
+          </details>
+          <div id="qdReminderStatus" class="mt8"><span class="mu">选门店并输入号码后，点「生成提醒」。</span></div>
         </div>
-        <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">生成提醒</button><button class="bt bt-w bt-s" onclick="go('se')">设置通知</button></div>
+        <div class="curve-sampling-actions"><button class="bt bt-r bt-s" onclick="createTicketReminder()">🔔 生成提醒</button><button class="bt bt-w bt-s" onclick="focusNotifySettings()">设置通知</button></div>
       </div>
       <details class="card adv mt16" id="qdEvidence">
         <summary onclick="this.parentElement.dataset.keep='1'"><span class="setting-fold-title"><b>图表与历史依据</b><span>叫号曲线、10 分钟叫号表、日期类型拆分；有数据时自动展开。</span></span></summary>
@@ -818,14 +823,14 @@ body:not(.debug-mode) .debug-only{display:none!important}
           <div class="fg"><label>成人</label><input type="number" id="pa" min="0" max="10" value="2"></div>
           <div class="fg"><label>儿童</label><input type="number" id="pc" min="0" max="10" value="0"></div>
           <div class="fg"><label>桌型</label><select id="pt"><option value="T">桌位</option><option value="C">吧台</option></select></div>
-          <div class="fg"><label>完整手机号（可选）</label><input type="tel" id="pphone" maxlength="11" placeholder="不要填尾号；留空用捕获号码"></div>
+          <div class="fg"><label>预约用手机号（可选）</label><input type="tel" id="pphone" maxlength="11" placeholder="11 位完整号码；留空用通行证里的号码"></div>
         </div>
         <div class="fg"><label>添加门店（搜全国）</label><div class="fl g8 fw"><input id="storeSearch" placeholder="输入城市或门店名，如 北京 / 凯德" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter'){searchStores();return false}"><button class="bt bt-w bt-s" onclick="searchStores()">搜索</button></div><div id="storeSearchResults" class="mt8"></div></div>
         <div class="fg"><label>抢号门店与优先级</label><div id="bookingStores" class="store-list"><span class="mu">用上方搜索添加，或拿到通行证后自动带入</span></div><div class="ps mt8">抢预约 / 取号会按勾选门店的排序依次尝试。新加的门店若从没在小程序点过，建议刷新凭证后先试一家确认可用。</div></div>
         <div class="fr mb16">
           <div class="fg"><label>日期优先级</label><select id="ppm"><option value="date">按日期优先</option><option value="weekend_first">周末优先</option><option value="weekday_first">工作日优先</option></select></div>
           <div class="fg"><label>时段策略</label><select id="pst"><option value="earliest">最早可约</option><option value="latest">最晚可约</option><option value="closest">接近目标时间</option></select></div>
-          <div class="fg"><label>目标时间</label><input type="text" id="ptm" placeholder="1930"></div>
+          <div class="fg"><label>目标时间（如 1930 = 19:30）</label><input type="text" id="ptm" placeholder="1930"></div>
         </div>
         <div class="fg"><label>工作日时段</label><div id="wd" class="tl"></div><span class="at" onclick="aT('wd')">添加时段</span></div>
         <div class="fg"><label>周六时段</label><div id="sa" class="tl"></div><span class="at" onclick="aT('sa')">添加时段</span></div>
@@ -1293,14 +1298,14 @@ async function loadQueueAlertStatus(){try{qaStatus=await safeFetch('/api/queue/a
 function renderTicketReminderCard(err){
  const box=el('qdReminderStatus');if(!box)return;
  if(err){box.innerHTML='<div class="ci bad">'+esc(err)+'</div>';return}
- const s=qdReminderStore(),target=parseInt(el('qdTargetNo')?.value||'',10),points=target>0?reminderPointsFromInputs(target):[],n=qaStatus.notifications||{},sampling=qaStatus.sampling||{},channels=(n.channels||[]).join('、')||'未配置',notifyClass=n.configured?'ok':'bad',sampleClass=sampling.running||sampling.daemon_running||sampling.system_auto_start?.enabled?'ok':'warn',hint=!s?'请先选一个门店；提醒不会自动取号。':!target?'请输入手里的号；提醒点会自动按模板生成。':points.length?('将为 '+esc(s.name)+' · '+fmtN(target)+'号 设置临时提醒点：'+points.map(fmtN).join('、')):'请填写有效提醒点（不能大于手里的号）。';
+ const s=qdReminderStore(),target=parseInt(el('qdTargetNo')?.value||'',10),points=target>0?reminderPointsFromInputs(target):[],n=qaStatus.notifications||{},sampling=qaStatus.sampling||{},channels=(n.channels||[]).join('、')||'未配置',notifyClass=n.configured?'ok':'bad',sampleClass=sampling.running||sampling.daemon_running||sampling.system_auto_start?.enabled?'ok':'warn',hint=!s?'先在上方选一家门店（提醒只盯这家店的叫号）。':!target?'在上方「我的号」填手里的号，提醒会按节奏自动生成。':points.length?('将为 '+esc(s.name)+' · '+fmtN(target)+' 号，在叫到 '+points.map(fmtN).join('、')+' 号时各提醒一次。'):'自定义号码无效：提醒号必须小于你手里的号。';
  const chips=chip('通知',channels,notifyClass)+chip('采集',sampling.running?'运行中':sampling.daemon_running?'后台运行':sampling.system_auto_start?.enabled?'已设开机采集':(sampling.message||'未持续采集'),sampleClass);
  const rules=(qaStatus.rules||[]).filter(x=>x.rule&&x.rule.type==='called_reach'&&(!s||String(x.rule.store_id)===s.id)&&(!target||x.rule.target_no===target));
  const rows=rules.length?'<div class="sg mt8">'+rules.map(x=>{
   const r=x.rule||{},cls=x.status==='fired'?'av':x.status==='due'?'fu':'av',eta=x.estimate_to_threshold_minutes!=null?(' · 预计 '+fmtN(x.estimate_to_threshold_minutes)+' 分钟到提醒点'):'',next=x.next?' · 下一条':'',key=x.key||qaRuleKey(r);
   return'<div class="sl '+cls+'"><div class="fl ai jb g8"><div class="ss">'+esc(x.label||r.label||((r.target_no||0)+'号'))+' · '+fmtN(r.target_no||0)+'号</div><button class="bt bt-o bt-s" onclick="removeQueueAlertByKey(\''+escA(key)+'\')">删除</button></div><div class="mu mt8">到/过 '+fmtN(x.threshold||qaRuleThreshold(r))+' 号提醒 · 当前 '+fmtN(x.current_called_no||0)+' · 还差 '+fmtN(x.remaining_to_threshold||0)+' 桌'+eta+next+'</div><div class="mu mt8">'+esc(x.status_text||'监控中')+(r.travel_minutes?(' · 路程约 '+fmtN(r.travel_minutes)+' 分钟'):'')+' · 命中后自动删除</div></div>'
- }).join('')+'</div>':'<div class="mu mt8">还没有匹配当前门店和号码的临时提醒。生成后会显示每一段的进度，命中后自动删除。</div>';
- box.innerHTML='<div>'+chips+'</div><div class="mu mt8">'+hint+'</div>'+rows
+ }).join('')+'</div>':'';
+ box.innerHTML='<div class="fl g8 fw">'+chips+'</div><div class="mu mt8">'+hint+'</div>'+rows
 }
 function reminderSamplingActive(){const s=(qaStatus&&qaStatus.sampling)||{};return !!(s.running||s.daemon_running||s.system_auto_start?.enabled)}
 async function ensureTicketReminderSampling(storeID){if(!hc)return '';try{if(!spCfg||!Object.keys(spCfg).length)await loadSampling();const active=reminderSamplingActive(),id=String(storeID),ids=(spCfg.store_ids||[]).map(String),hasStore=ids.includes(id),nextIDs=Array.from(new Set([id].concat(ids)));if(active&&hasStore)return '';const payload={...spCfg,enabled:true,auto_start:true,interval_seconds:spCfg.interval_seconds||300,active_start:spCfg.active_start||'100000',active_end:spCfg.active_end||'220000',store_ids:nextIDs,use_preference_stores:false};let d=await safeFetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});spCfg=d.config||payload;spState=d.state||spState;if(active){await loadSampling();return 'updated'}d=await safeFetch('/api/sampling/start',{method:'POST'});spState=d.state||spState;await loadSampling();return 'started'}catch(e){toast('提醒已保存，但配置本机采集失败：'+String(e.message||e));return ''}}
