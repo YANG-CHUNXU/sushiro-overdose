@@ -258,7 +258,8 @@ func webSecurityMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			if !validWebCSRF(r.Header.Get("X-Sushiro-CSRF")) {
-				writeError(w, http.StatusForbidden, "CSRF 校验失败")
+				// 常见诱因：应用重启后 token 轮换，浏览器里还开着旧页面。
+				writeError(w, http.StatusForbidden, "CSRF 校验失败：页面与当前应用会话不匹配（通常是应用重启后仍在用旧页面），请刷新页面后重试")
 				return
 			}
 		}

@@ -897,7 +897,8 @@ function sameOriginRequest(input){
     return new URL(target,location.href).origin===location.origin;
   }catch(e){return true}
 }
-window.fetch=(input,init)=>{
+let staleSessionReloading=false;
+window.fetch=async(input,init)=>{
   const opt=init?{...init}:{};
   const method=String(opt.method||(input&&input.method)||'GET').toUpperCase();
   if((method==='POST'||method==='PUT')&&sameOriginRequest(input)){
@@ -905,7 +906,12 @@ window.fetch=(input,init)=>{
     h.set('X-Sushiro-CSRF',csrfToken);
     opt.headers=h;
   }
-  return rawFetch(input,opt);
+  const resp=await rawFetch(input,opt);
+  // 应用重启后会换 CSRF token：旧页面提交会 403。自动刷新拿新页面，避免用户卡在“CSRF 校验失败”。
+  if(resp.status===403&&!staleSessionReloading&&sameOriginRequest(input)){
+    try{const d=await resp.clone().json();if(/CSRF/i.test(String(d&&d.error||''))){staleSessionReloading=true;toast('应用已重启，页面已过期，正在自动刷新…');setTimeout(()=>location.reload(),1200)}}catch(e){}
+  }
+  return resp;
 };
 function el(id){return document.getElementById(id)}
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
