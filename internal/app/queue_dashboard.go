@@ -1568,7 +1568,7 @@ func queueDashboardScope(query QueueDashboardQuery, rows []QueueDashboardStoreRo
 func queueDashboardWarnings(query QueueDashboardQuery, baselineStatus QueueBaselineRemoteStatus, baselineErr error, localBaselineRecords, localObservationRecords, trendPoints, heatmapPoints, calledCurvePoints int) []string {
 	warnings := []string{}
 	if baselineErr != nil {
-		warnings = append(warnings, "线上排队基准暂时不可用，已退回本机数据。")
+		warnings = append(warnings, "线上排队基准暂时不可用，已退回本机数据："+baselineErr.Error())
 	}
 	if !baselineStatus.Used {
 		warnings = append(warnings, "未连接线上排队基准时，只能看到本机已采集门店。")

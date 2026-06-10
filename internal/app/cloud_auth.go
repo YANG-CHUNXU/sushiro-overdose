@@ -291,9 +291,15 @@ func cloudJSON(ctx context.Context, method string, cfg CloudAuthConfig, path str
 		return err
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	// 全国基准导出当前约 6-8MB 且随门店数增长；上限给足余量，并在截断时给出明确错误
+	// 而不是让 JSON 解析报“unexpected end of JSON input”。
+	const cloudRespLimit = 64 * 1024 * 1024
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, cloudRespLimit+1))
 	if err != nil {
 		return err
+	}
+	if len(respBody) > cloudRespLimit {
+		return fmt.Errorf("云端响应超过 %dMB 上限，已拒绝解析", cloudRespLimit/(1024*1024))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("云端服务 HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
