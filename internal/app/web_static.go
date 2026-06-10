@@ -569,13 +569,6 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
     </div>
   </section>
 
-  <section id="p-in" class="hid">
-    <div class="cd">
-      <div class="page-lead"><h2 class="ph">历史洞察 <span class="pm" data-kind="kappa" data-size="32"></span></h2><button class="bt bt-w bt-s" onclick="lI()">刷新</button></div>
-      <div id="ic"><div class="empty">加载中</div></div>
-    </div>
-  </section>
-
   <section id="p-qd" class="hid">
     <div class="cd">
       <div class="dash-head">
@@ -593,7 +586,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
       <div id="qdStores" class="chips mb16"><span class="mu">默认自动选择本机样本最多的门店</span></div>
       <div id="qdAnswer" class="answer-card"><div class="ci">先选门店、输入你手里的号；这里直接告诉你大概几点叫到、几点出发。</div></div>
       <div id="qdAdvisor" class="advisor-panel mt16"><div class="ci">先选门店，再输入你手里的号；这里会显示大概几点叫到和几点前到店。</div></div>
-      <div id="qdSamplingCard" class="curve-sampling"><div><b>本机持续采集</b><p>常用门店的公开排队曲线（叫号、等位）已默认自动记录，不需要通行证，越用越准；拿通行证后还能额外采集可约时段。数据只留在本机，不上传。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="go('sm')">详细配置</button></div></div>
+      <div id="qdSamplingCard" class="curve-sampling"><div><b>本机持续采集</b><p>常用门店的公开排队曲线（叫号、等位）已默认自动记录，不需要通行证，越用越准；拿通行证后还能额外采集可约时段。数据只留在本机，不上传。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="openSettingsFold('fold-sm')">详细配置</button></div></div>
       <div id="qdReminderCard" class="curve-sampling">
         <div>
           <b>🔔 多段到店提醒 <span class="tag read">只提醒 · 不取号</span></b>
@@ -734,24 +727,6 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
     </div>
   </section>
 
-  <section id="p-sm" class="hid">
-    <div class="cd">
-      <div class="page-lead"><div><h2 class="ph">预测准确度 <span class="pm" data-kind="unagi" data-size="32"></span></h2><p class="ph-sub"><span class="tag auth">需要寿司郎认证</span> 只记录你关心门店的预约、排队和叫号变化，用来提升“几点叫到、几点出发”的判断；不会自动取消或创建预约。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="runSampleOnce()">收集一次</button><button class="bt bt-r bt-s" onclick="startSampling()">开启持续采集</button></div></div>
-      <details class="btn-more debug-only mb16"><summary></summary><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="setBootSampling(true)">启用开机自启动</button><button class="bt bt-o bt-s" onclick="setBootSampling(false)">取消开机自启动</button><button class="bt bt-o bt-s" onclick="stopSampling()">暂停运行</button></div></details>
-      <div class="sample-grid">
-        <label class="check"><input type="checkbox" id="spEnabled">开启本机持续采集</label>
-        <label class="check debug-only"><input type="checkbox" id="spAuto">应用启动后自动收集</label>
-        <div class="fg debug-only"><label>间隔秒数</label><input type="number" id="spInterval" min="60" step="60" value="300"></div>
-        <div class="fg debug-only"><label>开始</label><input type="time" id="spStart" value="10:00"></div>
-        <div class="fg debug-only"><label>结束</label><input type="time" id="spEnd" value="22:00"></div>
-      </div>
-      <div class="fg"><label>提升哪家店的预测</label><div id="samplingStores" class="chips"><span class="mu">加载中</span></div><div id="sampleStoreHint" class="ps mt8"></div></div>
-      <div class="fl g8 fw"><button class="bt bt-r" onclick="saveSampling()">保存预测配置</button><button class="bt bt-w" onclick="usePrefSamplingStores()">跟随预约偏好门店</button><button class="bt bt-o debug-only" onclick="stopSampling()">暂停持续采集</button></div>
-      <div id="sampleState" class="sample-state"><div class="ci">尚未加载</div></div>
-      <div id="sampleResult" class="diag-detail hid"></div>
-    </div>
-  </section>
-
   <section id="p-sn" class="hid">
     <div class="cd">
       <div class="page-lead"><div><h2 class="ph">自动蹲号 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 到开放窗口自动尝试创建预约；抢到后会停止，不会一直 running。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="addSn()">添加目标</button><button class="bt bt-r bt-s" onclick="saveSn()">保存计划</button><button class="bt bt-y bt-s" onclick="startSn()">启动蹲号</button></div></div>
@@ -826,13 +801,34 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         <div class="fl g8 fw mt8"><button class="bt bt-r" onclick="sN()">保存通知</button><button class="bt bt-w" onclick="tN('all')">测试全部</button><button class="bt bt-w" onclick="tN('feishu')">飞书</button><button class="bt bt-w" onclick="tN('telegram')">Telegram</button><button class="bt bt-w" onclick="tN('bark')">Bark</button><button class="bt bt-w" onclick="tN('serverchan')">Server酱</button></div>
         </div>
       </details>
-      <details class="cd setting-fold settings-wide">
-        <summary><span class="setting-fold-title"><b>预测准确度</b><span>把本机采集和线上基准理解为“让曲线更准”，不是用户需要反复调的开发配置。</span></span></summary>
+      <details class="cd setting-fold settings-wide" id="fold-sm" ontoggle="if(this.open)lSm()">
+        <summary><span class="setting-fold-title"><b>预测准确度 <span class="pm" data-kind="unagi" data-size="26"></span></b><span>提升“几点叫到、几点出发”的判断；常用门店的公开排队曲线已默认自动记录，这里只在想更准时配置。</span></span></summary>
         <div class="setting-fold-body">
         <div id="settingsDataState" class="sample-state"><div class="ci">尚未加载</div></div>
-        <div class="fl g8 fw mt16"><button class="bt bt-r bt-s" onclick="go('sm')">配置预测准确度</button><button class="bt bt-w bt-s" onclick="runDashboardSampleOnce()">收集一次</button></div>
-        <div class="ps mt8">只看实时排队不需要它；如果你常看“几点叫到、几点出发”，建议保持本机持续采集。</div>
+        <div class="fl g8 fw mt16"><button class="bt bt-w bt-s" onclick="runSampleOnce()">收集一次</button><button class="bt bt-r bt-s" onclick="startSampling()">开启持续采集</button></div>
+        <div class="sample-grid mt16">
+          <label class="check"><input type="checkbox" id="spEnabled">开启本机持续采集</label>
+          <label class="check debug-only"><input type="checkbox" id="spAuto">应用启动后自动收集</label>
+          <div class="fg debug-only"><label>间隔秒数</label><input type="number" id="spInterval" min="60" step="60" value="300"></div>
+          <div class="fg debug-only"><label>开始</label><input type="time" id="spStart" value="10:00"></div>
+          <div class="fg debug-only"><label>结束</label><input type="time" id="spEnd" value="22:00"></div>
         </div>
+        <div class="fg"><label>提升哪家店的预测</label><div id="samplingStores" class="chips"><span class="mu">加载中</span></div><div id="sampleStoreHint" class="ps mt8"></div></div>
+        <div class="fl g8 fw"><button class="bt bt-r" onclick="saveSampling()">保存预测配置</button><button class="bt bt-w" onclick="usePrefSamplingStores()">跟随预约偏好门店</button></div>
+        <div id="sampleState" class="sample-state"><div class="ci">尚未加载</div></div>
+        <div id="sampleResult" class="diag-detail hid"></div>
+        </div>
+      </details>
+      <details class="cd setting-fold settings-wide" id="fold-in" ontoggle="if(this.open)lI()">
+        <summary><span class="setting-fold-title"><b>历史洞察 <span class="pm" data-kind="kappa" data-size="26"></span></b><span>按门店、星期、时段统计开放概率和售罄速度，反推更值得抢的目标。</span></span></summary>
+        <div class="setting-fold-body">
+        <div class="fl g8 fw mb16"><button class="bt bt-w bt-s" onclick="lI()">刷新</button></div>
+        <div id="ic"><div class="empty">加载中</div></div>
+        </div>
+      </details>
+      <details class="cd setting-fold settings-wide" id="fold-lo" ontoggle="if(this.open)lL()">
+        <summary><span class="setting-fold-title"><b>运行日志 <span class="pm" data-kind="maguro" data-mood="sleep" data-size="26"></span></b><span>排障时看；平时不用展开。</span></span></summary>
+        <div class="setting-fold-body"><div class="lg" id="lv"></div></div>
       </details>
       <details class="cd setting-fold settings-wide">
         <summary><span class="setting-fold-title"><b>安全与维护</b><span>状态异常、代理残留、需要复制诊断时再打开。危险操作会单独确认。</span></span></summary>
@@ -846,9 +842,6 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
     </div>
   </section>
 
-  <section id="p-lo" class="hid">
-    <div class="cd"><h2 class="ph mb16">运行日志 <span class="pm" data-kind="maguro" data-mood="sleep" data-size="32"></span></h2><div class="lg" id="lv"></div></div>
-  </section>
 </main>
 <div class="belt" id="belt" aria-hidden="true"></div>
 <footer class="ft">由 <a href="https://github.com/Ryujoxys/sushiro-overdose">sushiro-overdose</a> 驱动 · 非官方工具，仅供学习</footer>
@@ -912,12 +905,12 @@ const NAV_GROUPS=[
   {id:'number',label:'我有号码',pages:[['qd','叫号预测'],['qp','取号→几点吃'],['qw','想几点吃→几点取号']]},
   {id:'book',label:'约未来',pages:[['ca','可约日历'],['sn','自动蹲号']]},
   {id:'mine',label:'我的单据',pages:[['re','预约 / 排队号']]},
-  {id:'settings',label:'设置',pages:[['se','设置'],['sm','预测准确度'],['in','历史洞察'],['lo','日志']]}
+  {id:'settings',label:'设置',pages:[['se','设置']]}
 ];
 const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g.id));
 function renderSubnav(g,active){const sn=el('subnav');if(!sn)return;if(!g||g.pages.length<=1){sn.innerHTML='';sn.classList.add('hid');return}sn.classList.remove('hid');sn.innerHTML=g.pages.map(([p,label])=>'<a href="#" class="'+(p===active?'on':'')+'" onclick="go(\''+p+'\');return false">'+esc(label)+'</a>').join('')}
 function goGroup(gid){const g=NAV_GROUPS.find(x=>x.id===gid);if(g)go(g.pages[0][0]);return false}
-function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({da:lDA,ca:lC,in:lI,qd:lQD,qp:lQP,qw:lQW,qt:lQT,sm:lSm,sn:lSn,re:lR,se:lS,lo:lL})[n]?.();return false}
+function go(n,e){if(!PAGE_GROUP[n])n='da';document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(location.hash.slice(1)!==n)history.replaceState(null,'','#'+n);({da:lDA,ca:lC,qd:lQD,qp:lQP,qw:lQW,qt:lQT,sn:lSn,re:lR,se:lS})[n]?.();return false}
 async function loadStatus(){try{const r=await(await fetch('/api/status')).json();el('ver').textContent='v'+r.version;hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};nfc=r.notify_configured!==false;uE();uD();uAuth();renderSettingsStatus();renderSettingsDataState();loadActiveTickets(false);}catch(e){el('ver').textContent='offline';}}
 function uAuth(){const pill=el('authPill'),banner=el('authBanner'),st=(ah&&ah.status)||'unknown',reason=(ah&&ah.reason)?String(ah.reason):'';
  if(pill){let cls='authpill',txt='';
@@ -933,7 +926,7 @@ function openHealthPanel(){let ov=el('healthPanel');if(!ov){ov=document.createEl
  const items=[
   {t:'寿司郎通行证 🎫',d:hc?(st==='stale'?('可能已失效'+((ah&&ah.reason)?('：'+ah.reason):'，建议重新获取')):'已就绪'):'看排队不需要；抢预约、远程取号、读单据才需要',s:hc?(st==='stale'?'bad':'ok'):'warn',a:hc?{l:'重新获取',f:st==='stale'?'closeHealthPanel();resetAuthAndStart()':'closeHealthPanel();openAuthWizard()'}:{l:'去获取',f:'closeHealthPanel();openAuthWizard()'}},
   {t:'通知渠道',d:nfc?('已配置'+(notifyChannels.length?('：'+notifyChannels.join('、')):'')):'不配置就收不到叫号提醒和抢到通知',s:nfc?'ok':'warn',a:{l:nfc?'管理':'去配置',f:'closeHealthPanel();focusNotifySettings()'}},
-  {t:'预测数据',d:spOK?'采集中，“几点叫到”会越来越准':'开启后到店预测更准（可选）',s:spOK?'ok':'warn',a:{l:spOK?'查看':'去开启',f:"closeHealthPanel();go('sm')"}}
+  {t:'预测数据',d:spOK?'采集中，“几点叫到”会越来越准':'开启后到店预测更准（可选）',s:spOK?'ok':'warn',a:{l:spOK?'查看':'去开启',f:"closeHealthPanel();openSettingsFold('fold-sm')"}}
  ];
  ov.innerHTML='<div class="ovc" style="width:min(560px,96vw)"><div class="fl ai jb mb16"><b>运行前置条件</b><button class="bt bt-w bt-s" onclick="closeHealthPanel()">关闭</button></div>'+healthStripHTML(items)+'<p class="mu mt16">红色需要处理，黄色按需配置；任何页面点右上角胶囊都能回到这里。</p></div>';
  ov.classList.remove('hid');ov.style.display='flex'}
@@ -953,7 +946,7 @@ function renderSetupCard(){
  items.push({t:'常用门店',d:hasStores?('已选 '+pr.selected_stores.length+' 家，各页面自动带入'):'选好后看排队、预测、日历都不用重选',s:hasStores?'ok':'warn',a:hasStores?null:{l:'去选店',f:'openGuestStorePicker()'}});
  items.push({t:'通知渠道',d:nfc?'已配置':'不配置就收不到叫号提醒和抢到通知',s:nfc?'ok':'warn',a:nfc?null:{l:'去配置',f:'focusNotifySettings()'}});
  const spOK=!!(spState.running||spState.enabled||spState.sample_runs>0);
- items.push({t:'预测数据',d:spOK?'采集中，“几点叫到”会越来越准':'开启后到店预测更准（可选）',s:spOK?'ok':'warn',a:spOK?null:{l:'去开启',f:"go('sm')"}});
+ items.push({t:'预测数据',d:spOK?'采集中，“几点叫到”会越来越准':'开启后到店预测更准（可选）',s:spOK?'ok':'warn',a:spOK?null:{l:'去开启',f:"openSettingsFold('fold-sm')"}});
  const allOK=items.every(x=>x.s==='ok');
  card.classList.toggle('hid',allOK);
  if(allOK)return;
@@ -1078,6 +1071,7 @@ function uE(){
   bs.classList.toggle('hid',!isRun());
   if(s.status==='capturing'&&s.capture){el('cb').classList.remove('hid');rG(s.capture)}else if(s.status!=='capturing'){el('cb').classList.add('hid')}
 }
+function openSettingsFold(id){go('se');setTimeout(()=>{const d=el(id);if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
 function focusNotifySettings(){go('se');setTimeout(()=>{const x=el('nf');if(x){x.scrollIntoView({behavior:'smooth',block:'center'});x.focus()}},60)}
 function settingsCard(title,value,copy,cls,actions){return'<div class="status-card '+(cls||'')+'"><b>'+esc(title)+'</b><strong>'+esc(value)+'</strong><p>'+esc(copy||'')+'</p>'+(actions?'<div class="fl g8 fw">'+actions+'</div>':'')+'</div>'}
 function renderSettingsStatus(){
@@ -1086,9 +1080,9 @@ function renderSettingsStatus(){
  const cloudConn=!!cloudAuth.connected,cloudCfg=!!cloudAuth.configured,cloudCls=cloudConn?'ok':cloudCfg?'warn':'warn',cloudValue=cloudConn?('已登录 '+(cloudAuth.user_login||'GitHub')):(cloudCfg?'待登录':'未连接'),cloudCopy=cloudConn?'线上基准可用于补强排队压力和到店预测。':cloudCfg?'服务地址已配置，登录 GitHub 后可读取线上基准。':'不影响本地功能；自建云端服务可在调试模式配置。';
  const channels=notifyChannels.length?notifyChannels.join('、'):(nfc?'已配置':'未配置'),notifyCls=nfc?'ok':'bad',notifyCopy=nfc?'抢到预约、叫号提醒和异常提醒可以推送。':'多段到店提醒、自动取号和抢号结果不会主动推送。';
  const dataActive=(spState&&spState.running)||cloudConn,dataCls=dataActive?'ok':((spState&&spState.enabled)||cloudCfg?'warn':'warn'),dataValue=(spState&&spState.running)?'本机采集中':cloudConn?'线上基准可用':(spState&&spState.enabled)?'待运行':'未增强',dataCopy=dataActive?'曲线会优先融合可用的本机和线上数据。':'只看实时排队仍可用；开启采集后“几点叫到”会更准。';
- box.innerHTML=settingsCard('寿司郎认证',authValue,authCopy,authCls,!hc||stale?'<button class="bt bt-r bt-s" onclick="resetAuthAndStart()">重新认证</button>':'<button class="bt bt-w bt-s" onclick="go(\'re\')">看我的单据</button>')+settingsCard('GitHub 线上基准',cloudValue,cloudCopy,cloudCls,cloudConn?'<button class="bt bt-o bt-s" onclick="logoutCloudAuth()">退出</button>':'<button class="bt bt-w bt-s" onclick="startCloudLogin()">登录 GitHub</button>')+settingsCard('通知提醒',channels,notifyCopy,notifyCls,'<button class="bt bt-w bt-s" onclick="focusNotifySettings()">配置通知</button><button class="bt bt-w bt-s" onclick="tN(\'all\')">测试</button>')+settingsCard('预测数据',dataValue,dataCopy,dataCls,'<button class="bt bt-w bt-s" onclick="go(\'sm\')">配置</button>');
+ box.innerHTML=settingsCard('寿司郎认证',authValue,authCopy,authCls,!hc||stale?'<button class="bt bt-r bt-s" onclick="resetAuthAndStart()">重新认证</button>':'<button class="bt bt-w bt-s" onclick="go(\'re\')">看我的单据</button>')+settingsCard('GitHub 线上基准',cloudValue,cloudCopy,cloudCls,cloudConn?'<button class="bt bt-o bt-s" onclick="logoutCloudAuth()">退出</button>':'<button class="bt bt-w bt-s" onclick="startCloudLogin()">登录 GitHub</button>')+settingsCard('通知提醒',channels,notifyCopy,notifyCls,'<button class="bt bt-w bt-s" onclick="focusNotifySettings()">配置通知</button><button class="bt bt-w bt-s" onclick="tN(\'all\')">测试</button>')+settingsCard('预测数据',dataValue,dataCopy,dataCls,'<button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">配置</button>');
  if(acts){
-  const a=[];if(!hc||stale)a.push('<button class="bt bt-r" onclick="resetAuthAndStart()">重置并重新认证</button>');if(!nfc)a.push('<button class="bt bt-w" onclick="focusNotifySettings()">配置通知</button>');if(!cloudConn)a.push('<button class="bt bt-w" onclick="startCloudLogin()">登录 GitHub</button>');if(!(spState&&spState.running))a.push('<button class="bt bt-w" onclick="go(\'sm\')">提升预测准确度</button>');
+  const a=[];if(!hc||stale)a.push('<button class="bt bt-r" onclick="resetAuthAndStart()">重置并重新认证</button>');if(!nfc)a.push('<button class="bt bt-w" onclick="focusNotifySettings()">配置通知</button>');if(!cloudConn)a.push('<button class="bt bt-w" onclick="startCloudLogin()">登录 GitHub</button>');if(!(spState&&spState.running))a.push('<button class="bt bt-w" onclick="openSettingsFold(\'fold-sm\')">提升预测准确度</button>');
   acts.innerHTML=a.join('');
  }
 }
@@ -1251,7 +1245,7 @@ function renderTicketReminderCard(err){
 function reminderSamplingActive(){const s=(qaStatus&&qaStatus.sampling)||{};return !!(s.running||s.daemon_running||s.system_auto_start?.enabled)}
 async function ensureTicketReminderSampling(storeID){if(!hc)return '';try{if(!spCfg||!Object.keys(spCfg).length)await loadSampling();const active=reminderSamplingActive(),id=String(storeID),ids=(spCfg.store_ids||[]).map(String),hasStore=ids.includes(id),nextIDs=Array.from(new Set([id].concat(ids)));if(active&&hasStore)return '';const payload={...spCfg,enabled:true,auto_start:true,interval_seconds:spCfg.interval_seconds||300,active_start:spCfg.active_start||'100000',active_end:spCfg.active_end||'220000',store_ids:nextIDs,use_preference_stores:false};let d=await safeFetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});spCfg=d.config||payload;spState=d.state||spState;if(active){await loadSampling();return 'updated'}d=await safeFetch('/api/sampling/start',{method:'POST'});spState=d.state||spState;await loadSampling();return 'started'}catch(e){toast('提醒已保存，但配置本机采集失败：'+String(e.message||e));return ''}}
 async function createTicketReminder(){const s=qdReminderStore();if(!s){toast('请先选门店');return}const target=parseInt(el('qdTargetNo')?.value||'',10);if(!target){toast('请填写你手里的号');return}const points=reminderPointsFromInputs(target);if(!points.length){toast('请填写有效提醒点，且不能大于手里的号');return}const label=(el('qdrLabel')?.value||'').trim(),travel=Math.max(0,parseInt(el('qdrTravel')?.value||'',10)||0),tpl=el('qdrTemplate')?.value||'normal';try{let base=qtAlerts||[];try{const d=await safeFetch('/api/queue/alerts');base=(d&&d.rules)||base}catch(e){}const rules=base.filter(r=>!(String(r.store_id)===s.id&&r.type==='called_reach'&&Number(r.target_no||0)===target));points.forEach(n=>rules.push({store_id:s.id,store_name:s.name,label:label,type:'called_reach',target_no:target,notify_at_no:n,lead_groups:Math.max(0,target-n),travel_minutes:travel,template:tpl,enabled:true}));const saved=await safeFetch('/api/queue/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:rules})});qtAlerts=(saved&&saved.rules)||rules;const samplingAction=await ensureTicketReminderSampling(s.id);await loadQueueAlertStatus();let msg='已生成 '+points.length+' 个提醒点';if(samplingAction==='started')msg+='，已启动本机采集';if(samplingAction==='updated')msg+='，已加入本机采集门店';if(!reminderSamplingActive())msg+='，需要先获取凭证并开启本机采集才会推送';if(!nfc)msg+='，还未配置通知渠道';toast(msg)}catch(e){toast('生成提醒失败：'+String(e.message||e))}}
-function renderDashboardSamplingCard(){const box=el('qdSamplingCard');if(!box)return;const s=spState||{},cfg=spCfg||{},q=spQueueState||{},running=!!s.running,enabled=!!(s.enabled||cfg.enabled),needsAuth=!hc||q.needs_auth||q.auth_ok===false,last=s.last_run_at?new Date(s.last_run_at).toLocaleString():'还没有',next=s.next_run_at?new Date(s.next_run_at).toLocaleString():'-',ids=(cfg.store_ids||[]).map(String),storeText=ids.length?ids.map(storeDisplayName).join('、'):'偏好门店';const msg=s.last_error||s.message||q.message||'开启后会在本机记录叫号、等位和可预约时段。';const toggle='<label class="switch"><input type="checkbox" '+(running?'checked':'')+' onchange="toggleDashboardSampling(this.checked)"> 本机持续采集</label>';const actions=needsAuth?'<button class="bt bt-r bt-s" onclick="startAuth()">先获取凭证</button>':toggle+'<button class="bt bt-w bt-s" onclick="runDashboardSampleOnce()">收集一次</button>'+(running?'<button class="bt bt-o bt-s" onclick="stopSampling()">暂停</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\')">详细配置</button>';box.innerHTML='<div><b>本机持续采集</b><p>让这张“几点叫到几号”的曲线越用越准。只记录 '+esc(storeText)+' 的叫号、等位和可预约时段；数据只留在本机，不上传。</p><div class="sample-state">'+chip('状态',running?'运行中':enabled?'已启用':'未启动',running?'ok':enabled?'warn':'')+chip('凭证',needsAuth?'需要更新':'可用',needsAuth?'bad':'ok')+chip('样本',s.queue_snapshots||s.snapshots||0,'ok')+chip('上次',last,'ok')+chip('下次',next,'ok')+chip('最近结果',msg,needsAuth?'bad':(s.last_error?'warn':'ok'))+'</div></div><div class="curve-sampling-actions">'+actions+'</div>'}
+function renderDashboardSamplingCard(){const box=el('qdSamplingCard');if(!box)return;const s=spState||{},cfg=spCfg||{},q=spQueueState||{},running=!!s.running,enabled=!!(s.enabled||cfg.enabled),needsAuth=!hc||q.needs_auth||q.auth_ok===false,last=s.last_run_at?new Date(s.last_run_at).toLocaleString():'还没有',next=s.next_run_at?new Date(s.next_run_at).toLocaleString():'-',ids=(cfg.store_ids||[]).map(String),storeText=ids.length?ids.map(storeDisplayName).join('、'):'偏好门店';const msg=s.last_error||s.message||q.message||'开启后会在本机记录叫号、等位和可预约时段。';const toggle='<label class="switch"><input type="checkbox" '+(running?'checked':'')+' onchange="toggleDashboardSampling(this.checked)"> 本机持续采集</label>';const actions=needsAuth?'<button class="bt bt-r bt-s" onclick="startAuth()">先获取凭证</button>':toggle+'<button class="bt bt-w bt-s" onclick="runDashboardSampleOnce()">收集一次</button>'+(running?'<button class="bt bt-o bt-s" onclick="stopSampling()">暂停</button>':'')+'<button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">详细配置</button>';box.innerHTML='<div><b>本机持续采集</b><p>让这张“几点叫到几号”的曲线越用越准。只记录 '+esc(storeText)+' 的叫号、等位和可预约时段；数据只留在本机，不上传。</p><div class="sample-state">'+chip('状态',running?'运行中':enabled?'已启用':'未启动',running?'ok':enabled?'warn':'')+chip('凭证',needsAuth?'需要更新':'可用',needsAuth?'bad':'ok')+chip('样本',s.queue_snapshots||s.snapshots||0,'ok')+chip('上次',last,'ok')+chip('下次',next,'ok')+chip('最近结果',msg,needsAuth?'bad':(s.last_error?'warn':'ok'))+'</div></div><div class="curve-sampling-actions">'+actions+'</div>'}
 async function toggleDashboardSampling(on){if(on&&!hc){toast('本机持续采集需要先拿通行证');renderDashboardSamplingCard();startAuth();return}try{if(!spCfg||!Object.keys(spCfg).length)await loadSampling();const ids=qdSelected.length?qdSelected.slice(0,1):(spCfg.store_ids||[]);const payload={...spCfg,enabled:!!on,auto_start:on?true:!!spCfg.auto_start,interval_seconds:spCfg.interval_seconds||300,active_start:spCfg.active_start||'100000',active_end:spCfg.active_end||'220000',store_ids:ids,use_preference_stores:ids.length===0};let d=await safeFetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});spCfg=d.config||payload;spState=d.state||spState;if(on){d=await safeFetch('/api/sampling/start',{method:'POST'});spState=d.state||spState;toast('已启动本机持续采集')}else{d=await safeFetch('/api/sampling/stop',{method:'POST'});spState=d.state||spState;toast('已暂停本机持续采集')}await loadSampling();renderDashboardSamplingCard();uSamplingSummary()}catch(e){toast('采集开关失败：'+String(e.message||e));await loadSampling();renderDashboardSamplingCard()}}
 async function runDashboardSampleOnce(){if(!hc){toast('本机采集需要先拿通行证');startAuth();return}try{if(!spCfg||!Object.keys(spCfg).length)await loadSampling();const ids=qdSelected.length?qdSelected.slice(0,1):(spCfg.store_ids||[]);const payload={...spCfg,enabled:true,interval_seconds:spCfg.interval_seconds||300,active_start:spCfg.active_start||'100000',active_end:spCfg.active_end||'220000',store_ids:ids,use_preference_stores:ids.length===0};let d=await safeFetch('/api/sampling',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});spCfg=d.config||payload;spState=d.state||spState;d=await safeFetch('/api/sampling/once',{method:'POST'});spState=d.state||spState;const r=d.result||{};toast(r.skipped?'本轮跳过：'+(r.skip_reason||'未知原因'):'收集完成：'+(r.queue_snapshots||0)+' 条排队快照，'+(r.snapshots||0)+' 条时段');await loadSampling();renderDashboardSamplingCard()}catch(e){toast('收集失败：'+String(e.message||e));await loadSampling();renderDashboardSamplingCard()}}
 async function loadQueueDashboard(){const k=el('qdKpis'),ch=el('qdChart'),tbl=el('qdCalledTable'),prof=el('qdWeekdays'),warn=el('qdWarn'),adv=el('qdAdvisor');if(!k)return;const target=parseInt(el('qdTargetNo')?.value||'',10)||0;if(target>0&&!qdSelected.length){k.innerHTML='<div class="ci bad">已填写手里的号，请先选择门店。</div>';if(adv)adv.innerHTML='<div class="ci">选择门店后才能判断你的号码，避免误用其他门店曲线。</div>';if(ch)ch.innerHTML='<div class="empty">先选门店，再看“几点叫到几号”。</div>';if(tbl)tbl.innerHTML='<div class="empty">先选门店。</div>';if(prof)prof.innerHTML='<div class="empty">先选门店。</div>';if(warn)warn.classList.add('hid');loadQueueAdvisorCard();return}k.innerHTML='<div class="skeleton skk"></div><div class="skeleton skk"></div><div class="skeleton skk"></div><div class="skeleton skk"></div>';if(adv)adv.innerHTML='<div class="ci">正在生成到店建议…</div>';if(ch)ch.innerHTML='<div class="skeleton" style="height:280px;border-radius:12px"></div>';if(tbl)tbl.innerHTML='<div class="empty">正在加载 10 分钟叫号表</div>';if(prof)prof.innerHTML='<div class="empty">正在加载日期类型</div>';if(warn)warn.classList.add('hid');try{const d=await safeFetch('/api/queue/dashboard?'+dashboardParams().toString(),null,20000);renderQueueDashboard(d)}catch(e){k.innerHTML='<div class="ci bad">叫号判断加载失败</div>';if(adv)adv.innerHTML='<div class="ci bad">到店建议加载失败</div>';if(ch)ch.innerHTML=loadErrBoxHTML(e,'loadQueueDashboard()','我有号码')}loadQueueAdvisorCard()}
@@ -1410,7 +1404,7 @@ function renderQueueLivePanels(rows){const box=el('qtLive');if(!box)return;if(!r
 function renderQueueLive(rows){const box=el('qtLive');if(!box)return;if(!rows.length){box.innerHTML='<div class="ci">还没拿到门店排队数据。可以搜索城市或门店名，手动选择关注门店。</div>';return}box.innerHTML='<div class="sg">'+rows.map(s=>{const wait=(s.wait==null?0:s.wait),groups=(s.groupQueuesCount==null?0:s.groupQueuesCount),status=s.storeStatus||'-',ticket=s.netTicketStatus||'-',cls=status==='OPEN'?'av':'full';return'<div class="sl '+cls+'"><div class="tm">预计 '+wait+' 分钟</div><div class="ss">'+esc(s.name||s.id)+' · '+esc(s.nameKana||s.area||'')+'</div><div class="mu mt8">在等 '+groups+' 桌 · '+esc(status)+' · '+esc(ticket)+(s.waitTimeCap?'<br>预估上限 '+esc(s.waitTimeCap)+' 分钟':'')+'</div></div>'}).join('')+'</div><p class="mu mt8">选中上方关注门店即可查看实时叫号、近15分钟叫号与均速。</p>'}
 function queueTrendParams(){const p=new URLSearchParams();if(qtSelected.length)p.set('stores',qtSelected.join(','));p.set('date_type',el('qtType').value||'all');p.set('from',el('qtFrom').value||'');p.set('to',el('qtTo').value||'');p.set('start',el('qtStart').value||'10:00');p.set('end',el('qtEnd').value||'22:00');p.set('bucket',el('qtBucket').value||'30');return p}
 async function loadQueueTrends(){const st=el('qtStatus'),chart=el('qtChart'),tbl=el('qtTable'),adv=el('qtAdvice');if(!st)return;st.innerHTML='<div class="ci">分析中…</div>';chart.innerHTML='<div class="empty">加载中…</div>';tbl.innerHTML='';if(adv)adv.innerHTML='';try{const d=await safeFetch('/api/queue/trends?'+queueTrendParams().toString());qtTrendStores=d.stores||qtTrendStores;if(!qtSelected.length&&!stores.length&&(d.stores||[]).length)qtSelected=d.stores.map(x=>String(x.store_id));renderQueueTrendStores();renderQueueCollectBanner(d.sampling);renderQueueTrend(d)}catch(e){const msg=String((e&&(e.message||e))||'(unknown)');st.innerHTML='<div class="ci bad">到店预测加载失败</div>';chart.innerHTML=loadErrBoxHTML(e,'loadQueueTrends()','到店预测')}}
-function renderQueueCollectBanner(s){const box=el('qtCollect');if(!box)return;s=s||{};let t='';try{if(s.last_run_at)t='上次收集 '+new Date(s.last_run_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(_){}; if(s.running||s.enabled){box.innerHTML='<div class="diag-detail"><b>本机采集运行中</b> '+esc(t)+'<br><span class="mu">叫号均速、近15分钟叫号与到店预测会随采集持续补齐。</span></div>'}else{const auth=s.needs_auth,why=auth?'需先完成寿司郎认证才能开始本机采集':'本机采集未开启，叫号均速、近15分钟和到店预测会缺少本机样本';box.innerHTML='<div class="diag-detail bad"><b>'+esc(why)+'</b><div class="fl g8 fw mt8">'+(auth?'<button class="bt bt-o bt-s" onclick="startAuth()">去获取凭证</button>':'<button class="bt bt-r bt-s" onclick="go(\'sm\')">开启预测准确度</button>')+'<button class="bt bt-w bt-s" onclick="go(\'sm\')">预测准确度设置</button></div></div>'}}
+function renderQueueCollectBanner(s){const box=el('qtCollect');if(!box)return;s=s||{};let t='';try{if(s.last_run_at)t='上次收集 '+new Date(s.last_run_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}catch(_){}; if(s.running||s.enabled){box.innerHTML='<div class="diag-detail"><b>本机采集运行中</b> '+esc(t)+'<br><span class="mu">叫号均速、近15分钟叫号与到店预测会随采集持续补齐。</span></div>'}else{const auth=s.needs_auth,why=auth?'需先完成寿司郎认证才能开始本机采集':'本机采集未开启，叫号均速、近15分钟和到店预测会缺少本机样本';box.innerHTML='<div class="diag-detail bad"><b>'+esc(why)+'</b><div class="fl g8 fw mt8">'+(auth?'<button class="bt bt-o bt-s" onclick="startAuth()">去获取凭证</button>':'<button class="bt bt-r bt-s" onclick="openSettingsFold(\'fold-sm\')">开启预测准确度</button>')+'<button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">预测准确度设置</button></div></div>'}}
 function renderQueueTrend(d){const s=d.summary||{},q=d.sampling||{},b=d.baseline||{};el('qtStatus').innerHTML=chip('门店排队',b.used?(b.latest_count||0)+' 店':(b.configured?'连接中':'未配置'),b.used?'ok':b.configured?'warn':'warn')+chip('全国基准',b.used?(s.baseline_samples||b.rollup_count||0):(b.configured?'连接中':'未配置'),b.used?'ok':b.configured?'warn':'warn')+chip('实际过号',s.actual_passed_total||0,(s.actual_samples||0)?'ok':'warn')+chip('全局过号',s.global_passed_total||0,(s.global_samples||0)?'ok':'warn')+chip('真实取号',s.session_records||0,(s.session_records||0)?'ok':'warn')+chip('公开快照',s.observation_records||0,(s.observation_records||0)?'ok':'warn')+chip('收集权限',queueStatusText(q),q.permission_status==='ok'?'ok':q.needs_auth?'bad':'warn')+chip('开机自启',q.system_auto_start?.enabled?'已配置':q.system_auto_start?.supported?'未配置':'不支持',q.system_auto_start?.enabled?'ok':'warn');renderQueueAdvice(d);renderQueueChart(d.series||[]);renderQueueTable(d.series||[])}
 function renderQueueAdvice(d){const box=el('qtAdvice');if(!box)return;const rec=d.recommendations||[],q=d.sampling||{},warn=d.warnings||[];let html='';if(rec.length){html+='<div class="sg">'+rec.map(r=>{const wait=r.predicted_wait_minutes==null?'等待待确认':'预计等待 '+Math.round(r.predicted_wait_minutes)+' 分钟',meta=esc(r.date_type_name||r.date_type)+' · '+esc(r.bucket)+' · '+esc(confText(r.confidence))+'可信度';return'<div class="sl av"><div class="tm">'+esc(r.action_label||'候选时段')+'</div><div class="ss">'+esc(r.store_name||r.store_id)+' · '+meta+'</div><div class="mu mt8">'+wait+'<br>'+esc(r.reason||'预测仅供参考。')+'</div></div>'}).join('')+'</div><p class="mu mt8">预测仅供参考；每家门店会按本机收集的数据单独计算。</p>'}else{const msg=q.needs_auth?'先重新获取凭证，再选择门店开始预测准确度。':'先收集 2-3 次午餐、晚餐和周末时段，页面会开始给出门店级预测。';html+='<div class="empty">'+msg+'<div class="mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取凭证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">去预测准确度</button></div></div>'}const steps=[];if(q.message)steps.push(q.message);if(warn.length&&!rec.length)steps.push(warn[0]);if(steps.length)html+='<div class="diag-detail"><b>下一步</b><br>'+esc(steps.join(' '))+'<div class="fl g8 fw mt8">'+(q.needs_auth?'<button class="bt bt-o bt-s" onclick="sC()">重新获取凭证</button>':'')+'<button class="bt bt-w bt-s" onclick="go(\'sm\',document.querySelector(\'[onclick*=sm]\'))">调整预测准确度</button></div></div>';box.innerHTML=html}
 function queueStatusText(q){if(!q)return'未知';if(q.needs_auth)return'凭证需更新';if(q.needs_background)return'需开启';if(q.needs_data_refresh)return'需更新';return'正常'}
