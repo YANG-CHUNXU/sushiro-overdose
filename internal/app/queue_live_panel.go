@@ -144,6 +144,9 @@ func calledAdvanceWithin(sorted []QueueObservation, now time.Time, window time.D
 
 // calledRatePerMinute 用首尾观测算平均叫号速度（组/分），忽略叫号回退（跨日/重置）。
 func calledRatePerMinute(sorted []QueueObservation) (float64, bool) {
+	if len(sorted) == 0 {
+		return 0, false
+	}
 	firstAt, ok := parseRFC3339Local(queueObservationCollectedAt(sorted[0]))
 	if !ok {
 		return 0, false

@@ -91,7 +91,6 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-sh
 input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weight:400}
 .settings-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
 .settings-wide{grid-column:1/-1}
-.settings-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .status-card{position:relative;overflow:hidden;min-height:136px;padding:16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(145deg,#fff 0,#FBFAF8 78%);box-shadow:0 10px 24px rgba(42,35,28,.05)}
 .status-card:before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:#C9C1BA}
 .status-card.ok:before{background:var(--green)}
@@ -296,12 +295,12 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .tag.read{color:var(--green);border-color:#BFE4CC;background:var(--green-soft)}
 .tag.auth{color:var(--blue);border-color:#B9D2E4;background:var(--blue-soft)}
 .tag.action{color:var(--red);border-color:#F0B7B9;background:var(--red-soft)}
-.section-banner{grid-column:1/-1;padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#191817 0,#3A332D 100%);color:#fff}
-.section-banner b{display:block;font-size:19px;letter-spacing:-.01em}
-.section-banner span{display:block;margin-top:6px;color:rgba(255,255,255,.72);font-size:13px;line-height:1.65}
 .setting-fold{grid-column:1/-1;padding:0;overflow:hidden}
 .setting-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:14px;list-style:none;cursor:pointer;padding:18px 20px}
 .setting-fold>summary::-webkit-details-marker{display:none}
+.setting-fold>summary:hover{background:#FBFAF8}
+.setting-fold{transition:box-shadow .15s}
+.setting-fold[open]{box-shadow:0 4px 14px rgba(25,24,23,.05)}
 .setting-fold-title b{display:block;color:var(--ink);font-size:15px;letter-spacing:.02em}
 .setting-fold-title span{display:block;margin-top:5px;color:var(--sub);font-size:12px;line-height:1.55}
 .setting-fold>summary:after{content:'展开';display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:#F0EDEA;color:var(--sub);font-size:11px;font-weight:900;white-space:nowrap}
@@ -479,7 +478,6 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
       <a href="#" data-group="eat" onclick="goGroup('eat');return false">现在去吃</a>
       <a href="#" data-group="number" onclick="goGroup('number');return false">我有号码</a>
       <a href="#" data-group="book" onclick="goGroup('book');return false">约未来</a>
-      <a href="#" data-group="mine" onclick="goGroup('mine');return false">我的单据</a>
       <a href="#" data-group="settings" onclick="goGroup('settings');return false">设置</a>
     </nav>
     <span class="authpill hid" id="authPill" onclick="authPillClick()"></span>
@@ -526,8 +524,8 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
           </button>
           <button class="task-card" onclick="go('ca')" type="button">
             <span class="tag auth">需要通行证 🎫</span>
-            <h3>约未来 / 自动蹲号</h3>
-            <p>查可约时段直接预约；没放出的时段交给自动蹲号盯着。</p>
+            <h3>约未来 / 自动抢</h3>
+            <p>查可约时段直接预约；没放出的时段让自动抢蹲着。</p>
             <div class="task-foot"><span class="mu">抢周末和晚餐黄金档</span><span class="task-arrow">›</span></div>
           </button>
         </div>
@@ -547,7 +545,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         <details class="card adv">
           <summary>当前偏好（人数 / 桌型 / 时段）</summary>
           <div class="ps mt16" id="ps"></div>
-          <button class="bt bt-w bt-s mt16" onclick="go('se',document.querySelector('[onclick*=se]'))">修改设置</button>
+          <div class="fl g8 fw mt16"><button class="bt bt-w bt-s" onclick="openSnPrefs()">改抢号偏好</button><button class="bt bt-w bt-s" onclick="go('re')">我的单据</button></div>
         </details>
       </aside>
     </div>
@@ -689,46 +687,11 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
       <div class="page-lead"><div><h2 class="ph">自动抢 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 已放出的时段「现在就抢」；还没放出的加目标「蹲」。抢到即停，启动前都会确认。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="addSn()">添加目标</button><button class="bt bt-r bt-s" onclick="saveSn()">保存计划</button><button class="bt bt-y bt-s" onclick="startSn()">启动蹲号</button></div></div>
       <div class="qbox mb16">
         <div class="fl ai jb fw g8"><label style="margin:0">现在就抢（已放出的时段）</label><span class="mu">按你的门店和时段偏好扫描可约日历，抢到第一个符合的就停止。</span></div>
-        <div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="sB()">按偏好开抢</button><button class="bt bt-w bt-s" onclick="go('ca')">先看可约日历</button><button class="bt bt-w bt-s" onclick="go('se')">改门店和时段偏好</button></div>
+        <div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="sB()">按偏好开抢</button><button class="bt bt-w bt-s" onclick="go('ca')">先看可约日历</button><button class="bt bt-w bt-s" onclick="el('snPrefs').open=true;el('snPrefs').scrollIntoView({behavior:'smooth'})">改抢号偏好</button></div>
       </div>
-      <div class="fl ai jb fw g8 mb16"><label style="margin:0">蹲还没放出的时段</label><span class="mu">指定日期、门店、时间窗，开放瞬间自动尝试。</span></div>
-      <div id="snRows"></div>
-      <div id="snPlan" class="mt16"><div class="empty">还没有蹲号目标。点“添加目标”，填日期、门店和时间窗。</div></div>
-    </div>
-  </section>
-
-  <section id="p-re" class="hid">
-    <div class="cd"><h2 class="ph">我的预约 / 排队号 <span class="pm" data-kind="maki" data-size="32"></span></h2><p class="ph-sub mb16"><span class="tag auth">需要通行证 🎫</span> 这里用于查看官方预约和排队号；取消按钮是危险操作，会单独确认。</p><div id="rc"><div class="empty">加载中</div></div></div>
-  </section>
-
-  <section id="p-se" class="hid">
-    <div class="settings-grid">
-      <div class="section-banner"><b>设置</b><span>先看寿司郎认证、GitHub 登录、通知和数据状态；普通用户只需要处理首屏红色或黄色项。</span></div>
-      <div class="cd settings-wide">
-        <div class="page-lead"><div><h2 class="ph">账号与关键状态 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">这里决定哪些能力可用：看排队不用登录；取号、预约和我的单据需要寿司郎认证；线上基准需要 GitHub 登录；提醒需要至少一个通知渠道。</p></div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="resetAuthAndStart()">重置并重新认证</button><button class="bt bt-w bt-s" onclick="startCloudLogin()">登录 GitHub</button><button class="bt bt-w bt-s" onclick="tN('all')">测试通知</button></div></div>
-        <div id="settingsStatus" class="settings-status-grid"><div class="ci">状态加载中</div></div>
-        <div id="settingsPrimaryActions" class="fl g8 fw mt16"></div>
-      </div>
-      <details class="cd setting-fold settings-wide" open>
-        <summary><span class="setting-fold-title"><b>寿司郎通行证（认证凭证）</b><span>只在抢预约、远程取号、读取我的单据时需要。通行证会被寿司郎定期回收，也可能被手机端重新打开小程序后顶掉。</span></span></summary>
-        <div class="setting-fold-body">
-        <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">通行证状态</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="openAuthWizard()">拿通行证（向导）</button><button class="bt bt-o bt-s" onclick="resetAuthOnly(true)">重置认证</button><button class="bt bt-w bt-s" onclick="testAuthProbe()">测试基础接口</button></div></div>
-        <div class="ps">遇到 E010/error.server、401/403、远程取号失败或我的单据读不到时，优先点“重置认证”，再重新获取凭证。重置只清理本机保存的凭证，不会取消你已经拿到的预约或排队号。</div>
-        <div id="mobileAuthState" class="diag-detail mt8">尚未加载</div>
-        <details class="btn-more mt16"><summary></summary><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="startMobileAuthCapture()">启动手机代理捕获</button><button class="bt bt-w bt-s" onclick="loadMobileAuth()">刷新捕获状态</button><button class="bt bt-o bt-s" onclick="stopMobileAuthCapture()">停止捕获</button></div><div id="mobileAuthBox" class="ua-box hid"><div id="mobileAuthQR"></div><div id="mobileAuthURLs" class="ps ua-urls"></div></div></details>
-        </div>
-      </details>
-      <details class="cd setting-fold settings-wide" open>
-        <summary><span class="setting-fold-title"><b>GitHub 登录与线上基准</b><span>GitHub 只用于认证线上排队基准服务，和寿司郎小程序凭证不是一回事。</span></span></summary>
-        <div class="setting-fold-body">
-        <div id="cloudState" class="diag-detail">尚未加载</div>
-        <div class="fl g8 fw mt16"><button class="bt bt-r bt-s" onclick="startCloudLogin()">用 GitHub 登录</button><button class="bt bt-w bt-s" onclick="testCloudAuth()">验证连接</button><button class="bt bt-o bt-s" onclick="logoutCloudAuth()">退出云端</button></div>
-        <div class="ps mt8">登录后可以读取线上基准来补强排队压力和到店预测；不会取号、取消号，也不会把数据库凭证写入本机。</div>
-        <details class="btn-more mt16"><summary></summary><div class="fg mt8"><label>云端服务地址</label><input type="url" id="cloudUrl" placeholder="https://sushiro-cloud.your-name.workers.dev"></div><div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="saveCloudAuth()">保存服务地址</button></div><div class="ps mt8">仅自建或排障时需要。线上数据库凭证只应保存在云端服务 secrets 里。</div></details>
-        </div>
-      </details>
-      <div class="cd">
-        <div class="cd-t">预约与取号偏好</div>
+      <details class="adv mb16" id="snPrefs">
+        <summary>抢号偏好：人数 / 门店优先级 / 时段（自动抢和远程取号都用它）</summary>
+        <div class="mt16">
         <div class="preset-grid">
           <button class="preset" onclick="applyPreset('weekday_dinner')">工作日晚餐</button>
           <button class="preset" onclick="applyPreset('weekend_lunch')">周末午餐</button>
@@ -752,8 +715,43 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         <div class="fg"><label>周六时段</label><div id="sa" class="tl"></div><span class="at" onclick="aT('sa')">添加时段</span></div>
         <div class="fg"><label>周日时段</label><div id="su" class="tl"></div><span class="at" onclick="aT('su')">添加时段</span></div>
         <button class="bt bt-r mt8" onclick="sP()">保存偏好</button>
+        </div>
+      </details>
+      <div class="fl ai jb fw g8 mb16"><label style="margin:0">蹲还没放出的时段</label><span class="mu">指定日期、门店、时间窗，开放瞬间自动尝试。</span></div>
+      <div id="snRows"></div>
+      <div id="snPlan" class="mt16"><div class="empty">还没有蹲号目标。点“添加目标”，填日期、门店和时间窗。</div></div>
+    </div>
+  </section>
+
+  <section id="p-re" class="hid">
+    <div class="cd"><h2 class="ph">我的预约 / 排队号 <span class="pm" data-kind="maki" data-size="32"></span></h2><p class="ph-sub mb16"><span class="tag auth">需要通行证 🎫</span> 这里用于查看官方预约和排队号；取消按钮是危险操作，会单独确认。</p><div id="rc"><div class="empty">加载中</div></div></div>
+  </section>
+
+  <section id="p-se" class="hid">
+    <div class="settings-grid">
+      <div class="cd settings-wide">
+        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">先看下面四条状态：红色需要处理，黄色按需配置；具体配置都在折叠里。</p></div></div>
+        <div id="settingsStatus"><div class="ci">状态加载中</div></div>
       </div>
-      <details class="cd setting-fold" open>
+      <details class="cd setting-fold settings-wide">
+        <summary><span class="setting-fold-title"><b>寿司郎通行证（认证凭证）</b><span>只在抢预约、远程取号、读取我的单据时需要。通行证会被寿司郎定期回收，也可能被手机端重新打开小程序后顶掉。</span></span></summary>
+        <div class="setting-fold-body">
+        <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">通行证状态</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="openAuthWizard()">拿通行证（向导）</button><button class="bt bt-o bt-s" onclick="resetAuthOnly(true)">重置认证</button><button class="bt bt-w bt-s" onclick="testAuthProbe()">测试基础接口</button></div></div>
+        <div class="ps">遇到 E010/error.server、401/403、远程取号失败或我的单据读不到时，优先点“重置认证”，再重新获取凭证。重置只清理本机保存的凭证，不会取消你已经拿到的预约或排队号。</div>
+        <div id="mobileAuthState" class="diag-detail mt8">尚未加载</div>
+        <details class="btn-more mt16"><summary></summary><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="startMobileAuthCapture()">启动手机代理捕获</button><button class="bt bt-w bt-s" onclick="loadMobileAuth()">刷新捕获状态</button><button class="bt bt-o bt-s" onclick="stopMobileAuthCapture()">停止捕获</button></div><div id="mobileAuthBox" class="ua-box hid"><div id="mobileAuthQR"></div><div id="mobileAuthURLs" class="ps ua-urls"></div></div></details>
+        </div>
+      </details>
+      <details class="cd setting-fold settings-wide">
+        <summary><span class="setting-fold-title"><b>GitHub 登录与线上基准</b><span>GitHub 只用于认证线上排队基准服务，和寿司郎小程序凭证不是一回事。</span></span></summary>
+        <div class="setting-fold-body">
+        <div id="cloudState" class="diag-detail">尚未加载</div>
+        <div class="fl g8 fw mt16"><button class="bt bt-r bt-s" onclick="startCloudLogin()">用 GitHub 登录</button><button class="bt bt-w bt-s" onclick="testCloudAuth()">验证连接</button><button class="bt bt-o bt-s" onclick="logoutCloudAuth()">退出云端</button></div>
+        <div class="ps mt8">登录后可以读取线上基准来补强排队压力和到店预测；不会取号、取消号，也不会把数据库凭证写入本机。</div>
+        <details class="btn-more mt16"><summary></summary><div class="fg mt8"><label>云端服务地址</label><input type="url" id="cloudUrl" placeholder="https://sushiro-cloud.your-name.workers.dev"></div><div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="saveCloudAuth()">保存服务地址</button></div><div class="ps mt8">仅自建或排障时需要。线上数据库凭证只应保存在云端服务 secrets 里。</div></details>
+        </div>
+      </details>
+      <details class="cd setting-fold">
         <summary><span class="setting-fold-title"><b>通知渠道</b><span>配置飞书、Telegram、Bark 或 Server酱；抢到预约、叫号提醒会用这里推送。</span></span></summary>
         <div class="setting-fold-body">
         <div class="fg"><label>飞书 Webhook</label><input type="text" id="nf" placeholder="https://open.feishu.cn/..."></div>
@@ -990,7 +988,7 @@ function uD(){
     b.textContent='捕获中';b.className='bt bt-y bt-l';b.onclick=sC;
     bc.classList.add('hid');
   }else if(es.status==='booking'||es.status==='sniping'){
-    badge.textContent='正在执行';title.textContent=es.status==='sniping'?'自动蹲号运行中':'自动抢预约运行中';copy.textContent=es.message||'页面可以保持打开；抢到预约后会保存记录、发送通知并停止。';
+    badge.textContent='正在执行';title.textContent=es.status==='sniping'?'自动抢（蹲号）运行中':'自动抢（按偏好）运行中';copy.textContent=es.message||'页面可以保持打开；抢到预约后会保存记录、发送通知并停止。';
     b.textContent='运行中';b.className='bt bt-r bt-l';b.onclick=sB;
     bc.classList.add('hid');
   }else if(es.status==='success'){
@@ -1013,10 +1011,10 @@ function uD(){
     const hasStores=(pr.selected_stores||[]).length>0;
     if(!hasStores){
       badge.textContent='通行证已就绪';title.textContent='下一步：选门店和偏好';copy.textContent='抢未来预约前，需要先选门店、人数、桌型和时间偏好。只看排队仍然可以直接使用。';
-      b.textContent='设置门店和偏好';b.className='bt bt-y bt-l';b.onclick=()=>go('se');
+      b.textContent='设置门店和偏好';b.className='bt bt-y bt-l';b.onclick=openSnPrefs;
       bc.textContent='先看实时排队';bc.onclick=()=>go('qt');
     }else{
-      badge.textContent='准备就绪';title.textContent='今天怎么吃？';copy.textContent='通行证和门店偏好都已就绪。可以查可约日历直接预约；目标明确就交给自动蹲号。';
+      badge.textContent='准备就绪';title.textContent='今天怎么吃？';copy.textContent='通行证和门店偏好都已就绪。可以查可约日历直接预约；目标明确就交给自动抢。';
       b.textContent='查可约时段';b.className='bt bt-r bt-l';b.onclick=()=>go('ca');
       bc.textContent='自动抢 / 蹲号';
       bc.className='bt bt-o';
@@ -1034,20 +1032,21 @@ function uE(){
   if(s.status==='capturing'&&s.capture){el('cb').classList.remove('hid');rG(s.capture)}else if(s.status!=='capturing'){el('cb').classList.add('hid')}
 }
 function remTab(t){const once=t==='once';el('remOnce').classList.toggle('hid',!once);el('remDaily').classList.toggle('hid',once);el('remTabOnce').classList.toggle('on',once);el('remTabDaily').classList.toggle('on',!once)}
+function openSnPrefs(){go('sn');setTimeout(()=>{const d=el('snPrefs');if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
 function openSettingsFold(id){go('se');setTimeout(()=>{const d=el(id);if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
 function focusNotifySettings(){go('se');setTimeout(()=>{const x=el('nf');if(x){x.scrollIntoView({behavior:'smooth',block:'center'});x.focus()}},60)}
-function settingsCard(title,value,copy,cls,actions){return'<div class="status-card '+(cls||'')+'"><b>'+esc(title)+'</b><strong>'+esc(value)+'</strong><p>'+esc(copy||'')+'</p>'+(actions?'<div class="fl g8 fw">'+actions+'</div>':'')+'</div>'}
 function renderSettingsStatus(){
- const box=el('settingsStatus'),acts=el('settingsPrimaryActions');if(!box)return;
- const stale=hc&&ah&&ah.status==='stale',authCls=!hc||stale?'bad':'ok',authValue=!hc?'未认证':stale?'可能过期':'已保存',authCopy=!hc?'取号、预约和我的单据需要先获取寿司郎凭证。':stale?'凭证可能过期或被手机端登录顶掉，建议重置后重新认证。':'取号、预约和我的单据可用；凭证仍可能后续过期。';
- const cloudConn=!!cloudAuth.connected,cloudCfg=!!cloudAuth.configured,cloudCls=cloudConn?'ok':cloudCfg?'warn':'warn',cloudValue=cloudConn?('已登录 '+(cloudAuth.user_login||'GitHub')):(cloudCfg?'待登录':'未连接'),cloudCopy=cloudConn?'线上基准可用于补强排队压力和到店预测。':cloudCfg?'服务地址已配置，登录 GitHub 后可读取线上基准。':'不影响本地功能；自建云端服务可在调试模式配置。';
- const channels=notifyChannels.length?notifyChannels.join('、'):(nfc?'已配置':'未配置'),notifyCls=nfc?'ok':'bad',notifyCopy=nfc?'抢到预约、叫号提醒和异常提醒可以推送。':'多段到店提醒、自动取号和抢号结果不会主动推送。';
- const dataActive=(spState&&spState.running)||cloudConn,dataCls=dataActive?'ok':((spState&&spState.enabled)||cloudCfg?'warn':'warn'),dataValue=(spState&&spState.running)?'本机采集中':cloudConn?'线上基准可用':(spState&&spState.enabled)?'待运行':'未增强',dataCopy=dataActive?'曲线会优先融合可用的本机和线上数据。':'只看实时排队仍可用；开启采集后“几点叫到”会更准。';
- box.innerHTML=settingsCard('寿司郎认证',authValue,authCopy,authCls,!hc||stale?'<button class="bt bt-r bt-s" onclick="resetAuthAndStart()">重新认证</button>':'<button class="bt bt-w bt-s" onclick="go(\'re\')">看我的单据</button>')+settingsCard('GitHub 线上基准',cloudValue,cloudCopy,cloudCls,cloudConn?'<button class="bt bt-o bt-s" onclick="logoutCloudAuth()">退出</button>':'<button class="bt bt-w bt-s" onclick="startCloudLogin()">登录 GitHub</button>')+settingsCard('通知提醒',channels,notifyCopy,notifyCls,'<button class="bt bt-w bt-s" onclick="focusNotifySettings()">配置通知</button><button class="bt bt-w bt-s" onclick="tN(\'all\')">测试</button>')+settingsCard('预测数据',dataValue,dataCopy,dataCls,'<button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">配置</button>');
- if(acts){
-  const a=[];if(!hc||stale)a.push('<button class="bt bt-r" onclick="resetAuthAndStart()">重置并重新认证</button>');if(!nfc)a.push('<button class="bt bt-w" onclick="focusNotifySettings()">配置通知</button>');if(!cloudConn)a.push('<button class="bt bt-w" onclick="startCloudLogin()">登录 GitHub</button>');if(!(spState&&spState.running))a.push('<button class="bt bt-w" onclick="openSettingsFold(\'fold-sm\')">提升预测准确度</button>');
-  acts.innerHTML=a.join('');
- }
+ const box=el('settingsStatus');if(!box)return;
+ const stale=hc&&ah&&ah.status==='stale';
+ const cloudConn=!!cloudAuth.connected,cloudCfg=!!cloudAuth.configured;
+ const spOK=!!(spState&&(spState.running||spState.enabled||spState.sample_runs>0));
+ const items=[
+  {t:'寿司郎通行证 🎫',d:!hc?'看排队不需要；抢预约、取号、读单据才需要':stale?'可能已失效，建议重新获取':'已就绪；之后过期会自动提醒',s:!hc?'warn':stale?'bad':'ok',a:!hc?{l:'去获取',f:'openAuthWizard()'}:stale?{l:'重新认证',f:'resetAuthAndStart()'}:{l:'看我的单据',f:"go('re')"}},
+  {t:'GitHub 线上基准',d:cloudConn?('已登录 '+(cloudAuth.user_login||'GitHub')+'，全国排队基准已接入'):'登录后叫号预测会叠加全国线上基准（可选）',s:cloudConn?'ok':'warn',a:cloudConn?{l:'退出',f:'logoutCloudAuth()'}:{l:'登录 GitHub',f:'startCloudLogin()'}},
+  {t:'通知渠道',d:nfc?('已配置'+(notifyChannels.length?('：'+notifyChannels.join('、')):'')):'不配置就收不到叫号提醒和抢到通知',s:nfc?'ok':'warn',a:nfc?{l:'测试通知',f:"tN('all')"}:{l:'去配置',f:'focusNotifySettings()'}},
+  {t:'预测数据',d:spOK?'采集中，“几点叫到”会越来越准':'公开曲线已默认记录；想更准可开启凭证态采集',s:spOK?'ok':'warn',a:{l:'配置',f:"openSettingsFold('fold-sm')"}}
+ ];
+ box.innerHTML=healthStripHTML(items);
 }
 function renderSettingsDataState(){const box=el('settingsDataState');if(!box)return;const s=spState||{},q=spQueueState||{},cloud=cloudAuth||{},sampleCls=s.running?'ok':s.enabled?'warn':'',authCls=q.auth_ok?'ok':q.needs_auth?'bad':'warn',cloudCls=cloud.connected?'ok':cloud.configured?'warn':'warn';box.innerHTML=chip('本机采集',s.running?'运行中':s.enabled?'已启用':'未启动',sampleCls)+chip('寿司郎凭证',q.auth_ok?'可用':q.needs_auth?'需重新认证':'未确认',authCls)+chip('线上基准',cloud.connected?'已连接':cloud.configured?'待登录':'未连接',cloudCls)+chip('样本',s.queue_snapshots||s.snapshots||0,'ok')+chip('最近结果',s.last_error||s.message||q.message||'无',s.last_error?'warn':'ok')}
 async function checkUpdate(){try{const u=await(await fetch('/api/update')).json(),b=el('updBox');if(!b)return;if(u.current_version==='dev'){b.classList.add('hid');return}if(u.update_available){b.classList.remove('hid');b.innerHTML='<h2>版本更新</h2><div class="ps"><b>'+esc(u.latest_version)+'</b><span class="line">当前 '+esc(u.current_version)+'</span></div><a class="bt bt-w bt-s mt16" href="'+escA(u.url||'#')+'" target="_blank">打开 Release</a>'}else b.classList.add('hid')}catch(e){}}
@@ -1105,7 +1104,7 @@ function openFirstUseWizard(){let ov=el('firstUse');if(!ov){ov=document.createEl
  +'<div style="text-align:center;margin:16px 0 20px"><button class="bt bt-r bt-l" onclick="closeFirstUseWizard();openGuestStorePicker()">🔍 选我常去的门店</button></div>'
  +'<div class="task-grid">'
  +'<button class="task-card" type="button" onclick="firstUseGo(\'qd\',false)"><span class="tag read">只读 · 直接用</span><h3>我已经拿到号</h3><p>输入号码，估几点叫到、几点出发。</p><div class="task-foot"><span class="mu">直接进入</span><span class="task-arrow">›</span></div></button>'
- +'<button class="task-card" type="button" onclick="firstUseGo(\'ca\',true)"><span class="tag auth">需要通行证 🎫</span><h3>想约未来某天</h3><p>查可约时段直接预约；没放出的交给自动蹲号。</p><div class="task-foot"><span class="mu">没有通行证会先引导获取</span><span class="task-arrow">›</span></div></button>'
+ +'<button class="task-card" type="button" onclick="firstUseGo(\'ca\',true)"><span class="tag auth">需要通行证 🎫</span><h3>想约未来某天</h3><p>查可约时段直接预约；没放出的让自动抢蹲着。</p><div class="task-foot"><span class="mu">没有通行证会先引导获取</span><span class="task-arrow">›</span></div></button>'
  +'</div></div>';
  ov.classList.remove('hid');ov.style.display='flex'}
 function closeFirstUseWizard(){const ov=el('firstUse');if(ov){ov.classList.add('hid');ov.style.display='none'}}
