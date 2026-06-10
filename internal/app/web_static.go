@@ -458,7 +458,7 @@ body:not(.debug-mode) .debug-only{display:none!important}
 .hero-pm{position:absolute;top:14px;right:16px;opacity:.95}
 .hero{position:relative}
 .belt{overflow:hidden;margin-top:36px;border-top:2px solid var(--line);border-bottom:2px solid var(--line);background:repeating-linear-gradient(90deg,#F4F1EE 0 46px,#ECE7E2 46px 92px);height:64px}
-.belt-track{display:flex;width:max-content;padding:8px 0 0 18px;animation:beltmove 60s linear infinite}
+.belt-track{display:flex;width:max-content;padding-top:8px;animation:beltmove 60s linear infinite}
 .belt-item{display:flex;flex-direction:column;align-items:center;margin-right:56px}
 .belt-item .plate{width:48px;height:9px;border-radius:50%;background:#fff;border:2px solid #E0DAD4;margin-top:-7px;box-shadow:0 2px 3px rgba(0,0,0,.08)}
 @keyframes beltmove{to{transform:translateX(-50%)}}
@@ -1180,7 +1180,16 @@ function mascotSVG(mood,size,kind){size=size||64;if(!kind||kind==='rand')kind=MA
  return '<svg class="mascot" width="'+size+'" height="'+size+'" viewBox="0 0 72 64" aria-hidden="true">'+body+'</svg>'}
 function mascotRowHTML(mood,size){return '<div class="mascot-row">'+MASCOT_KINDS.map(k=>mascotSVG(mood,size||44,k)).join('')+'</div>'}
 function fillPageMascots(){document.querySelectorAll('.pm').forEach(x=>{if(!x.innerHTML)x.innerHTML=mascotSVG(x.dataset.mood||'happy',x.dataset.size?+x.dataset.size:34,x.dataset.kind||'rand')})}
-function buildBelt(){const b=el('belt');if(!b)return;const kinds=MASCOT_KINDS.concat(MASCOT_KINDS);b.innerHTML='<div class="belt-track">'+kinds.map(k=>'<div class="belt-item">'+mascotSVG('plain',34,k)+'<i class="plate"></i></div>').join('')+'</div>'}
+function buildBelt(){const b=el('belt');if(!b)return;
+ // 无缝循环：轨道 = 完全相同的两段，translateX(-50%) 回到起点时画面逐像素一致。
+ // 一段必须铺得比视口还宽，否则宽屏右侧会露出空白。itemW = 盘子 48 + 间距 56。
+ const itemW=104,need=Math.max(window.innerWidth||1280,1280)+itemW;
+ let half=[];while(half.length*itemW<need)half=half.concat(MASCOT_KINDS);
+ const seg=half.map(k=>'<div class="belt-item">'+mascotSVG('plain',34,k)+'<i class="plate"></i></div>').join('');
+ const dur=Math.round(half.length*itemW/26); // 恒定 ~26px/s，与宽度无关
+ b.innerHTML='<div class="belt-track" style="animation-duration:'+dur+'s">'+seg+seg+'</div>'}
+let beltResizeT=null;
+window.addEventListener('resize',()=>{clearTimeout(beltResizeT);beltResizeT=setTimeout(buildBelt,400)});
 function lsGet(k){try{return localStorage.getItem(k)||''}catch(e){return''}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function rememberStores(k,ids){lsSet(k,(ids||[]).join(','))}
