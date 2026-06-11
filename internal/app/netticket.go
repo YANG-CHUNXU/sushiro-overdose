@@ -325,7 +325,7 @@ func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketP
 }
 
 func netTicketLooksSuccessful(ticket ReservationRecord) bool {
-	return strings.TrimSpace(ticket.Number) != "" || ticket.TicketID != 0
+	return reservationRecordLooksSuccessful(ticket) && !reservationRecordIsReservation(ticket)
 }
 
 // reserveNetTicketFire 用独占创建的锁文件占位，返回 true 表示本进程抢到了今天的取号执行权。

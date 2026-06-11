@@ -91,7 +91,11 @@ func refreshReservationItemsWithCurrentNetTicket(ctx context.Context, client *Cl
 		return filterStaleLocalNetTickets(items, time.Now())
 	}
 	ticket, err := client.GetNetTicketStatus(ctx)
-	if err == nil && netTicketLooksSuccessful(ticket) {
+	if err == nil && reservationRecordLooksSuccessful(ticket) {
+		if reservationRecordIsReservation(ticket) {
+			ticket.Kind = "reservation"
+			return upsertReservationItem(items, ticket)
+		}
 		ticket = normalizeNetTicketRecord(ticket)
 		syncLocalNetTicketState(ticket)
 		return upsertReservationItem(items, ticket)
@@ -105,6 +109,10 @@ func refreshReservationItemsWithCurrentNetTicket(ctx context.Context, client *Cl
 }
 
 func normalizeNetTicketRecord(ticket ReservationRecord) ReservationRecord {
+	if reservationRecordIsReservation(ticket) {
+		ticket.Kind = "reservation"
+		return ticket
+	}
 	ticket.Kind = "net_ticket"
 	if strings.TrimSpace(ticket.Status) == "" {
 		ticket.Status = "WAITING"
@@ -198,8 +206,29 @@ func reservationItemSameIdentity(a, b ReservationRecord) bool {
 }
 
 func isLocalNetTicketRecord(record ReservationRecord) bool {
+	if reservationRecordIsReservation(record) {
+		return false
+	}
 	kind := strings.ToLower(strings.TrimSpace(record.Kind))
 	return kind == "net_ticket" || record.Wait > 0 || strings.ToUpper(strings.TrimSpace(record.Status)) == "WAITING"
+}
+
+func reservationRecordLooksSuccessful(record ReservationRecord) bool {
+	return strings.TrimSpace(record.Number) != "" || record.TicketID != 0
+}
+
+func reservationRecordIsReservation(record ReservationRecord) bool {
+	kind := strings.ToLower(strings.TrimSpace(record.Kind))
+	if kind == "reservation" || kind == "reservation_ticket" {
+		return true
+	}
+	return reservationRecordHasSchedule(record)
+}
+
+func reservationRecordHasSchedule(record ReservationRecord) bool {
+	return strings.TrimSpace(record.SlotLabel) != "" ||
+		strings.TrimSpace(record.Start) != "" ||
+		strings.TrimSpace(record.End) != ""
 }
 
 func localNetTicketIsStale(record ReservationRecord, savedAt string, now time.Time) bool {
