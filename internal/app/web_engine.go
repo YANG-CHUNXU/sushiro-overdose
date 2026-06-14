@@ -79,8 +79,7 @@ func clearLocalReservationOnly() {
 		return
 	}
 	active := *state.ActiveReservation
-	kind := strings.ToLower(strings.TrimSpace(active.Kind))
-	if kind == "net_ticket" || active.Wait > 0 || strings.ToUpper(strings.TrimSpace(active.Status)) == "WAITING" {
+	if isLocalNetTicketRecord(active) {
 		return
 	}
 	_ = ClearState(StateFilePath())

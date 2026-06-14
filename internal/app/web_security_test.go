@@ -150,6 +150,36 @@ func TestClearLocalReservationOnlyClearsReservation(t *testing.T) {
 	}
 }
 
+func TestClearLocalReservationOnlyClearsWaitingReservation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := SaveState(StateFilePath(), State{
+		ActiveReservation: &ReservationRecord{
+			Kind:      "reservation",
+			Status:    "WAITING",
+			Number:    "7160",
+			TicketID:  7160,
+			QueueDate: "20260704",
+			Start:     "140000",
+			End:       "141500",
+			Wait:      110,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	clearLocalReservationOnly()
+
+	state, err := LoadState(StateFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveReservation != nil {
+		t.Fatalf("waiting reservation should be cleared: %+v", state.ActiveReservation)
+	}
+}
+
 func TestLoadReservationsFallbackDropsStaleNetTicket(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
