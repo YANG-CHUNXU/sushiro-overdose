@@ -494,6 +494,8 @@ func buildQueuePressureCurve(ctx context.Context, storeID, date string, now time
 		out.Message = "还没有这家店今天的本机采样曲线。开启本机数据收集后会逐步补齐。"
 		if baselineErr != nil {
 			out.Message += " 线上 Turso 基准暂时不可用。"
+		} else if baselineStatus.Used {
+			out.Message += " 线上 Turso 基准已连接，但这家店暂时没有可用基准数据。"
 		} else if baselineStatus.Configured && !baselineStatus.Used {
 			out.Message += " 线上 Turso 基准未返回可用数据。"
 		} else if !baselineStatus.Configured {

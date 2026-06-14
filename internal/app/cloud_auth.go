@@ -21,13 +21,14 @@ import (
 )
 
 const (
-	cloudAuthConfigFile       = "cloud_auth.json"
-	cloudAuthURLEnv           = "SUSHIRO_CLOUD_URL"
-	cloudAuthSessionTokenEnv  = "SUSHIRO_CLOUD_SESSION_TOKEN"
-	defaultCloudAuthBaseURL   = "https://sushiro-cloud.ryujo.online"
-	cloudAuthTimeout          = 12 * time.Second
-	cloudOAuthStateTTL        = 10 * time.Minute
-	cloudAuthSessionTokenSize = 32
+	cloudAuthConfigFile           = "cloud_auth.json"
+	cloudAuthURLEnv               = "SUSHIRO_CLOUD_URL"
+	cloudAuthSessionTokenEnv      = "SUSHIRO_CLOUD_SESSION_TOKEN"
+	defaultCloudAuthBaseURL       = "https://sushiro-cloud.ryujo.online"
+	cloudAuthBaselineProbeStoreID = "3006"
+	cloudAuthTimeout              = 12 * time.Second
+	cloudOAuthStateTTL            = 10 * time.Minute
+	cloudAuthSessionTokenSize     = 32
 )
 
 type CloudAuthConfig struct {
@@ -42,18 +43,23 @@ type CloudAuthConfig struct {
 }
 
 type CloudAuthStatus struct {
-	Configured      bool   `json:"configured"`
-	Connected       bool   `json:"connected"`
-	BaseURL         string `json:"base_url,omitempty"`
-	UserLogin       string `json:"user_login,omitempty"`
-	UserName        string `json:"user_name,omitempty"`
-	AvatarURL       string `json:"avatar_url,omitempty"`
-	ConnectedAt     string `json:"connected_at,omitempty"`
-	ExpiresAt       string `json:"expires_at,omitempty"`
-	LastVerifiedAt  string `json:"last_verified_at,omitempty"`
-	SessionFromEnv  bool   `json:"session_from_env,omitempty"`
-	LastError       string `json:"last_error,omitempty"`
-	ProviderMessage string `json:"provider_message,omitempty"`
+	Configured          bool   `json:"configured"`
+	Connected           bool   `json:"connected"`
+	BaseURL             string `json:"base_url,omitempty"`
+	UserLogin           string `json:"user_login,omitempty"`
+	UserName            string `json:"user_name,omitempty"`
+	AvatarURL           string `json:"avatar_url,omitempty"`
+	ConnectedAt         string `json:"connected_at,omitempty"`
+	ExpiresAt           string `json:"expires_at,omitempty"`
+	LastVerifiedAt      string `json:"last_verified_at,omitempty"`
+	SessionFromEnv      bool   `json:"session_from_env,omitempty"`
+	BaselineConnected   bool   `json:"baseline_connected,omitempty"`
+	BaselineStoreCount  int    `json:"baseline_store_count,omitempty"`
+	BaselineLatestCount int    `json:"baseline_latest_count,omitempty"`
+	BaselineRollupCount int    `json:"baseline_rollup_count,omitempty"`
+	BaselineUpdatedAt   string `json:"baseline_updated_at,omitempty"`
+	LastError           string `json:"last_error,omitempty"`
+	ProviderMessage     string `json:"provider_message,omitempty"`
 }
 
 type cloudMeResponse struct {
@@ -214,7 +220,12 @@ func BuildCloudAuthStatus(ctx context.Context, verify bool) CloudAuthStatus {
 		cfg.ConnectedAt = cfg.LastVerifiedAt
 	}
 	_ = SaveCloudAuthConfig(cfg)
-	return cloudAuthStatusFromConfig(cfg)
+	status = cloudAuthStatusFromConfig(cfg)
+	if err := applyCloudBaselineProbe(ctx, cfg, &status); err != nil {
+		status.LastError = err.Error()
+		return status
+	}
+	return status
 }
 
 func cloudAuthStatusFromConfig(cfg CloudAuthConfig) CloudAuthStatus {
@@ -231,6 +242,56 @@ func cloudAuthStatusFromConfig(cfg CloudAuthConfig) CloudAuthStatus {
 		SessionFromEnv:  strings.TrimSpace(os.Getenv(cloudAuthSessionTokenEnv)) != "",
 		ProviderMessage: "GitHub 登录只用于读取线上排队基准；数据库密钥不会写入本机。",
 	}
+}
+
+func applyCloudBaselineProbe(ctx context.Context, cfg CloudAuthConfig, status *CloudAuthStatus) error {
+	export, err := fetchQueueBaselineFromCloud(ctx, cfg, cloudAuthBaselineProbeStoreID, time.Now())
+	if err != nil {
+		return err
+	}
+	status.BaselineConnected = true
+	status.BaselineStoreCount = export.Stats.StoreCount
+	status.BaselineLatestCount = export.Stats.LatestCount
+	status.BaselineRollupCount = export.Stats.RollupCount
+	status.BaselineUpdatedAt = export.Stats.SourceUpdatedAt
+	if status.BaselineStoreCount == 0 {
+		status.BaselineStoreCount = countQueueBaselineStores(export)
+	}
+	if status.BaselineLatestCount == 0 {
+		status.BaselineLatestCount = len(export.Latest)
+	}
+	if status.BaselineRollupCount == 0 {
+		status.BaselineRollupCount = len(export.Rollups)
+	}
+	if status.BaselineUpdatedAt == "" {
+		status.BaselineUpdatedAt = export.GeneratedAt
+	}
+	if status.BaselineLatestCount+status.BaselineRollupCount == 0 {
+		status.ProviderMessage = "GitHub 会话可用，线上基准接口已响应；探测门店暂未返回基准数据。"
+		return nil
+	}
+	status.ProviderMessage = "GitHub 登录和线上排队基准均已验证；图表会按门店自动读取 Turso 基准。"
+	return nil
+}
+
+func countQueueBaselineStores(export QueueBaselineExport) int {
+	seen := map[int]bool{}
+	for _, store := range export.Stores {
+		if store.StoreID > 0 {
+			seen[store.StoreID] = true
+		}
+	}
+	for _, latest := range export.Latest {
+		if latest.StoreID > 0 {
+			seen[latest.StoreID] = true
+		}
+	}
+	for _, rollup := range export.Rollups {
+		if rollup.StoreID > 0 {
+			seen[rollup.StoreID] = true
+		}
+	}
+	return len(seen)
 }
 
 func fetchCloudMe(ctx context.Context, cfg CloudAuthConfig) (cloudMeResponse, error) {

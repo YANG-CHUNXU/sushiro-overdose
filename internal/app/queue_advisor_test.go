@@ -1,6 +1,10 @@
 package app
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -116,6 +120,46 @@ func TestBuildRemoteQueuePressureCurvePoints(t *testing.T) {
 	}
 	if points[2].Time != "11:03" || points[2].Source != "remote_latest" || points[2].CalledNo != 220 {
 		t.Fatalf("latest point mismatch: %+v", points[2])
+	}
+}
+
+func TestBuildQueuePressureCurveExplainsConnectedCloudWithNoStoreData(t *testing.T) {
+	resetQueueBaselineRemoteCacheForTest(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(queueBaselineTursoURLEnv, "")
+	t.Setenv(queueBaselineTursoTokenEnv, "")
+	t.Setenv(queueBaselineTursoFallbackURL, "")
+	t.Setenv(queueBaselineTursoFallbackAuth, "")
+	t.Setenv(cloudAuthURLEnv, "")
+	t.Setenv(cloudAuthSessionTokenEnv, "")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/queue/baseline/store" {
+			t.Fatalf("path = %s, want /api/queue/baseline/store", r.URL.Path)
+		}
+		writeJSON(w, QueueBaselineExport{
+			Version:       1,
+			GeneratedAt:   "2026-06-08T10:00:00+08:00",
+			Source:        "turso-cloudflare",
+			BucketMinutes: 10,
+			DateTypes:     []string{"weekday"},
+			Stats:         QueueBaselineStats{},
+		})
+	}))
+	defer server.Close()
+	if err := SaveCloudAuthConfig(CloudAuthConfig{BaseURL: server.URL, SessionToken: "cloud-session", UserLogin: "octocat"}); err != nil {
+		t.Fatal(err)
+	}
+
+	curve := buildQueuePressureCurve(context.Background(), "3006", "2026-06-08", time.Date(2026, 6, 8, 10, 0, 0, 0, time.UTC))
+
+	if curve.Baseline.Provider != "cloudflare" || !curve.Baseline.Used {
+		t.Fatalf("baseline = %+v, want used cloudflare", curve.Baseline)
+	}
+	if !strings.Contains(curve.Message, "线上 Turso 基准已连接") {
+		t.Fatalf("message = %q, want connected cloud no-data explanation", curve.Message)
 	}
 }
 

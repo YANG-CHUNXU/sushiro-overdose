@@ -141,6 +141,20 @@ func TestEmbeddedUXCommandCenterAnchors(t *testing.T) {
 	}
 }
 
+func TestEmbeddedCloudAuthVerifiesBaselineAfterLogin(t *testing.T) {
+	for _, needle := range []string{
+		"cloudVerifyOnLoad",
+		"if(p.get('cloud_connected')){cloudVerifyOnLoad=true;toast('云端 GitHub 登录已完成')}",
+		"const verifyCloud=cloudVerifyOnLoad;cloudVerifyOnLoad=false;await loadCloudAuth(verifyCloud)",
+		"catch(e){await loadCloudAuth(true);toast('云端连接失败：'",
+		"chip('Turso 基准'",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少云端基准验证片段：%s", needle)
+		}
+	}
+}
+
 // TestEmbeddedJavaScriptSyntax 用 node --check 校验内嵌 JS 语法；环境没有 node 时跳过，
 // 因此不引入硬依赖。CI 的 runner 自带 node，可作为语法门禁。
 func TestEmbeddedJavaScriptSyntax(t *testing.T) {

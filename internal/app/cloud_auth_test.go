@@ -76,6 +76,57 @@ func TestHandleCloudAuthCallbackSavesVerifiedSession(t *testing.T) {
 	}
 }
 
+func TestHandleCloudAuthTestVerifiesBaselineEndpoint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(cloudAuthURLEnv, "")
+	t.Setenv(cloudAuthSessionTokenEnv, "")
+
+	baselineCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/me":
+			if got := r.Header.Get("Authorization"); got != "Bearer cloud-session" {
+				t.Fatalf("Authorization = %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(cloudMeResponse{OK: true, User: cloudUser{Login: "octocat"}})
+		case "/api/queue/baseline/store":
+			baselineCalls++
+			if got := r.URL.Query().Get("store_id"); got == "" {
+				t.Fatalf("store_id should be set for baseline probe")
+			}
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "Turso HTTP 401"})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	if err := SaveCloudAuthConfig(CloudAuthConfig{BaseURL: server.URL, SessionToken: "cloud-session"}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/cloud/auth/test", nil)
+	rr := httptest.NewRecorder()
+
+	handleCloudAuthTest(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502; body=%s", rr.Code, rr.Body.String())
+	}
+	if baselineCalls != 1 {
+		t.Fatalf("baselineCalls = %d, want 1", baselineCalls)
+	}
+	var status CloudAuthStatus
+	if err := json.NewDecoder(rr.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(status.LastError, "Turso HTTP 401") {
+		t.Fatalf("LastError = %q, want Turso failure", status.LastError)
+	}
+}
+
 func TestHandleCloudAuthStartUsesDefaultCloudURL(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
