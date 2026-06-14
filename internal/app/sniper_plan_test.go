@@ -82,9 +82,12 @@ func TestLoadSniperPlanReadsLegacyTargets(t *testing.T) {
 func TestStopRemainingSniperPlanTargetsAfterSuccess(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	loc := testLocation(t)
+	// sniper 的"开放时间"= 目标日期 - 30 天，用一个足够远的未来日期，
+	// 使 (日期-30天) 仍晚于现在，避免 refreshSniperPlanTarget 把 running 判成 expired。
+	tomorrow := time.Now().In(loc).Add(60 * 24 * time.Hour).Format("20060102")
 	targets := []SniperTarget{
-		{Date: "20260714", StartAfter: "193000", StartBefore: "203000", StoreID: "001"},
-		{Date: "20260714", StartAfter: "203000", StartBefore: "210000", StoreID: "001"},
+		{Date: tomorrow, StartAfter: "193000", StartBefore: "203000", StoreID: "001"},
+		{Date: tomorrow, StartAfter: "203000", StartBefore: "210000", StoreID: "001"},
 	}
 	plan := NormalizeSniperPlan(targets, loc)
 	if len(plan.Targets) != 2 {

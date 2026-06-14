@@ -75,9 +75,11 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 		e.setState(EngineIdle, "验证失败")
 		if isAuthError(err) {
 			DeleteLocalConfig()
+			noteAuthResult(err)
 			return fmt.Errorf("凭证参数已过期，请重新捕获")
 		}
-		return fmt.Errorf("验证失败: %w", err)
+		noteAuthResult(err)
+		return fmt.Errorf("验证失败: %s", friendlyOfficialAPIError(err))
 	}
 
 	setNotifier(BuildNotifierFromConfig())
@@ -318,6 +320,9 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 			t.LastError = "开放窗口内未预约成功"
 		})
 		e.addLog(fmt.Sprintf("狙击目标超时: %s", targetLabel))
+		sendNotification("寿司郎狙击 - 未抢到",
+			fmt.Sprintf("%s 开放窗口内未预约成功。可换个时段或门店再试。", targetLabel))
 	}
 	e.setState(EngineIdle, "狙击计划已结束，未预约成功")
+	sendNotification("寿司郎狙击 - 已结束", "狙击计划已结束，本轮未预约成功。打开应用查看详情。")
 }

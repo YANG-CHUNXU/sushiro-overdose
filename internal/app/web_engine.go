@@ -53,7 +53,7 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		noteAuthResult(err) // 凭证失败则标记 stale，触发提醒
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, friendlyOfficialAPIError(err))
 		return
 	}
 	markAuthHealthy()
@@ -631,7 +631,7 @@ func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := client.CancelReservation(r.Context(), body.TicketID); err != nil {
 		noteAuthResult(err)
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, http.StatusBadGateway, friendlyOfficialAPIError(err))
 		return
 	}
 	markAuthHealthy()

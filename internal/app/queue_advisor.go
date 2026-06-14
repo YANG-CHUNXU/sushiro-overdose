@@ -303,6 +303,14 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 
 	if targetNo > 0 {
 		advisor.Eta = buildQueueAdvisorEta(targetNo, travelMinutes, snapshot, store, rate, now, storeID)
+		// 合理性检查：号码远小于当前叫号，可能是输错或已经过号很久，避免误导用户白跑一趟。
+		if called := snapshot.DisplayCalledNo; called > 0 && targetNo < called-50 {
+			advisor.Warnings = append(advisor.Warnings,
+				fmt.Sprintf("你输入的 %d 号比当前叫到的 %d 号还小很多，可能已经过号或号码输错了，请到小程序核对后再判断。", targetNo, called))
+			if advisor.Eta != nil {
+				advisor.Eta.Risk = "high"
+			}
+		}
 	}
 	return advisor, nil
 }
