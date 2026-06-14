@@ -141,6 +141,60 @@ func TestEmbeddedUXCommandCenterAnchors(t *testing.T) {
 	}
 }
 
+func TestEmbeddedSushiroMechanismOnboarding(t *testing.T) {
+	satisfied := satisfiedDOMIDs()
+	for _, id := range []string{"mechanismMap"} {
+		if !satisfied[id] {
+			t.Errorf("缺少寿司郎机制说明锚点 id=%q", id)
+		}
+	}
+	for _, needle := range []string{
+		"当天排队号",
+		"未来预约",
+		"通行证不是排队号",
+		"自动抢预约",
+		"蹲未来预约时段",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少寿司郎机制说明片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedQueueChartsAreFirstClassSections(t *testing.T) {
+	for _, needle := range []string{
+		`id="qdEvidence"`,
+		`id="qdPressChart"`,
+		`id="qdInsights"`,
+		"整合走势大图",
+		"这家店的历史规律",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Fatalf("indexHTML 缺少排队图表片段：%s", needle)
+		}
+	}
+	for _, folded := range []string{
+		`<details class="card adv mt16" id="qdEvidence"`,
+		`<details class="card adv mt16" id="qdInsights"`,
+	} {
+		if strings.Contains(indexHTML, folded) {
+			t.Fatalf("排队图表不应藏在折叠区：%s", folded)
+		}
+	}
+
+	advisor := strings.Index(indexHTML, `id="qdAdvisor"`)
+	evidence := strings.Index(indexHTML, `id="qdEvidence"`)
+	chart := strings.Index(indexHTML, `id="qdPressChart"`)
+	insights := strings.Index(indexHTML, `id="qdInsights"`)
+	reminder := strings.Index(indexHTML, `id="qdReminderCard"`)
+	if advisor < 0 || evidence < 0 || chart < 0 || insights < 0 || reminder < 0 {
+		t.Fatalf("排队页关键区块索引异常：advisor=%d evidence=%d chart=%d insights=%d reminder=%d", advisor, evidence, chart, insights, reminder)
+	}
+	if !(advisor < evidence && evidence < chart && chart < insights && insights < reminder) {
+		t.Fatalf("排队页图表应在建议后、提醒前展示：advisor=%d evidence=%d chart=%d insights=%d reminder=%d", advisor, evidence, chart, insights, reminder)
+	}
+}
+
 func TestEmbeddedCloudAuthVerifiesBaselineAfterLogin(t *testing.T) {
 	for _, needle := range []string{
 		"cloudVerifyOnLoad",
