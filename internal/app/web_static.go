@@ -206,11 +206,12 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .legend-line.global:before{background:var(--blue)}
 .legend-history{display:inline-flex;align-items:center;gap:6px}
 .legend-history:before{content:"";width:22px;height:0;border-top:3px dashed var(--blue)}
-.legend-band,.legend-now,.legend-mine{display:inline-flex;align-items:center;gap:6px}
+.legend-band,.legend-now,.legend-mine,.legend-pressure,.legend-turso-trend{display:inline-flex;align-items:center;gap:6px}
 .legend-band:before{content:"";width:18px;height:10px;border-radius:3px;background:rgba(212,156,39,.32)}
 .legend-now:before{content:"";width:18px;height:3px;border-radius:999px;background:var(--red)}
 .legend-mine:before{content:"";width:18px;height:0;border-top:2px dashed var(--red)}
 .legend-pressure:before{content:"";width:18px;height:10px;border-radius:3px;background:rgba(120,120,120,.28)}
+.legend-turso-trend:before{content:"";width:22px;height:0;border-top:3px dotted var(--green)}
 .answer-card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#fff 0,#FBFAF8 100%);padding:16px;margin-bottom:14px}
 .answer-lead{font-size:17px;font-weight:800;line-height:1.5;color:#1f1b18}
 .answer-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
@@ -378,6 +379,8 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
   .ovc{padding:14px}
   .dash-chart,.chart{overflow:hidden}
   .dash-chart svg,.chart svg{min-width:0;height:auto}
+  #qdPressChart{overflow:auto}
+  #qdPressChart svg{min-width:680px;height:260px}
 }
 .ov{position:fixed;inset:0;z-index:50;background:rgba(25,24,23,.45);display:flex;align-items:center;justify-content:center;padding:18px}
 .ov.hid{display:none}
@@ -1343,19 +1346,23 @@ async function loadQueueDashboard(){const adv=el('qdAdvisor');if(!adv)return;con
 
 // ---------- 排队压力答案卡 + 压力主图（我有号码页顶部） ----------
 function pressureClass(level){return 'press-'+(level||'unknown')}
-async function loadQueueAdvisorCard(){const ans=el('qdAnswer'),pc=el('qdPressChart');if(!ans)return;const store=qdSelected[0]||'';if(!store){qdDashboardData={};ans.innerHTML='<div class="ci">选一家门店，并填上你的当天排队号，这里直接给你「几点叫到、几点出发」。</div>';if(pc)pc.innerHTML='<div class="empty">选门店后，这里把今天的叫号进度、排队压力和你的当天排队号画在同一张图上。</div>';return}const target=parseInt(el('qdTargetNo')?.value||'',10)||0,travel=Math.max(0,parseInt(el('qdrTravel')?.value||'',10)||0);const token=++qdRefreshToken;ans.innerHTML='<div class="ci">正在读取实时排队压力…</div>';let adv=null;try{const qs='store='+encodeURIComponent(store)+(target>0?'&target_no='+target:'')+(travel>0?'&travel_minutes='+travel:'');adv=await safeFetch('/api/queue/advisor?'+qs,null,15000);if(token!==qdRefreshToken)return;renderQueueAnswer(adv,target)}catch(e){if(token!==qdRefreshToken)return;ans.innerHTML=loadErrBoxHTML(e,'loadQueueAdvisorCard()','排队压力')}
+async function loadQueueAdvisorCard(){const ans=el('qdAnswer'),pc=el('qdPressChart');if(!ans)return;const store=qdSelected[0]||'';if(!store){ans.innerHTML='<div class="ci">选一家门店，并填上你的当天排队号，这里直接给你「几点叫到、几点出发」。</div>';if(pc)renderPressureChart(pc,{points:[],message:'选门店后，这里把今天的叫号进度、排队压力和你的当天排队号画在同一张图上（未选门店时仍展示 Turso 全国历史排队趋势）。'},null,0);return}const target=parseInt(el('qdTargetNo')?.value||'',10)||0,travel=Math.max(0,parseInt(el('qdrTravel')?.value||'',10)||0);const token=++qdRefreshToken;ans.innerHTML='<div class="ci">正在读取实时排队压力…</div>';let adv=null;try{const qs='store='+encodeURIComponent(store)+(target>0?'&target_no='+target:'')+(travel>0?'&travel_minutes='+travel:'');adv=await safeFetch('/api/queue/advisor?'+qs,null,15000);if(token!==qdRefreshToken)return;renderQueueAnswer(adv,target)}catch(e){if(token!==qdRefreshToken)return;ans.innerHTML=loadErrBoxHTML(e,'loadQueueAdvisorCard()','排队压力')}
  if(pc){try{const curve=await safeFetch('/api/queue/pressure/curve?store='+encodeURIComponent(store),null,20000);if(token!==qdRefreshToken)return;renderPressureChart(pc,curve,adv,target)}catch(e){if(token!==qdRefreshToken)return;pc.innerHTML=loadErrBoxHTML(e,'loadQueueAdvisorCard()','整合走势')}}}
 function renderQueueAnswer(adv,target){const ans=el('qdAnswer');if(!ans)return;const cur=adv.current||{},p=adv.pressure||{},sp=adv.speed||{},eta=adv.eta||null,nfcOk=nfc;let lead='';if(eta&&eta.remaining_groups>0&&eta.wait_minutes_range){const wr=eta.wait_minutes_range,called=fmtN(cur.called_no||0),tip=eta.estimated_called_at_range?(shortTime(eta.estimated_called_at_range.early)+'-'+shortTime(eta.estimated_called_at_range.late)):shortTime(eta.estimated_called_at);lead='你的当天排队号是 '+fmtN(target)+'，当前叫到 '+called+'，预计 '+wr.low+'-'+wr.high+' 分钟后叫到（约 '+tip+'）。'+(eta.arrival_suggestion||'')}else if(eta&&eta.remaining_groups<=0){lead='你的当天排队号是 '+fmtN(target)+'，已经轮到或即将轮到，请尽快到店。'}else if(eta){lead=eta.arrival_suggestion||'实时和历史数据都不足，暂时无法预估叫到时间。'}else if(target>0){lead='当前叫到 '+fmtN(cur.called_no||0)+' 号，正在估算到你的时间…'}else{lead='当前叫到 '+fmtN(cur.called_no||0)+' 号，排队压力'+(p.label||'数据不足')+'。填上你的当天排队号，给你「几点叫到、几点出发」。'}const s15=sp.called_per_min_15!=null?(Math.round(sp.called_per_min_15*15)+' 桌'):'数据不足';const chips=[];chips.push(answerChip('当前叫到',fmtN(cur.called_no||0)||'-',''));if(eta&&eta.remaining_groups>0)chips.push(answerChip('还差',fmtN(eta.remaining_groups)+' 号',''));chips.push(answerChip('排队压力',p.label||'数据不足',pressureClass(p.level)));chips.push(answerChip('消化趋势',p.trend_label||'数据不足',''));chips.push(answerChip('近15分钟叫号',s15,''));if(eta&&eta.source_label)chips.push(answerChip('估算依据',eta.source_label,eta.source==='official'?'press-extreme':''));if(eta&&eta.estimated_called_at_range)chips.push(answerChip('预计叫到',shortTime(eta.estimated_called_at_range.early)+'-'+shortTime(eta.estimated_called_at_range.late),''));chips.push(answerChip('通知',nfcOk?'已配置':'未配置',nfcOk?'':'press-extreme'));const reason=p.reason?'<div class="mu mt8">'+esc(p.reason)+'</div>':'',sourceNote=(eta&&eta.source_note)?'<div class="mu mt8">'+esc(eta.source_note)+'</div>':'',warns=(adv.warnings||[]).length?'<div class="mu mt8" style="color:#c4561a">⚠ '+(adv.warnings||[]).map(esc).join('；')+'</div>':'';ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips.join('')+'</div>'+reason+sourceNote+warns}
 function answerChip(label,value,cls){return '<div class="answer-chip"><span>'+esc(label)+'</span><strong class="'+(cls||'')+'">'+esc(String(value))+'</strong></div>'}
 function hhmmMinute(t){const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);return m?parseInt(m[1],10)*60+parseInt(m[2],10):null}
 function historicalCalledPoints(d){return ((d&&d.called_curve)||[]).filter(p=>hhmmMinute(p.bucket)!=null&&(p.called_no_typical||0)>0).slice().sort((a,b)=>hhmmMinute(a.bucket)-hhmmMinute(b.bucket))}
+function historicalQueueTrendPoints(d){return ((d&&d.trend)||[]).map(p=>({p:p,m:hhmmMinute(p.label)!=null?hhmmMinute(p.label):hhmmMinute(p.bucket)})).filter(o=>o.m!=null&&o.m>=600&&o.m<=1320&&(o.p.total_queue_groups||0)>0).sort((a,b)=>a.m-b.m).map(o=>Object.assign({},o.p,{_m:o.m}))}
 function calledCurveSourceLabel(source){return source==='remote_baseline'?'线上 Turso 基准':source==='local'?'本机历史采样':'历史基准'}
+function queueTrendSourceLabel(source){return source==='remote_baseline'?'线上 Turso 基准':source==='local'?'本机采样趋势':'历史趋势'}
 function renderPressureChart(box,curve,adv,target){
  if(!box)return;
  const minM=600,maxM=1320;
- const points=(curve&&curve.points||[]).filter(p=>{const m=hhmmMinute(p.time);return m!=null&&m>=minM&&m<=maxM}).slice().sort((a,b)=>hhmmMinute(a.time)-hhmmMinute(b.time));
+ const points=(curve&&curve.points||[]).filter(p=>{const m=hhmmMinute(p.time);return m!=null&&m>=minM&&m<=maxM}).slice().sort((a,b)=>hhmmMinute(p.time)-hhmmMinute(b.time));
  const hist=historicalCalledPoints(qdDashboardData);
- if(!points.length&&!hist.length){box.innerHTML='<div class="empty">'+esc((curve&&curve.message)||'还没有今天的本机采样曲线。开启「本机持续采集」后会逐步补齐；现在可看上面的实时答案卡。')+'</div>';return}
+ const trend=historicalQueueTrendPoints(qdDashboardData);
+ if(!points.length&&!hist.length&&!trend.length){box.innerHTML='<div class="empty">'+esc((curve&&curve.message)||'还没有今天的本机采样曲线。开启「本机持续采集」后会逐步补齐；现在可看上面的实时答案卡。')+'</div>';return}
+ const trendMax=Math.max(1,...trend.map(t=>t.total_queue_groups||0));
  const calledMax=Math.max(10,...points.map(p=>p.called_no||0),...hist.flatMap(p=>[p.called_no_slow||0,p.called_no_typical||0,p.called_no_fast||0]),target>0?target:0);
  const w=1040,h=286,l=52,r=52,t=28,b=40,maxCalled=calledMax,x=m=>l+((m-minM))/(maxM-minM)*(w-l-r),yCall=v=>h-b-(v/maxCalled)*(h-t-b),yPress=s=>h-b-(Math.min(100,Math.max(0,s))/100)*(h-t-b);
  let svg='<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet" style="width:100%;aspect-ratio:'+w+'/'+h+'">';
@@ -1367,6 +1374,9 @@ function renderPressureChart(box,curve,adv,target){
  if(pressArea.length){const base=(h-b);svg+='<polygon points="'+l+','+base+' '+pressArea.join(' ')+' '+(w-r)+','+base+'" fill="rgba(120,120,152,.18)" stroke="rgba(120,120,152,.5)" stroke-width="1"></polygon>'}
  const histPts=hist.map(p=>x(hhmmMinute(p.bucket))+','+yCall(p.called_no_typical||0));
  if(histPts.length>1)svg+='<polyline points="'+histPts.join(' ')+'" fill="none" stroke="var(--blue)" stroke-width="2.4" stroke-dasharray="7 5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>';
+ const yTrend=g=>h-b-(Math.min(trendMax,Math.max(0,g))/trendMax)*(h-t-b);
+ const trendPts=trend.map(t=>x(t._m)+','+yTrend(t.total_queue_groups||0));
+ if(trendPts.length>1)svg+='<polyline points="'+trendPts.join(' ')+'" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2 4" vector-effect="non-scaling-stroke"></polyline>';
  const callPts=points.filter(p=>(p.called_no||0)>0);
  let stepPath='';
  callPts.forEach((p,i)=>{const cx=x(hhmmMinute(p.time)),cy=yCall(p.called_no);stepPath+=(i===0?'M':'L')+cx+','+cy+' ';if(i<callPts.length-1){const nx=x(hhmmMinute(callPts[i+1].time));stepPath+='L'+nx+','+cy+' '}});
@@ -1378,11 +1388,13 @@ function renderPressureChart(box,curve,adv,target){
  if(target>0){const my=target<=maxCalled?yCall(target):t;svg+='<line x1="'+l+'" y1="'+my+'" x2="'+(w-r)+'" y2="'+my+'" stroke="var(--red)" stroke-width="1.4" stroke-dasharray="4 4" opacity=".9"></line><text class="chart-label" x="'+(w-r-4)+'" y="'+(my-4)+'" text-anchor="end" fill="var(--red)">'+(target>maxCalled?'我的当天排队号 '+fmtN(target)+'（较靠后）':'我的当天排队号 '+fmtN(target))+'</text>'}
  const etaTip=(adv&&adv.eta&&adv.eta.estimated_called_at_range)?('\n预计叫到你：'+shortTime(adv.eta.estimated_called_at_range.early)+'-'+shortTime(adv.eta.estimated_called_at_range.late)):'';
  hist.forEach(p=>{const cx=x(hhmmMinute(p.bucket)),cy=yCall(p.called_no_typical||0),tip=p.bucket+'\n历史典型叫到：'+fmtN(p.called_no_typical||0)+'\n保守/偏快：'+fmtN(p.called_no_slow||0)+' / '+fmtN(p.called_no_fast||0)+'\n样本：'+fmtN(p.sample_count||0)+' · '+fmtN(p.day_count||0)+' 天\n来源：'+calledCurveSourceLabel(p.source)+(p.confidence?'\n置信度：'+p.confidence:'');svg+='<g class="chart-hot" data-tip="'+escA(tip)+'" onmousemove="dashTip(event,this)" onclick="dashTip(event,this)" onmouseleave="hideDashTip()"><circle cx="'+cx+'" cy="'+cy+'" r="3" fill="#fff" stroke="var(--blue)" stroke-width="1.8"></circle></g>'});
+ trend.forEach(p=>{const cx=x(p._m),cy=yTrend(p.total_queue_groups||0),tip=(p.label||p.bucket)+'\n历史排队桌数：'+fmtN(p.total_queue_groups||0)+'\n历史等待：'+fmtN(p.total_wait_minutes||0)+' 分\n开店数：'+fmtN(p.open_stores||0)+'\n样本数：'+fmtN(p.sample_count||0)+'\n来源：'+queueTrendSourceLabel(p.source);svg+='<g class="chart-hot" data-tip="'+escA(tip)+'" onmousemove="dashTip(event,this)" onclick="dashTip(event,this)" onmouseleave="hideDashTip()"><circle cx="'+cx+'" cy="'+cy+'" r="2.6" fill="#fff" stroke="var(--green)" stroke-width="1.6"></circle></g>'});
  callPts.forEach((p,i)=>{const cx=x(hhmmMinute(p.time)),cy=yCall(p.called_no),s15=p.called_speed_15!=null?(Math.round(p.called_speed_15*15)+' 桌'):'数据不足',tip=p.time+'\n当前叫到：'+fmtN(p.called_no)+'\n排队压力：'+pressureLabelCN(p.pressure_level)+'\n等待桌数：'+fmtN(p.waiting_groups||0)+'\n官方等待：'+fmtN(p.official_wait_minutes||0)+' 分\n近15分钟叫号：'+s15+'\n来源：'+pressureSourceLabel(p.source)+(p.confidence?'\n置信度：'+p.confidence:'')+(i===callPts.length-1?etaTip:'');svg+='<g class="chart-hot" data-tip="'+escA(tip)+'" onmousemove="dashTip(event,this)" onclick="dashTip(event,this)" onmouseleave="hideDashTip()"><circle cx="'+cx+'" cy="'+cy+'" r="'+(i===callPts.length-1?5:3.5)+'" fill="'+(i===callPts.length-1?'#B81C22':'#fff')+'" stroke="#B81C22" stroke-width="2"></circle></g>'});
  svg+='</svg>';
  const notes=[];if(curve&&curve.message)notes.push(curve.message);if(hist.length&&qdDashboardData.called_summary&&qdDashboardData.called_summary.message)notes.push('历史推算线：'+qdDashboardData.called_summary.message);
+ if(trend.length)notes.push('历史排队趋势：已把 '+queueTrendSourceLabel(trend[0].source)+' 的 '+(trend.length)+' 个时间窗按 total_queue_groups 归一化到右侧压力轴，融合进本图（并非叫号号段）。');
  const note=notes.length?'<div class="mu mt8">'+esc(notes.join(' '))+'</div>':'';
- box.innerHTML=svg+'<div class="chart-legend"><span class="legend-line">今日叫号</span><span class="legend-history">历史推算叫号</span><span class="legend-pressure">排队压力（灰带越满压力越大）</span><span class="legend-now">现在</span><span class="legend-mine">我的当天排队号</span><span class="mu">只展示 10:00-22:00</span></div>'+note
+ box.innerHTML=svg+'<div class="chart-legend"><span class="legend-line">今日叫号</span><span class="legend-history">历史推算叫号</span><span class="legend-turso-trend">Turso 历史排队趋势</span><span class="legend-pressure">排队压力（灰带越满压力越大）</span><span class="legend-now">现在</span><span class="legend-mine">我的当天排队号</span><span class="mu">只展示 10:00-22:00</span></div>'+note
 }
 function pressureSourceLabel(source){return {local:'本机采样',remote_latest:'线上最新',remote_baseline:'线上基准'}[source]||'未知'}
 function pressureLabelCN(level){return {low:'低',medium:'中',high:'高',extreme:'极高'}[level]||'数据不足'}

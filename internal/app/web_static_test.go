@@ -282,6 +282,45 @@ func TestEmbeddedDashboardExplainsCloudBaselineUse(t *testing.T) {
 	}
 }
 
+func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
+	for _, needle := range []string{
+		"function historicalQueueTrendPoints(",
+		"(d&&d.trend)||[]",
+		"legend-turso-trend",
+		"Turso 历史排队趋势",
+		"trendMax=Math.max(1,...trend.map",
+		"历史排队趋势：已把",
+		"线上 Turso 基准",
+		"total_queue_groups",
+		"sample_count",
+		"if(!points.length&&!hist.length&&!trend.length)",
+		"renderPressureChart(pc,{points:[],message:'选门店后",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少主图融合 Turso 历史趋势片段：%s", needle)
+		}
+	}
+
+	noStore := regexp.MustCompile(`if\(!store\)\{[\s\S]*?return\}`).FindString(indexHTML)
+	if noStore == "" {
+		t.Fatalf("找不到 loadQueueAdvisorCard 的未选门店分支")
+	}
+	if strings.Contains(noStore, "qdDashboardData={}") {
+		t.Fatalf("未选门店时不应清空 qdDashboardData，否则会把已加载的 Turso 全局历史趋势覆盖成空态")
+	}
+}
+
+func TestEmbeddedDashboardMainChartReadableOnMobile(t *testing.T) {
+	for _, needle := range []string{
+		"#qdPressChart{overflow:auto}",
+		"#qdPressChart svg{min-width:680px;height:260px}",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少移动端主图可读性样式：%s", needle)
+		}
+	}
+}
+
 func TestEmbeddedSettingsDoesNotOverstateCloudBaseline(t *testing.T) {
 	for _, needle := range []string{
 		"const cloudBaseOK=!!cloudAuth.baseline_connected",
