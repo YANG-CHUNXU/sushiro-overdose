@@ -141,23 +141,74 @@ func TestEmbeddedUXCommandCenterAnchors(t *testing.T) {
 	}
 }
 
-func TestEmbeddedSushiroMechanismOnboarding(t *testing.T) {
+func TestEmbeddedHomeDecisionOnboarding(t *testing.T) {
 	satisfied := satisfiedDOMIDs()
-	for _, id := range []string{"mechanismMap"} {
+	for _, id := range []string{"homeDecisionPanel", "journeyPanel"} {
 		if !satisfied[id] {
-			t.Errorf("缺少寿司郎机制说明锚点 id=%q", id)
+			t.Errorf("缺少首页决策入口锚点 id=%q", id)
 		}
 	}
+	if satisfied["mechanismMap"] {
+		t.Errorf("首页不应再保留独立 mechanismMap；机制说明应合并进 homeDecisionPanel，避免和 journeyPanel 重复")
+	}
 	for _, needle := range []string{
-		"当天排队号",
-		"未来预约",
-		"通行证不是排队号",
-		"自动抢预约",
-		"蹲未来预约时段",
+		"你现在是哪种情况",
+		"今天去吃",
+		"我有当天排队号",
+		"想约未来某天",
+		"通行证只在提交动作前需要",
+		`class="home-decision-card read" onclick="go('qt')"`,
+		`class="home-decision-card read" onclick="go('qd')"`,
+		`class="home-decision-card auth" onclick="go('ca')"`,
 	} {
 		if !strings.Contains(indexHTML, needle) {
-			t.Errorf("indexHTML 缺少寿司郎机制说明片段：%s", needle)
+			t.Errorf("indexHTML 缺少首页决策说明片段：%s", needle)
 		}
+	}
+	hero := strings.Index(indexHTML, `id="heroBox"`)
+	decision := strings.Index(indexHTML, `id="homeDecisionPanel"`)
+	journey := strings.Index(indexHTML, `id="journeyPanel"`)
+	live := strings.Index(indexHTML, `id="homeLive"`)
+	if hero < 0 || decision < 0 || journey < 0 || live < 0 {
+		t.Fatalf("首页关键区块索引异常：hero=%d decision=%d journey=%d live=%d", hero, decision, journey, live)
+	}
+	if !(hero < decision && decision < journey && journey < live) {
+		t.Fatalf("首页首屏顺序应为 hero -> 决策入口 -> 状态建议 -> 实时排队：hero=%d decision=%d journey=%d live=%d", hero, decision, journey, live)
+	}
+	if strings.Contains(indexHTML, "现在想去吃") {
+		t.Fatalf("首页术语应统一为“现在去吃”，不要保留“现在想去吃”")
+	}
+}
+
+func TestEmbeddedUXM1PrimaryActions(t *testing.T) {
+	for _, needle := range []string{
+		`id="qdPrimaryActions"`,
+		`class="bt bt-r bt-s" onclick="openStorePicker({selected:qdSelected.slice(0,1),multi:false,onConfirm:applyDashboardStores})">选门店`,
+		`class="bt bt-w bt-s" onclick="loadQueueDashboard()">刷新`,
+		`id="sc"><div class="empty"><div class="mascot-wrap">`,
+		`onclick="openStorePicker({selected:selStores,onConfirm:applyCalendarStores})">选择门店`,
+		`当前没有预约或排队号。<div class="mt8"><button class="bt bt-r bt-s" onclick="go(\'ca\')">约未来</button><button class="bt bt-w bt-s" onclick="go(\'qt\')">看排队</button></div>`,
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少 M1 主路径片段：%s", needle)
+		}
+	}
+
+	autoPlan := regexp.MustCompile(`<summary>[^<]*自动取号计划[^<]*</summary>[\s\S]*?onclick="saveNetTicketPlan\(true\)">启用`)
+	m := autoPlan.FindString(indexHTML)
+	if m == "" {
+		t.Fatalf("找不到自动取号计划启用按钮片段")
+	}
+	if strings.Contains(m, `bt bt-r bt-s`) {
+		t.Fatalf("自动取号计划启用按钮不应使用红色主按钮，避免把会执行动作做得过强")
+	}
+	if !strings.Contains(m, `bt bt-o bt-s`) {
+		t.Fatalf("自动取号计划启用按钮应使用次要描边按钮")
+	}
+
+	// Simplified check: class verification happens below
+	if !strings.Contains(indexHTML, `class="bt bt-o bt-s" onclick="takeTicket`) {
+		t.Fatalf("远程取号按钮应使用次要描边按钮，让页面保持只读优先")
 	}
 }
 
