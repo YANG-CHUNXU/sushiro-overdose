@@ -156,6 +156,13 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .kpi p{margin-top:8px;color:var(--red);font-size:12px;font-weight:800}
 .dash-chart{position:relative;min-height:300px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,#fff 0,#FBFAF8 100%);padding:14px;overflow:auto}
 .dash-chart svg{width:100%;min-width:820px;height:280px;display:block}
+.data-source{display:grid;gap:6px;padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:#F7F3EE;color:var(--sub);font-size:12px;line-height:1.65}
+.data-source.ok{background:var(--green-soft);border-color:#BFE4CC}
+.data-source.warn{background:var(--yellow-soft);border-color:#E9D08A}
+.data-source.bad{background:var(--red-soft);border-color:#F0B7B9}
+.data-source b{color:var(--ink);font-size:13px}
+.data-source p{margin:0}
+.data-source-lines{display:grid;gap:3px}
 .curve-sampling{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;margin:12px 0 16px;padding:16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#FFF9F4 0,#FBFAF8 58%,#F5F3F1 100%)}
 .curve-sampling b{display:block;color:var(--ink);font-size:16px}
 .curve-sampling p{margin-top:5px;color:var(--sub);font-size:12px;line-height:1.65;max-width:760px}
@@ -653,6 +660,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
       <div id="qdEvidence" class="qbox mt16">
         <div class="cd-t"><b>📊 整合走势大图</b></div>
         <div id="qdPressChart" class="dash-chart mt16"><div class="empty">选门店后，这里把今天的叫号进度、排队压力和你的当天排队号画在同一张图上，悬停每个点可看全部数据。</div></div>
+        <div id="qdDataSource" class="data-source mt16"></div>
       </div>
       <div id="qdInsights" class="qbox mt16">
         <div class="cd-t"><b>🗓 这家店的历史规律</b></div>
@@ -878,7 +886,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 <footer class="ft">由 <a href="https://github.com/Ryujoxys/sushiro-overdose">sushiro-overdose</a> 驱动 · 非官方工具，仅供学习</footer>
 
 <script>
-let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qdSelected=[],qdDashboardData={},qtSelected=[],qtTrendStores=[],qaStatus={},ah={},nfc=true,notifyChannels=[],cloudAuth={},cloudVerifyOnLoad=false,_inflight=null,qdAutoTimer=null,qdRefreshToken=0;
+let cp='da',es={status:'idle'},hc=0,as=[],sd='',pr={},pf='',cE=null,stores=[],selStores=[],calErrs=[],arTimer=null,lastDiag=null,spCfg={},spState={status:'idle'},spAutoStart={},spQueueState={},qdSelected=[],qdDashboardData={},qtSelected=[],qtTrendStores=[],qaStatus={},ah={},nfc=true,notifyChannels=[],cloudAuth={},cloudVerifyOnLoad=false,cloudRefreshPending=false,_inflight=null,qdAutoTimer=null,qdRefreshToken=0;
 const W=['日','一','二','三','四','五','六'];
 const need=['x_app_code','query_auth','reservation_auth','user_agent','referer','wechat_id','phone_number','store_ids'];
 const csrfToken=document.querySelector('meta[name="sushiro-csrf"]')?.content||'';
@@ -948,7 +956,7 @@ const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g
 function renderSubnav(g,active){const sn=el('subnav');if(!sn)return;if(!g||g.pages.length<=1){sn.innerHTML='';sn.classList.add('hid');return}sn.classList.remove('hid');sn.innerHTML=g.pages.map(([p,label])=>'<a href="#" class="'+(p===active?'on':'')+'" onclick="go(\''+p+'\');return false">'+esc(label)+'</a>').join('')}
 function goGroup(gid){const g=NAV_GROUPS.find(x=>x.id===gid);if(g)go(g.pages[0][0]);return false}
 function stopQDAutoRefresh(){if(qdAutoTimer){clearInterval(qdAutoTimer);qdAutoTimer=null}}
-function go(n,e,noPush){if(!PAGE_GROUP[n])n='da';if(cp==='qd'&&n!=='qd')stopQDAutoRefresh();document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(!noPush&&location.hash.slice(1)!==n)history.pushState(null,'','#'+n);({da:lDA,ca:lC,qd:lQD,qt:lQT,sn:lSn,re:lR,se:lS})[n]?.();return false}
+function go(n,e,noPush){if(!PAGE_GROUP[n])n='da';if(cp==='qd'&&n!=='qd')stopQDAutoRefresh();document.querySelectorAll('.wrap>section[id^="p-"]').forEach(p=>p.classList.add('hid'));const sec=el('p-'+n);if(sec)sec.classList.remove('hid');const gid=PAGE_GROUP[n]||'home',g=NAV_GROUPS.find(x=>x.id===gid);document.querySelectorAll('.nav.top a').forEach(a=>a.classList.toggle('on',a.dataset.group===gid));renderSubnav(g,n);cp=n;if(!noPush&&location.hash.slice(1)!==n)history.pushState(null,'','#'+n);const loader=({da:lDA,ca:lC,qd:lQD,qt:lQT,sn:lSn,re:lR,se:lS})[n];loader?.();if(cloudRefreshPending&&(n==='qd'||n==='qt')){cloudRefreshPending=false;setTimeout(refreshCloudDependentViews,120)}return false}
 window.addEventListener('popstate',()=>{const h=location.hash.slice(1);go(h&&PAGE_GROUP[h]?h:'da',null,true)});
 async function loadStatus(){const v=el('ver');try{const r=await(await fetch('/api/status')).json();v.textContent='v'+r.version;v.classList.remove('hid');hc=!!r.has_config;pf=r.platform||'';es=r.engine||{status:'idle'};spState=r.sampling||spState;ah=r.auth_health||{};nfc=r.notify_configured!==false;uE();uD();uAuth();renderSettingsStatus();loadActiveTickets(false);}catch(e){v.textContent='offline';v.classList.remove('hid');heroLoadFailed(e)}}
 function heroLoadFailed(err){const badge=el('heroBadge'),t=el('heroTitle'),c=el('heroCopy');if(badge)badge.textContent='连接异常';if(t)t.textContent='读不到运行状态';if(c)c.innerHTML='本机服务没有响应：<code style="word-break:break-all">'+esc(String((err&&err.message)||err||'unknown'))+'</code> <button class="bt bt-w bt-s" onclick="loadStatus()">重试</button>'}
@@ -975,7 +983,8 @@ function openHealthPanel(){let ov=el('healthPanel');if(!ov){ov=document.createEl
 function closeHealthPanel(){const ov=el('healthPanel');if(ov){ov.classList.add('hid');ov.style.display='none'}}
 function authPillClick(){openHealthPanel()}
 async function init(){consumeCloudAuthResult();fillPageMascots();buildBelt();await loadStatus();await lP();checkUpdate();sse();const h=location.hash.slice(1);if(h&&PAGE_GROUP[h]&&h!=='da')go(h);else{loadHomeLive(true);maybeShowIntro()}}
-function consumeCloudAuthResult(){try{const p=new URLSearchParams(location.search);if(p.get('cloud_connected')){cloudVerifyOnLoad=true;toast('云端 GitHub 登录已完成')}if(p.get('cloud_error'))toast(p.get('cloud_error'));if(p.has('cloud_connected')||p.has('cloud_error'))history.replaceState(null,'',location.pathname+location.hash)}catch(e){}}
+function consumeCloudAuthResult(){try{const p=new URLSearchParams(location.search);const connected=p.get('cloud_connected');if(connected){cloudRefreshPending=true;cloudVerifyOnLoad=true;toast('云端 GitHub 登录已完成');refreshCloudDependentViews()}if(p.get('cloud_error'))toast(p.get('cloud_error'));if(p.has('cloud_connected')||p.has('cloud_error'))history.replaceState(null,'',location.pathname+location.hash)}catch(e){}}
+function refreshCloudDependentViews(){try{if(cp==='qd')loadQueueDashboard();if(cp==='qt')refreshQueueView()}catch(e){}}
 function maybeShowIntro(){try{if(hc)return;if(localStorage.getItem('sushiro_intro_seen'))return;localStorage.setItem('sushiro_intro_seen','1');openFirstUseWizard()}catch(e){}}
 function isRun(){return ['capturing','booking','sniping'].includes(es.status)}
 function awzPeek(){try{const s=JSON.parse(localStorage.getItem('sushiro_wizard_state')||'null');if(!s)return null;const c=s.cap||{};return{step:s.step||1,fields:need.filter(k=>c[k]).length}}catch(e){return null}}
@@ -1153,10 +1162,11 @@ function renderSettingsStatus(){
  const box=el('settingsStatus');if(!box)return;
  const stale=hc&&ah&&ah.status==='stale';
  const cloudConn=!!cloudAuth.connected,cloudCfg=!!cloudAuth.configured;
+ const cloudBaseOK=!!cloudAuth.baseline_connected;
  const spOK=!!(spState&&(spState.running||spState.enabled||spState.sample_runs>0));
  const items=[
   {t:'寿司郎通行证 🎫',d:!hc?'看排队不需要；抢未来预约、远程取号、读单据才需要':stale?'可能已失效，建议重新获取':'已就绪；之后过期会自动提醒',s:!hc?'warn':stale?'bad':'ok',a:!hc?{l:'去获取',f:'openAuthWizard()'}:stale?{l:'重新认证',f:'resetAuthAndStart()'}:{l:'看我的单据',f:"go('re')"}},
-  {t:'GitHub 线上基准',d:cloudConn?('已登录 '+(cloudAuth.user_login||'GitHub')+'，全国排队基准已接入'):'登录后叫号预测会叠加全国线上基准（可选）',s:cloudConn?'ok':'warn',a:cloudConn?{l:'退出',f:'logoutCloudAuth()'}:{l:'登录 GitHub',f:'startCloudLogin()'}},
+  {t:'GitHub 线上基准',d:cloudBaseOK?('GitHub 已登录，Turso 基准已验证，图表可叠加全国线上基准'):cloudConn?('GitHub 已登录，Turso 基准待验证。Turso 基准没有验证前，图表会继续优先用本机数据'):'登录后叫号预测可叠加全国线上基准（可选）',s:cloudBaseOK?'ok':'warn',a:cloudConn?{l:'退出',f:'logoutCloudAuth()'}:{l:'登录 GitHub',f:'startCloudLogin()'}},
   {t:'通知渠道',d:nfc?('已配置'+(notifyChannels.length?('：'+notifyChannels.join('、')):'')):'不配置就收不到叫号提醒和抢到通知',s:nfc?'ok':'warn',a:nfc?{l:'测试通知',f:"tN('all')"}:{l:'去配置',f:'focusNotifySettings()'}},
   {t:'预测数据',d:spOK?'采集中，“几点叫到”会越来越准':'公开曲线已默认记录；想更准可开启凭证态采集',s:spOK?'ok':'warn',a:{l:'配置',f:"openSettingsFold('fold-sm')"}}
  ];
@@ -1386,7 +1396,9 @@ function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.messag
 // ---------- 想几点吃→几点取号 ----------
 async function loadQueueMealPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const meal=(el('qwMeal')?.value||'').replace(':',''),travel=Math.max(0,parseInt(el('qwTravel')?.value||'',10)||0);ans.innerHTML='<div class="ci">正在倒推…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&target_meal='+encodeURIComponent(meal)+(travel>0?'&travel_minutes='+travel:''),null,15000);renderMealPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueueMealPlan()','取号倒推')}}
 function renderMealPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'')}
-function renderQueueDashboard(d){renderDashboardAdvisor(d.advisor||{});renderDashboardInsights(d)}
+function renderQueueDashboard(d){renderDashboardAdvisor(d.advisor||{});renderDashboardInsights(d);renderDashboardDataSource(d)}
+function dashboardBaselineStatusHTML(d){const b=(d&&d.baseline)||{},used=!!b.used,cfg=!!b.configured||!!b.authenticated,rollupCount=Number(b.rollup_count||0),latestCount=Number(b.latest_count||0),rollup=fmtN(rollupCount),latest=fmtN(latestCount);let title,lines=[],cls='ok';if(used){title='本次图表已使用线上 Turso 基准';lines.push('来源：线上 Turso 基准');if(rollupCount||latestCount)lines.push('聚合样本 '+rollup+' 条，最新明细 '+latest+' 条');else lines.push('基准已响应，暂无样本');cls='ok'}else if(cfg){title='仍在用本机数据，线上 Turso 基准未参与本次图表';lines.push('GitHub 已登录，但 Turso 基准还没验证成功，需在设置页确认。');cls='warn'}else{title='本次图表用本机数据，未配置线上 Turso 基准';lines.push('可在「设置」登录 GitHub 并验证 Turso 基准后，叠加全国线上参考。');cls='warn'}const ws=(d&&d.warnings)||[];if(ws.length){cls=cls==='ok'?'warn':cls;lines.push('注意：'+ws.join('；'));if(ws.some(w=>/明细|基准|曲线/.test(w)))lines.push('这能解释为什么基准可用、但叫号曲线仍没明细。')}return{cls:cls,html:'<b>📊 图表数据来源</b><p>'+esc(title)+'</p><div class="data-source-lines">'+lines.map(l=>'<span>'+esc(l)+'</span>').join('')+'</div>'}}
+function renderDashboardDataSource(d){const box=el('qdDataSource');if(!box)return;const s=dashboardBaselineStatusHTML(d);box.className='data-source mt16 '+(s.cls||'');box.innerHTML=s.html||''}
 function renderDashboardInsights(d){const heat=el('qdHeatmap'),wk=el('qdWeekday'),tr=el('qdTrend');if(heat)heat.innerHTML=renderHeatmapHTML(d.heatmap||[]);
 if(wk)wk.innerHTML=renderWeekdayHTML(d.weekday_profiles||[]);
 if(tr)tr.innerHTML=renderTrendHTML(d.trend||[])}

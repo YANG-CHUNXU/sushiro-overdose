@@ -249,13 +249,70 @@ func TestEmbeddedQueueChartsAreFirstClassSections(t *testing.T) {
 func TestEmbeddedCloudAuthVerifiesBaselineAfterLogin(t *testing.T) {
 	for _, needle := range []string{
 		"cloudVerifyOnLoad",
-		"if(p.get('cloud_connected')){cloudVerifyOnLoad=true;toast('云端 GitHub 登录已完成')}",
+		"const connected=p.get('cloud_connected')",
+		"cloudVerifyOnLoad=true",
+		"toast('云端 GitHub 登录已完成')",
 		"const verifyCloud=cloudVerifyOnLoad;cloudVerifyOnLoad=false;await loadCloudAuth(verifyCloud)",
 		"catch(e){await loadCloudAuth(true);toast('云端连接失败：'",
 		"chip('Turso 基准'",
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少云端基准验证片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedDashboardExplainsCloudBaselineUse(t *testing.T) {
+	for _, needle := range []string{
+		`id="qdDataSource"`,
+		`class="data-source mt16"`,
+		".data-source{display:grid",
+		"function dashboardBaselineStatusHTML(",
+		"const b=(d&&d.baseline)||{}",
+		"used=!!b.used",
+		"图表数据来源",
+		"线上 Turso 基准",
+		"rollup_count",
+		"latest_count",
+		"d.warnings",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少图表云端基准可见化片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedSettingsDoesNotOverstateCloudBaseline(t *testing.T) {
+	for _, needle := range []string{
+		"const cloudBaseOK=!!cloudAuth.baseline_connected",
+		"GitHub 已登录，Turso 基准已验证",
+		"GitHub 已登录，Turso 基准待验证",
+		"Turso 基准没有验证前，图表会继续优先用本机数据",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少设置页云端基准状态片段：%s", needle)
+		}
+	}
+	if strings.Contains(indexHTML, "全国排队基准已接入") {
+		t.Fatalf("设置页不应在只登录 GitHub 时宣称全国排队基准已接入")
+	}
+}
+
+func TestEmbeddedCloudLoginRefreshesQueueCharts(t *testing.T) {
+	for _, needle := range []string{
+		"cloudRefreshPending",
+		"cloudRefreshPending=true",
+		"if(cloudRefreshPending&&(n==='qd'||n==='qt'))",
+		"setTimeout(refreshCloudDependentViews,120)",
+		"function refreshCloudDependentViews(",
+		"refreshCloudDependentViews()",
+		"if(cp==='qd')",
+		"loadQueueDashboard()",
+		"if(cp==='qt')",
+		"refreshQueueView()",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少 GitHub 登录后刷新图表片段：%s", needle)
 		}
 	}
 }
