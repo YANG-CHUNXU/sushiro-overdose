@@ -447,6 +447,26 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .strip .st.warn{color:var(--yellow);background:var(--yellow-soft)}
 .strip .st.bad{color:var(--red);background:var(--red-soft)}
 .authpill.warn{color:var(--yellow);border-color:#EBD9A8;background:var(--yellow-soft)}
+.journey-panel{padding:16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#fff 0,#FBFAF8 100%);box-shadow:0 10px 24px rgba(42,35,28,.05)}
+.journey-panel.warn{border-color:#E8D7AA;background:linear-gradient(135deg,#FFFDF7 0,#FBFAF8 100%)}
+.journey-panel.bad{border-color:#F0B7B9;background:linear-gradient(135deg,#FFF6F6 0,#FBFAF8 100%)}
+.journey-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.journey-kicker{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#EEE9E4;color:var(--sub);font-size:11px;font-weight:950}
+.journey-head h2{margin:9px 0 0;color:var(--ink);font-size:22px;line-height:1.2;font-weight:950}
+.journey-copy{margin-top:7px;color:var(--sub);font-size:13px;line-height:1.65;max-width:700px}
+.journey-mode{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--sub);font-size:12px;font-weight:900;white-space:nowrap}
+.journey-mode.ok{color:var(--green);border-color:#BFE4CC;background:var(--green-soft)}
+.journey-mode.warn{color:var(--yellow);border-color:#EBD9A8;background:var(--yellow-soft)}
+.journey-mode.bad{color:var(--red);border-color:#F0B7B9;background:var(--red-soft)}
+.journey-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:13px}
+.journey-step{min-height:96px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.journey-step span{display:inline-flex;height:22px;align-items:center;padding:0 8px;border-radius:999px;font-size:11px;font-weight:950;background:#EEE9E4;color:var(--sub)}
+.journey-step b{display:block;margin-top:8px;color:var(--ink);font-size:14px;line-height:1.3}
+.journey-step small{display:block;margin-top:4px;color:var(--sub);font-size:11px;line-height:1.5}
+.journey-step.read span,.journey-step.ok span{color:var(--green);background:var(--green-soft)}
+.journey-step.auth span,.journey-step.warn span{color:var(--yellow);background:var(--yellow-soft)}
+.journey-step.action span,.journey-step.bad span{color:var(--red);background:var(--red-soft)}
+.journey-cta{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
 .home-live{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .hl-card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--paper);cursor:pointer;text-align:left;transition:transform .15s,box-shadow .15s}
 .hl-card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(25,24,23,.08)}
@@ -454,6 +474,13 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .hl-num{font-size:30px;font-weight:900;color:var(--red);line-height:1.15}
 .hl-num.closed{color:var(--mute)}
 .hl-sub{font-size:11px;color:var(--mute)}
+.diag-next{margin-bottom:12px;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.diag-next h3{margin:0;color:var(--ink);font-size:18px;line-height:1.25}
+.diag-next p{margin-top:7px;color:var(--sub);font-size:13px;line-height:1.65}
+.diag-next.ok{border-color:#BFE4CC;background:var(--green-soft)}
+.diag-next.warn{border-color:#EBD9A8;background:var(--yellow-soft)}
+.diag-next.bad{border-color:#F0B7B9;background:var(--red-soft)}
+@media(max-width:900px){.journey-steps{grid-template-columns:1fr}}
 .pm{display:inline-flex;vertical-align:middle}
 .hero-pm{position:absolute;top:14px;right:16px;opacity:.95}
 .hero{position:relative}
@@ -514,6 +541,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
           </div>
           <div id="nc" class="notice hid"></div>
         </div>
+        <div id="journeyPanel" class="journey-panel mt16"><div class="ci">正在判断今天该走哪条路…</div></div>
         <div id="homeLive" class="mt16"></div>
         <div class="task-grid">
           <button class="task-card" onclick="go('qt')" type="button">
@@ -795,11 +823,12 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
         <summary><span class="setting-fold-title"><b>运行日志 <span class="pm" data-kind="maguro" data-mood="sleep" data-size="26"></span></b><span>排障时看；平时不用展开。</span></span></summary>
         <div class="setting-fold-body"><div class="lg" id="lv"></div></div>
       </details>
-      <details class="cd setting-fold settings-wide">
+      <details class="cd setting-fold settings-wide" id="fold-safe">
         <summary><span class="setting-fold-title"><b>安全与维护</b><span>状态异常、代理残留、需要复制诊断时再打开。危险操作会单独确认。</span></span></summary>
         <div class="setting-fold-body">
         <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">本机诊断</div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="lD()">刷新</button><button class="bt bt-w bt-s" onclick="copyDiag()">复制诊断</button><button class="bt bt-r bt-s" onclick="repairP()">修复代理</button><button class="bt bt-w bt-s" onclick="rST()">重置抓包</button></div></div>
         <details class="btn-more danger mb16"><summary></summary><div class="fl g8 fw"><button class="bt bt-o bt-s" onclick="stopProcesses()">停止本应用进程</button><button class="bt bt-o bt-s" onclick="uninstallAll()">卸载清理</button></div></details>
+        <div id="diagNext" class="diag-next warn"><h3>先处理这件事</h3><p>刷新诊断后会显示最值得先做的一步。</p></div>
         <div id="dg" class="cg"><div class="ci">尚未加载</div></div>
         <div id="ddetail" class="diag-detail hid"></div>
         </div>
@@ -923,6 +952,32 @@ function renderSetupCard(){
  if(allOK)return;
  list.innerHTML=healthStripHTML(items);
 }
+function journeyStepHTML(kind,title,desc,state){
+ const label={read:'只读',auth:'通行证',action:'会执行'}[kind]||kind;
+ return'<div class="journey-step '+escA(kind)+' '+escA(state||'')+'"><span>'+esc(label)+'</span><b>'+esc(title)+'</b><small>'+esc(desc)+'</small></div>'
+}
+function journeyButtonsHTML(buttons){return(buttons||[]).map((b,i)=>'<button class="bt '+(i===0?'bt-r':'bt-w')+' bt-s" onclick="'+b.f+'">'+esc(b.l)+'</button>').join('')}
+function renderJourneyPanel(){
+ const box=el('journeyPanel');if(!box)return;
+ const hasStores=(pr.selected_stores||[]).length>0,st=(ah&&ah.status)||'unknown',stale=hc&&st==='stale',running=isRun(),tickets=(activeTickets||[]).length;
+ const aw=awzPeek(),authDesc=hc?(stale?'可能已失效，建议更新':'已就绪'):(aw&&aw.fields>0?('已拿到 '+aw.fields+'/'+need.length+' 项，可继续'):'抢预约前再拿');
+ const actionDesc=running?'正在运行':(es.status==='error'?'需要先排障':(hc&&hasStores?'可以开始预约或自动抢':'先补齐门店和通行证'));
+ let plan={level:'ok',mode:'只读优先',title:'今天该走哪条路',copy:'看排队、叫号预测可以直接用；抢预约、远程取号、读取我的单据才需要通行证；会提交到寿司郎的动作会再次确认。',buttons:[{l:'先看实时排队',f:"go('qt')"},{l:'拿通行证',f:'startAuth()'}]};
+ if(tickets>0)plan={level:'ok',mode:'已有单据',title:'先看你手上的单据',copy:'你已经有未完成的预约或排队号。先确认叫号和记录，避免重复取号或重复预约。',buttons:[{l:'查看我的单据',f:"go('re')"},{l:'几点叫到我',f:"go('qd')"}]};
+ else if(es.status==='error')plan={level:'bad',mode:'需要处理',title:'先处理这件事',copy:explainMsg(es.message||'')+' 处理前不会自动取消你的预约或排队号。',buttons:[{l:'打开本机诊断',f:'openDiagnostics()'},{l:hc?'重新拿通行证':'拿通行证',f:'startAuth()'}]};
+ else if(running)plan={level:'warn',mode:'运行中',title:'当前有任务正在执行',copy:'页面可以保持打开；想看细节去运行日志，想换目标前先停止当前任务。',buttons:[{l:'查看运行日志',f:"openSettingsFold('fold-lo')"},{l:'停止当前任务',f:'sE()'}]};
+ else if(!hc)plan={level:'warn',mode:'只读可用',title:'先不用登录，也能看排队',copy:'现在想去吃、叫号预测都不需要通行证。等你要抢未来预约或读取我的单据时，再按引导拿通行证。',buttons:[{l:'选门店看排队',f:'openGuestStorePicker()'},{l:'我要抢预约：拿通行证',f:'startAuth()'}]};
+ else if(stale)plan={level:'bad',mode:'通行证待更新',title:'通行证可能失效了',copy:'看排队仍然能用；抢预约、远程取号、读取单据前，建议先重新获取通行证。',buttons:[{l:'重新拿通行证',f:'resetAuthAndStart()'},{l:'先看实时排队',f:"go('qt')"}]};
+ else if(!hasStores)plan={level:'warn',mode:'还差门店',title:'通行证好了，下一步选门店',copy:'选好常用门店后，排队、预测、可约日历和自动抢都会自动带入，不用每页重选。',buttons:[{l:'设置门店和偏好',f:'openSnPrefs()'},{l:'先看实时排队',f:"go('qt')"}]};
+ else plan={level:'ok',mode:'准备就绪',title:'可以开始预约或取号',copy:'通行证和门店偏好都已就绪。先查可约日历，目标明确再交给自动抢。',buttons:[{l:'查可约时段',f:"go('ca')"},{l:'自动抢 / 蹲号',f:"go('sn')"}]};
+ const steps=[
+  journeyStepHTML('read','只读','排队、预测、叫号估算，直接用','ok'),
+  journeyStepHTML('auth','通行证',authDesc,hc?(stale?'bad':'ok'):'warn'),
+  journeyStepHTML('action','会执行',actionDesc,es.status==='error'?'bad':(running?'warn':(hc&&hasStores?'ok':'warn')))
+ ];
+ box.className='journey-panel mt16 '+plan.level;
+ box.innerHTML='<div class="journey-head"><div><div class="journey-kicker">只读 / 通行证 / 会执行</div><h2>'+esc(plan.title)+'</h2><p class="journey-copy">'+esc(plan.copy)+'</p></div><span class="journey-mode '+escA(plan.level)+'">'+esc(plan.mode)+'</span></div><div class="journey-steps">'+steps.join('')+'</div><div class="journey-cta">'+journeyButtonsHTML(plan.buttons)+'</div>';
+}
 function openGuestStorePicker(){openStorePicker({selected:(pr.selected_stores||[]).map(String),onConfirm:saveStarterStores})}
 async function saveStarterStores(ids){if(!ids||!ids.length){toast('先勾选至少一家门店');return}const b={...pr,selected_stores:ids,store_priority:ids};if(!await savePrefsPayload(b,true))return;qtSelected=ids.map(String);rememberStores('sushiro_qt_stores',qtSelected);toast('已记住常用门店，看看现在排多久');go('qt')}
 let activeTickets=[],activeLive={},activeLoadedAt=0,homeLiveAt=0;
@@ -966,6 +1021,7 @@ function renderActiveHome(){
  const list=activeTickets||[],show=hc&&list.length>0;
  box.innerHTML=show?list.map(ticketHeroHTML).join(''):'';
  const hero=el('heroBox');if(hero)hero.classList.toggle('hid',show);
+ renderJourneyPanel();
 }
 function ticketHeroHTML(r){
  const kind=recordKind(r),storeId=String(r.monitored_store_id||r.storeId||''),store=r.store_name||storeDisplayName(storeId)||storeId;
@@ -1049,6 +1105,7 @@ function remTab(t){const once=t==='once';el('remOnce').classList.toggle('hid',!o
 function expandSnPrefs(){const t=el('snPrefsTime');if(t)t.open=true;const d=el('snPrefs');if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}}
 function openSnPrefs(){go('sn');setTimeout(expandSnPrefs,80)}
 function openSettingsFold(id){go('se');setTimeout(()=>{const d=el(id);if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})}},80)}
+function openDiagnostics(){openSettingsFold('fold-safe');setTimeout(()=>lD(),120)}
 function focusNotifySettings(){go('se');setTimeout(()=>{const x=el('nf');if(x){x.scrollIntoView({behavior:'smooth',block:'center'});x.focus()}},60)}
 function renderSettingsStatus(){
  const box=el('settingsStatus');if(!box)return;
@@ -1439,8 +1496,53 @@ function capLine(c){if(!c)return'<span class="bad">尚未开始</span>';const ro
 function renderMobileAuth(d){const st=el('mobileAuthState');if(!st)return;const active=!!d.active,cap=d.capture||null,logs=d.logs||[];let html='<b>'+esc(active?'手机捕获中（请从「拿通行证（向导）」继续或停止）':(d.saved?'已保存':'未运行'))+'</b><br>'+esc(d.message||'')+(active?'<br>失效时间：'+esc(mobileUaTime(d.expires)):'')+'<br>CA：<code>'+esc(d.ca_path||'')+'</code><br>'+capLine(cap);if(logs.length)html+='<br><b>最近日志</b><br>'+logs.slice(-6).map(l=>esc((l.time||'')+' '+(l.message||''))).join('<br>');st.innerHTML=html}
 async function loadMobileAuth(){try{renderMobileAuth(await safeFetch('/api/mobile-auth'))}catch(e){const st=el('mobileAuthState');if(st)st.innerHTML='<span class="bad">加载手机凭证状态失败：'+esc(String(e.message||e))+'</span>'}}
 function chip(t,s,c){return'<div class="ci '+c+'">'+esc(t)+'：'+esc(s)+'</div>'}
+function diagnosticAdvice(d){
+ const cfg=d.config||{},cert=d.certificate||{},pm=d.proxy_marker||{},chain=d.proxy_chain||{},net=d.network||{},eng=d.engine||{},isWin=(d.platform||{}).goos==='windows';
+ const certUntrusted=isWin?(cert.cert_exists&&(!cert.current_user_trusted||!cert.local_machine_trusted)):(cert.cert_exists&&!cert.trusted);
+ if(pm.stale)return{level:'bad',title:'先修复代理残留',body:'系统代理里还有上次留下的寿司郎代理。先修复代理，再重新获取通行证或启动任务。',buttons:[{l:'修复代理',f:'repairP()'},{l:'复制诊断',f:'copyDiag()'}]};
+ if(!cfg.complete)return{level:'bad',title:'先拿通行证',body:'抢预约、远程取号和读取我的单据需要完整通行证。看排队仍然可以直接用。',buttons:[{l:'拿通行证',f:'startAuth()'},{l:'先看排队',f:"go('qt')"}]};
+ if(certUntrusted)return{level:'bad',title:'先信任证书',body:'证书未被系统完整信任，寿司郎小程序请求可能抓不到。按向导重新获取通行证并允许安装证书。',buttons:[{l:'重新拿通行证',f:'resetAuthAndStart()'},{l:'复制诊断',f:'copyDiag()'}]};
+ if(chain.checked&&!chain.ok)return{level:'bad',title:'先处理代理链路',body:'本机代理链路自检失败。保留本页诊断信息，再修复代理或发给开发者排查。',buttons:[{l:'修复代理',f:'repairP()'},{l:'复制诊断',f:'copyDiag()'}]};
+ if(net.reachable===false)return{level:'warn',title:'先确认网络',body:'当前访问寿司郎接口失败，可能是网络、地区或临时接口波动。确认网络后刷新诊断。',buttons:[{l:'刷新诊断',f:'lD()'},{l:'复制诊断',f:'copyDiag()'}]};
+ if(!cfg.store_count)return{level:'warn',title:'先选常用门店',body:'选好门店后，排队、预测、可约日历和自动抢都会自动带入，体验会顺很多。',buttons:[{l:'选门店',f:'openGuestStorePicker()'},{l:'改抢号偏好',f:'openSnPrefs()'}]};
+ if(!(cfg.notification_channels||[]).length)return{level:'warn',title:'建议配置通知',body:'不配置通知也能使用，但叫号提醒和抢到预约不会主动推送。',buttons:[{l:'去配置通知',f:'focusNotifySettings()'},{l:'暂时不用',f:"go('da')"}]};
+ if(eng.status==='error')return{level:'bad',title:'先看运行错误',body:explainMsg(eng.message||'运行遇到问题。处理红色项后再重新启动任务。'),buttons:[{l:'查看日志',f:"openSettingsFold('fold-lo')"},{l:'复制诊断',f:'copyDiag()'}]};
+ return{level:'ok',title:'本机状态正常',body:'通行证、代理、网络和通知都没有明显阻塞项。可以回首页继续查排队、预约或自动抢。',buttons:[{l:'回首页',f:"go('da')"},{l:'查可约时段',f:"go('ca')"}]}
+}
+function renderDiagnosticNext(d){
+ const box=el('diagNext');if(!box)return;
+ const a=diagnosticAdvice(d),buttons=journeyButtonsHTML(a.buttons);
+ box.className='diag-next '+a.level;
+ box.innerHTML='<h3>'+esc(a.title)+'</h3><p>'+esc(a.body)+'</p>'+(buttons?'<div class="fl g8 fw mt8">'+buttons+'</div>':'');
+}
 function diagDetail(d){const cfg=d.config||{},cert=d.certificate||{},pm=d.proxy_marker||{},sp=d.system_proxy||{},chain=d.proxy_chain||{},net=d.network||{},logs=(d.engine_log_tail||[]).concat((d.log_tail||[]).map(x=>({time:'',message:x}))),ports=d.ports||[],isWin=(d.platform||{}).goos==='windows';const badPorts=ports.filter(p=>!p.available&&!p.current&&!p.fallback_port).map(p=>p.name+': '+(p.error||'占用')),portNotes=ports.filter(p=>p.note).map(p=>p.name+': '+p.note),chainLines=(chain.probes||[]).map(p=>p.name+': '+(p.ok?'正常':p.skipped?'跳过':'异常')+(p.detail?'（'+p.detail+'）':''));let html='<b>下一步建议</b><br>';if(!cfg.complete)html+='先重新获取凭证参数。<br>';if(isWin&&cert.cert_exists&&!cert.current_user_trusted&&!cert.local_machine_trusted)html+='证书已生成但未信任，请重新获取凭证并允许管理员权限安装证书。<br>';if(isWin&&cert.current_user_trusted&&!cert.local_machine_trusted)html+='Windows 机器级证书未信任，PC 微信可能拒绝访问；请重新获取凭证并允许管理员权限。<br>';if(isWin&&!cert.current_user_trusted&&cert.local_machine_trusted)html+='Windows 当前用户证书未信任，请重新获取凭证补齐证书信任。<br>';if(!isWin&&cert.cert_exists&&!cert.trusted)html+='证书已生成但未信任，请重新获取凭证触发安装。<br>';if(chain.checked&&!chain.ok)html+='代理链路自检失败，请保留本页信息发给开发者。<br>';if(pm.stale)html+='发现代理残留，请先点“修复代理”。<br>';if(!net.reachable)html+='寿司郎网络不可达，先确认网络或稍后重试。<br>';html+='<br><b>证书</b>：<code>'+esc(cert.cert_path||'-')+'</code>'+(cert.trust_error?'<br>'+esc(cert.trust_error):'')+(isWin&&(cert.current_user_trusted||cert.local_machine_trusted)?'<br>CurrentUser='+esc(String(!!cert.current_user_trusted))+'；LocalMachine='+esc(String(!!cert.local_machine_trusted))+'；Disallowed='+esc(String(!!cert.disallowed)):'');if(badPorts.length||portNotes.length)html+='<br><b>端口</b>：'+esc(badPorts.concat(portNotes).join('；'));if((sp.summary||[]).length)html+='<br><b>系统代理</b>：'+esc(sp.summary.join('；'));html+='<br><b>代理链路</b>：'+esc(chain.summary||'未检查')+(chainLines.length?'<br>'+esc(chainLines.join('；')):'');if(logs.length)html+='<br><b>最近日志</b><br>'+logs.slice(-8).map(l=>esc((l.time||'')+' '+(l.message||''))).join('<br>');return html}
-async function lD(){const box=el('dg'),detail=el('ddetail');if(!box)return;box.innerHTML='<div class="ci">诊断中…</div>';if(detail)detail.classList.add('hid');try{const d=await safeFetch('/api/diagnostics',null,20000);lastDiag=d;const cfg=d.config||{},cert=d.certificate||{},pm=d.proxy_marker||{},sp=d.system_proxy||{},chain=d.proxy_chain||{},eng=d.engine||{},net=d.network||{},dp=d.ports||[],isWin=(d.platform||{}).goos==='windows';const miss=(cfg.missing||[]).join('、'),portIssues=dp.filter(p=>p.in_use&&!p.current&&!p.fallback_port).map(p=>p.name),portNotes=dp.filter(p=>p.note).map(p=>p.note),portText=portIssues.length?portIssues.join('、'):(portNotes.length?portNotes.join('、'):'默认端口可用'),certText=isWin?(cert.local_machine_trusted?'机器级已信任':cert.current_user_trusted?'用户级已信任':(cert.cert_exists?'未信任':'未生成')):(cert.trusted?'已信任':cert.cert_exists?'未信任':'未生成'),certClass=isWin?(cert.local_machine_trusted?'ok':cert.current_user_trusted?'warn':'bad'):(cert.trusted?'ok':'bad');const items=[];items.push(chip('凭证参数',cfg.complete?'完整':(miss||'未捕获'),cfg.complete?'ok':'bad'));items.push(chip('门店',cfg.store_count?cfg.store_count+' 个':'未选择',cfg.store_count?'ok':'bad'));items.push(chip('证书',certText,certClass));items.push(chip('端口',portText,portIssues.length?'bad':portNotes.length?'warn':'ok'));items.push(chip('代理残留',pm.stale?'发现残留':pm.active?'运行中':'未发现',pm.stale?'bad':pm.active?'warn':'ok'));items.push(chip('系统代理',sp.available?'可读取':'不可读取',sp.available?'ok':'warn'));items.push(chip('代理链路',chain.checked?(chain.ok?'正常':'异常'):'未运行',chain.checked?(chain.ok?'ok':'bad'):'warn'));items.push(chip('网络',net.reachable?'寿司郎可达':'不可达',net.reachable?'ok':'bad'));items.push(chip('通知',cfg.notification_channels?.length?cfg.notification_channels.join('、'):'未配置',cfg.notification_channels?.length?'ok':'warn'));items.push(chip('引擎',eng.status||'idle',eng.status==='error'?'bad':(eng.status==='booking'||eng.status==='capturing'||eng.status==='sniping')?'warn':'ok'));box.innerHTML=items.join('');if(detail){detail.innerHTML=diagDetail(d);detail.classList.remove('hid')}}catch(e){box.innerHTML=loadErrBoxHTML(e,'lD()','诊断')}}
+async function lD(){
+ const box=el('dg'),detail=el('ddetail'),next=el('diagNext');if(!box)return;
+ box.innerHTML='<div class="ci">诊断中…</div>';
+ if(next){next.className='diag-next warn';next.innerHTML='<h3>先处理这件事</h3><p>正在检查通行证、代理、证书、网络和通知。</p>'}
+ if(detail)detail.classList.add('hid');
+ try{
+  const d=await safeFetch('/api/diagnostics',null,20000);lastDiag=d;renderDiagnosticNext(d);
+  const cfg=d.config||{},cert=d.certificate||{},pm=d.proxy_marker||{},sp=d.system_proxy||{},chain=d.proxy_chain||{},eng=d.engine||{},net=d.network||{},dp=d.ports||[],isWin=(d.platform||{}).goos==='windows';
+  const miss=(cfg.missing||[]).join('、'),portIssues=dp.filter(p=>p.in_use&&!p.current&&!p.fallback_port).map(p=>p.name),portNotes=dp.filter(p=>p.note).map(p=>p.note),portText=portIssues.length?portIssues.join('、'):(portNotes.length?portNotes.join('、'):'默认端口可用'),certText=isWin?(cert.local_machine_trusted?'机器级已信任':cert.current_user_trusted?'用户级已信任':(cert.cert_exists?'未信任':'未生成')):(cert.trusted?'已信任':cert.cert_exists?'未信任':'未生成'),certClass=isWin?(cert.local_machine_trusted?'ok':cert.current_user_trusted?'warn':'bad'):(cert.trusted?'ok':'bad');
+  const items=[];
+  items.push(chip('凭证参数',cfg.complete?'完整':(miss||'未捕获'),cfg.complete?'ok':'bad'));
+  items.push(chip('门店',cfg.store_count?cfg.store_count+' 个':'未选择',cfg.store_count?'ok':'bad'));
+  items.push(chip('证书',certText,certClass));
+  items.push(chip('端口',portText,portIssues.length?'bad':portNotes.length?'warn':'ok'));
+  items.push(chip('代理残留',pm.stale?'发现残留':pm.active?'运行中':'未发现',pm.stale?'bad':pm.active?'warn':'ok'));
+  items.push(chip('系统代理',sp.available?'可读取':'不可读取',sp.available?'ok':'warn'));
+  items.push(chip('代理链路',chain.checked?(chain.ok?'正常':'异常'):'未运行',chain.checked?(chain.ok?'ok':'bad'):'warn'));
+  items.push(chip('网络',net.reachable?'寿司郎可达':'不可达',net.reachable?'ok':'bad'));
+  items.push(chip('通知',cfg.notification_channels?.length?cfg.notification_channels.join('、'):'未配置',cfg.notification_channels?.length?'ok':'warn'));
+  items.push(chip('引擎',eng.status||'idle',eng.status==='error'?'bad':(eng.status==='booking'||eng.status==='capturing'||eng.status==='sniping')?'warn':'ok'));
+  box.innerHTML=items.join('');
+  if(detail){detail.innerHTML=diagDetail(d);detail.classList.remove('hid')}
+ }catch(e){
+  if(next){next.className='diag-next bad';next.innerHTML='<h3>先处理这件事</h3><p>诊断没有跑通。先确认本机服务还在运行，再重试或复制错误信息。</p><div class="fl g8 fw mt8"><button class="bt bt-w bt-s" onclick="lD()">重试</button></div>'}
+  box.innerHTML=loadErrBoxHTML(e,'lD()','诊断')
+ }
+}
 async function copyDiag(){if(!lastDiag)await lD();if(!lastDiag){toast('暂无诊断信息');return}const text=JSON.stringify(lastDiag,null,2);try{if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(text);else{const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.left='-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}toast('已复制诊断信息')}catch(e){toast('复制失败，请手动选择诊断详情')}}
 function authProbeHTML(d){const rs=d.results||[],ad=d.advice||[];let html='<b>基础接口自检</b>：'+(d.ok?'通过':'失败')+(d.store_id?'<br><b>门店</b>：'+esc(d.store||d.store_id)+' <code>'+esc(d.store_id)+'</code>':'');if(rs.length)html+='<br>'+rs.map(r=>esc(r.name||'-')+'：'+(r.ok?'正常':r.skipped?'跳过':'异常')+(r.status?' HTTP '+r.status:'')+(r.latency_ms?' '+r.latency_ms+'ms':'')+(r.detail?'（'+esc(r.detail)+'）':'')).join('<br>');if(ad.length)html+='<br><b>下一步</b><br>'+ad.map(esc).join('<br>');return html}
 async function testAuthProbe(){const detail=el('ddetail');if(detail){detail.classList.remove('hid');detail.innerHTML='基础接口测试中...'}try{const r=await fetch('/api/auth/probe',{method:'POST'}),d=await r.json();if(detail)detail.innerHTML=authProbeHTML(d);if(!d.ok)toast('基础接口未通过，详情已显示在诊断区')}catch(e){if(detail)detail.innerHTML='基础接口测试失败：'+esc(String(e));toast('基础接口测试失败')}}

@@ -121,6 +121,26 @@ func TestEmbeddedCriticalAnchors(t *testing.T) {
 	}
 }
 
+func TestEmbeddedUXCommandCenterAnchors(t *testing.T) {
+	satisfied := satisfiedDOMIDs()
+	for _, id := range []string{"journeyPanel", "diagNext"} {
+		if !satisfied[id] {
+			t.Errorf("缺少体验指挥台锚点 id=%q", id)
+		}
+	}
+	for _, needle := range []string{
+		"function renderJourneyPanel(",
+		"function diagnosticAdvice(",
+		"只读 / 通行证 / 会执行",
+		"今天该走哪条路",
+		"先处理这件事",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少体验指挥台片段：%s", needle)
+		}
+	}
+}
+
 // TestEmbeddedJavaScriptSyntax 用 node --check 校验内嵌 JS 语法；环境没有 node 时跳过，
 // 因此不引入硬依赖。CI 的 runner 自带 node，可作为语法门禁。
 func TestEmbeddedJavaScriptSyntax(t *testing.T) {
