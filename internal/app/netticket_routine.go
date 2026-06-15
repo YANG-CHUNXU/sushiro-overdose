@@ -229,7 +229,7 @@ func sendRoutineTakeTicketReminder(ctx context.Context, routine NetTicketRoutine
 	}
 	wait := ""
 	if routine.WaitMinutesRange != nil {
-		wait = "，预计等待 " + strconvItoa(routine.WaitMinutesRange.Low) + "-" + strconvItoa(routine.WaitMinutesRange.High) + " 分钟"
+		wait = "，预计等待 " + strconv.Itoa(routine.WaitMinutesRange.Low) + "-" + strconv.Itoa(routine.WaitMinutesRange.High) + " 分钟"
 	}
 	sendQueueAlert(ctx,
 		"🍣 该取号了",
@@ -311,8 +311,4 @@ func compactRoutineHHMM(raw string) string {
 		raw = raw[:4]
 	}
 	return raw
-}
-
-func strconvItoa(v int) string {
-	return strconv.Itoa(v)
 }

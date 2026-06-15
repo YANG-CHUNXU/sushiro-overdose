@@ -227,6 +227,10 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					e.setState(EngineError, "凭证参数已失效，请重新捕获")
 					return
 				}
+				if isCredentialRefreshLikelyError(err) {
+					// 软过期也喂给凭证健康监测，与预约失败分支保持对称。
+					noteAuthResult(err)
+				}
 				if isOfficialServerHTTPError(err) {
 					UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 						t.Status = "running"

@@ -324,8 +324,14 @@ func queueBaselineRecordFromStore(s QueueLiveStore, collectedAt string) QueueBas
 	}
 }
 
+// queueBaselineRecordsMu 串行化对 queue_baseline.jsonl 的追加写，避免并发写交错。
+var queueBaselineRecordsMu sync.Mutex
+
 // appendQueueBaselineRecords 一次性追加一批基准记录到 queue_baseline.jsonl。
 func appendQueueBaselineRecords(records []QueueBaselineRecord) error {
+	queueBaselineRecordsMu.Lock()
+	defer queueBaselineRecordsMu.Unlock()
+
 	if len(records) == 0 {
 		return nil
 	}

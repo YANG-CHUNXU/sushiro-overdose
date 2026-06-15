@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,6 +31,11 @@ const (
 	queueAPIProfilePublicV1      = "public-profile-v1"
 	queueAPIProfileStoreDetailV1 = "store-detail-profile-v1"
 )
+
+// queueObservationMu 串行化对 queue_observations.jsonl 的追加写。
+// sampling、基准采集等多个 goroutine 会并发写入，不串行化会导致 JSON 行交错/截断，
+// 下游逐行 Unmarshal 时静默丢观测数据（参考 history.go 的 historyMu）。
+var queueObservationMu sync.Mutex
 
 type QueueObservation struct {
 	CollectedAt       string           `json:"collected_at"`
@@ -249,6 +255,9 @@ func queueHolidayPath() string {
 }
 
 func appendQueueObservation(observation QueueObservation) error {
+	queueObservationMu.Lock()
+	defer queueObservationMu.Unlock()
+
 	if strings.TrimSpace(observation.StoreID) == "" {
 		return nil
 	}

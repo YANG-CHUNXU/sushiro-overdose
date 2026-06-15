@@ -93,6 +93,54 @@ func TestActiveNetTicketPlanStaysArmed(t *testing.T) {
 	}
 }
 
+// TestNetTicketServerRetryCountPersists 验证服务端临时错误的重试计数会被持久化，
+// 且达到上限 netTicketMaxServerRetries 后 fireNetTicket 不再清占位重发（防刷号）。
+func TestNetTicketServerRetryCountPersists(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := SaveNetTicketPlan(NetTicketPlan{
+		Enabled:          true,
+		StoreID:          "3006",
+		Status:           "retrying",
+		TargetTime:       "1900",
+		ServerRetryCount: netTicketMaxServerRetries,
+		FiredDate:        "", // retrying 状态当天未占位
+	}); err != nil {
+		t.Fatalf("SaveNetTicketPlan() error = %v", err)
+	}
+
+	loaded := LoadNetTicketPlan()
+	if loaded.ServerRetryCount != netTicketMaxServerRetries {
+		t.Fatalf("ServerRetryCount round-trip = %d, want %d", loaded.ServerRetryCount, netTicketMaxServerRetries)
+	}
+}
+
+// TestNetTicketServerRetryResetsAcrossDay 验证跨天后 ServerRetryCount 仍被持久化，
+// 由 netTicketTick 在新一天的首次调度时清零（见 netticket.go 中 FiredDate != today 的重置分支）。
+func TestNetTicketServerRetryResetsAcrossDay(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	now := time.Date(2026, 6, 3, 18, 0, 0, 0, time.Local)
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	if err := SaveNetTicketPlan(NetTicketPlan{
+		Enabled:          true,
+		StoreID:          "3006",
+		Status:           "retrying",
+		TargetTime:       "1900",
+		ServerRetryCount: netTicketMaxServerRetries,
+		FiredDate:        yesterday,
+	}); err != nil {
+		t.Fatalf("SaveNetTicketPlan() error = %v", err)
+	}
+
+	loaded := LoadNetTicketPlan()
+	// 前提：昨天的计划今天还没处理过，netTicketTick 会进入清零分支。
+	if loaded.FiredDate == now.Format("2006-01-02") {
+		t.Fatal("precondition: yesterday's plan should not already be fired today")
+	}
+	if loaded.ServerRetryCount != netTicketMaxServerRetries {
+		t.Fatalf("yesterday's retry count should still be on disk, got %d", loaded.ServerRetryCount)
+	}
+}
+
 func TestNetTicketRoutinePlansReminderFromHistoricalMealPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

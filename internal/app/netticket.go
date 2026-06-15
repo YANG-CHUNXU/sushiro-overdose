@@ -20,6 +20,9 @@ const (
 	netTicketPlanSourceRoutine = "routine"
 	netTicketWindowMinutes     = 12 // 到点后多久内仍尝试取号；过窗口则放弃
 	netTicketTickSeconds       = 20
+	// netTicketMaxServerRetries 限制官方服务器 5xx 等临时错误下的重试次数，避免
+	// 服务器持续抖动时每 20 秒发一次取号请求（刷号风险）。超过次数即转 error 放弃。
+	netTicketMaxServerRetries = 6
 )
 
 // NetTicketPlan 是「定时取号」计划：到指定时间自动远程取号。
@@ -38,6 +41,9 @@ type NetTicketPlan struct {
 	FiredDate          string `json:"fired_date,omitempty"` // 当天已执行(成功或放弃)的日期 YYYY-MM-DD
 	FiredAt            string `json:"fired_at,omitempty"`
 	LastError          string `json:"last_error,omitempty"`
+	// ServerRetryCount 是官方服务器临时错误（5xx 等）下的连续重试计数，
+	// 达到 netTicketMaxServerRetries 后放弃，避免一直重发取号请求。
+	ServerRetryCount int `json:"server_retry_count,omitempty"`
 }
 
 func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
@@ -150,6 +156,13 @@ func netTicketTick(ctx context.Context) {
 	today := now.Format("2006-01-02")
 	if plan.FiredDate == today {
 		return // 今天已处理过
+	}
+	// 跨天后清掉历史重试计数，今天重新开始计数。
+	if plan.ServerRetryCount != 0 {
+		plan.ServerRetryCount = 0
+		if err := SaveNetTicketPlan(plan); err != nil {
+			LogMessage(now, "保存排队号计划失败: "+err.Error())
+		}
 	}
 	if plan.TriggerMode == "on_open" {
 		netTicketTickOnOpen(ctx, plan, now, today)
@@ -267,10 +280,23 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 			return
 		}
 		if isOfficialServerHTTPError(err) {
+			plan.ServerRetryCount++
+			plan.LastError = friendlyNetTicketError(err)
+			// 超过重试上限：放弃当天取号，保留 FiredDate 占位避免再次触发，转 error 并通知。
+			if plan.ServerRetryCount > netTicketMaxServerRetries {
+				plan.Enabled = false
+				plan.Status = "error"
+				plan.FiredDate = today
+				if err := SaveNetTicketPlan(plan); err != nil {
+					LogMessage(now, "保存排队号计划失败: "+err.Error())
+				}
+				sendQueueAlert(ctx, "⚠️ 定时取号失败", DefaultString(plan.StoreName, plan.StoreID)+"：连续 "+strconv.Itoa(plan.ServerRetryCount)+" 次服务端临时错误（"+plan.LastError+"），已停止重试。可稍后手动取号。")
+				return
+			}
+			// 仍在重试上限内：清掉当天占位，下个 tick 重新抢锁重试。
 			plan.Status = "retrying"
 			plan.FiredDate = ""
 			plan.FiredAt = ""
-			plan.LastError = friendlyNetTicketError(err)
 			if err := SaveNetTicketPlan(plan); err != nil {
 				LogMessage(now, "保存排队号计划失败: "+err.Error())
 			}
@@ -338,6 +364,7 @@ func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketP
 	plan.Number = ticket.Number
 	plan.TicketID = ticket.TicketID
 	plan.LastError = ""
+	plan.ServerRetryCount = 0
 	storeName := DefaultString(plan.StoreName, plan.StoreID)
 	storeAddress := ""
 	if info, err := client.GetStoreInfo(ctx, plan.StoreID); err == nil {

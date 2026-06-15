@@ -566,6 +566,9 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 						e.setState(EngineError, "凭证参数已失效，请重新捕获")
 						return
 					}
+				} else if isCredentialRefreshLikelyError(err) {
+					// 与 CreateReservation 失败分支保持对称：软过期也要喂给凭证健康监测，否则不触发 stale 提醒。
+					noteAuthResult(err)
 				}
 				errStreak++
 				if errStreak >= 5 {
