@@ -207,6 +207,61 @@ func TestEmbeddedUIModeSwitchContracts(t *testing.T) {
 	}
 }
 
+func TestEmbeddedUIModeSwitchIsImmediate(t *testing.T) {
+	block := regexp.MustCompile(`async function setUIMode\(mode\)\{[\s\S]*?\n\}`).FindString(indexHTML)
+	if block == "" {
+		t.Fatalf("找不到 setUIMode 函数")
+	}
+	for _, needle := range []string{
+		"function cacheUIMode(",
+		"function persistUIMode(",
+		"cacheUIMode(mode);applyUIMode();",
+		"persistUIMode(uiMode);",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少即时切换片段：%s", needle)
+		}
+	}
+	applyIdx := strings.Index(block, "applyUIMode()")
+	loadIdx := strings.Index(block, "await ensurePrefsLoaded()")
+	if applyIdx < 0 {
+		t.Fatalf("setUIMode 缺少 applyUIMode")
+	}
+	if loadIdx >= 0 && loadIdx < applyIdx {
+		t.Fatalf("setUIMode 不应先等待偏好接口再切 UI：\n%s", block)
+	}
+}
+
+func TestEmbeddedUIModeSwitchIgnoresStalePreferenceResponses(t *testing.T) {
+	for _, needle := range []string{
+		"uiModeSeq=0",
+		"uiModeSeq++;cacheUIMode(mode);applyUIMode();",
+		"const modeSeq=uiModeSeq;await ensurePrefsLoaded();if(modeSeq===uiModeSeq)cacheUIMode(",
+		"const modeSeq=uiModeSeq",
+		"const serverMode=pr.ui_mode==='advanced'?'advanced':'simple'",
+		"if(modeSeq===uiModeSeq||serverMode===currentUIMode())cacheUIMode(serverMode);else pr={...pr,ui_mode:currentUIMode()};",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少防旧偏好回包覆盖模式片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedPersistUIModeDoesNotRepaintPreferenceForm(t *testing.T) {
+	block := regexp.MustCompile(`async function persistUIMode\(mode\)\{[\s\S]*?\n\}`).FindString(indexHTML)
+	if block == "" {
+		t.Fatalf("找不到 persistUIMode 函数")
+	}
+	for _, forbidden := range []string{"fF(pr)", "dP(pr)", "renderBookingStores()", "uD()"} {
+		if strings.Contains(block, forbidden) {
+			t.Fatalf("persistUIMode 不应重绘偏好表单，避免覆盖用户未保存输入；发现：%s\n%s", forbidden, block)
+		}
+	}
+	if !strings.Contains(block, "applyUIMode();") {
+		t.Fatalf("persistUIMode 仍需在保存成功后刷新模式状态")
+	}
+}
+
 func TestEmbeddedAdvancedOnlyMutationMarkers(t *testing.T) {
 	for _, needle := range []string{
 		`id="p-ca" class="hid advanced-page"`,
@@ -426,6 +481,22 @@ func TestEmbeddedSettingsDoesNotOverstateCloudBaseline(t *testing.T) {
 	}
 }
 
+func TestEmbeddedDashboardDataSourceDoesNotTreatConfiguredCloudAsLoggedIn(t *testing.T) {
+	for _, needle := range []string{
+		"const configured=!!b.configured,authenticated=!!b.authenticated",
+		"else if(authenticated)",
+		"else if(configured)",
+		"云端服务已配置；登录 GitHub 后可验证 Turso 基准并叠加线上参考。",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少图表数据源云端登录状态区分片段：%s", needle)
+		}
+	}
+	if strings.Contains(indexHTML, "cfg=!!b.configured||!!b.authenticated") {
+		t.Fatalf("图表数据源不应把云端已配置等同于 GitHub 已登录")
+	}
+}
+
 func TestEmbeddedCloudLoginRefreshesQueueCharts(t *testing.T) {
 	for _, needle := range []string{
 		"cloudRefreshPending",
@@ -441,6 +512,34 @@ func TestEmbeddedCloudLoginRefreshesQueueCharts(t *testing.T) {
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少 GitHub 登录后刷新图表片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedDashboardCloudChartsDoNotRequireSushiroAuth(t *testing.T) {
+	for _, needle := range []string{
+		"await loadCloudAuth(false);await loadSampling();",
+		"const cloudReady=!!(cloudAuth.baseline_connected||(qdDashboardData.baseline&&qdDashboardData.baseline.used))",
+		"const cloudLoggedIn=!!cloudAuth.connected",
+		"chip('图表',cloudReady?'GitHub 线上基准可用':cloudLoggedIn?'GitHub 已登录，基准待验证':'登录 GitHub 获取线上基准'",
+		"const localNeedsAuth=!hc||q.needs_auth||q.auth_ok===false",
+		"const cloudButton=cloudReady||cloudLoggedIn?'<button class=\"bt bt-w bt-s\" onclick=\"loadQueueDashboard()\">刷新图表</button>':'<button class=\"bt bt-w bt-s\" onclick=\"startCloudLogin()\">登录 GitHub 获取线上基准</button>'",
+		"const actions=localNeedsAuth?cloudButton+'<button class=\"bt bt-o bt-s\" onclick=\"startAuth()\">小程序采集补强</button>'",
+		"图表走 GitHub/Turso；小程序通行证只用于本机采集补强。",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少 GitHub 图表与小程序采集解耦片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedQueueDashboardRefreshesSamplingCardAfterBaselineLoad(t *testing.T) {
+	for _, needle := range []string{
+		"qdDashboardData=d||{};renderQueueDashboard(d);renderDashboardSamplingCard()",
+		"qdDashboardData={};adv.innerHTML=loadErrBoxHTML(e,'loadQueueDashboard()','到店建议');renderDashboardSamplingCard()",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少图表基准加载后刷新采集卡片段：%s", needle)
 		}
 	}
 }
