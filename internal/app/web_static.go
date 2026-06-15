@@ -536,6 +536,47 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .belt-item:nth-child(4n) .plate{border-color:#9B9691}
 @keyframes beltmove{to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion:reduce){.belt-track{animation:none}}
+/* ===== 溢出兜底 + 组件统一（修 qd/qt 文字越界、输入框高度不一）=====
+   根因：多处 flex/grid 子项没有 min-width:0，长数字/长文本把容器撑爆；
+   部分大字号（叫号 38px、KPI 28px）在窄列里溢出。这里统一加溢出兜底。 */
+.grid,.settings-grid,.dash-split,.quick-panel,.advisor-card,.curve-sampling,.queue-live-top,.queue-live-main,.queue-live-foot,.home-decision-grid,.journey-head,.rank-row,.store-row,.sprow,.strip,.fl{min-width:0}
+/* 卡片本身不撑破父级 */
+.cd,.card,.qbox,.answer-card,.rec-card,.queue-live-card,.kpi,.hl-card,.ci,.metric,.sample-state,.data-source,.pick-out,.diag-next,.status-card,.home-decision{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+/* 叫号大数字：允许收缩，过长（如老号码上千）按字号自适应，不顶破右侧折线 */
+.queue-call{min-width:0}
+.queue-call strong{font-size:clamp(26px,7vw,38px);letter-spacing:-.02em;overflow-wrap:anywhere}
+.queue-call em{font-size:.5em;vertical-align:middle}
+/* KPI / 指标大数字不溢出 */
+.kpi strong,.advisor-point strong{overflow-wrap:anywhere;hyphens:auto}
+.queue-metric b,.queue-metric span{min-width:0;overflow-wrap:anywhere}
+/* 胶囊 / 标签：内容过长换行而非顶破；高度保留单行时的视觉 */
+.ci{overflow-wrap:anywhere;word-break:break-word}
+.chip,.tag,.pill,.queue-status,.spb,.journey-mode,.journey-kicker,.advisor-eyebrow,.authpill,.dash-target{max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+/* answer-chip 里的 strong（数字+单位）允许换行 */
+.answer-chip{min-width:0}.answer-chip strong{overflow-wrap:anywhere}
+/* 网格列在窄屏不强行保持原始 minmax，避免横向溢出 */
+.queue-metrics,.metric,.kpi-grid,.cg,.sample-state,.rec-grid,.home-decision-grid,.queue-live-grid,.store-result-grid,.disc-list{min-width:0}
+/* 趋势/热力/表格的水平滚动容器已有 overflow:auto，确保其父级不撑破 */
+.dash-chart,.chart,.heat-wrap,.db,.called-table-wrap{min-width:0}
+/* 标题/副标题在窄屏换行而非溢出 */
+.dash-title,.dash-copy,.ph,.ph-sub,.page-lead h2,.page-lead p,.hero h1,.hero p{overflow-wrap:anywhere}
+/* 头部品牌/版本在窄屏不撑破 */
+.brand{min-width:0;overflow:hidden}
+.brand strong,.brand span{overflow-wrap:anywhere;max-width:100%}
+.nav{min-width:0}
+.nav a{overflow-wrap:anywhere}
+/* ===== 组件统一：输入框高度统一为 40px，圆角/边框对齐主输入 ===== */
+.dash-target input,.tr input,.sn-row input,.sn-row select{height:40px;border-radius:8px}
+.dash-target{height:40px;border-radius:999px}
+.dash-target input{border-radius:999px}
+/* 表格内紧凑输入保持 82px 宽，但高度对齐 */
+.tr input{width:82px;text-align:center}
+/* select 统一（全局已是 40px，这里补齐 .fr/.fg 内嵌的） */
+.fr .fg select,.fr .fg input{min-width:0}
+/* 胶囊型组件（开关 / 勾选 / 标签）统一到 38px，与同行按钮、输入视觉对齐 */
+.switch,.check,.chip,.preset{min-height:38px;border-radius:999px}
+.switch input,.check input{margin:0}
+.preset{border-radius:10px}
 </style>
 </head>
 <body>
