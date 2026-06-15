@@ -287,18 +287,47 @@ func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
 		"function historicalQueueTrendPoints(",
 		"(d&&d.trend)||[]",
 		"legend-turso-trend",
-		"Turso 历史排队趋势",
 		"trendMax=Math.max(1,...trend.map",
-		"历史排队趋势：已把",
+		"queueTrendSourceLabel(trend[0]&&trend[0].source)",
+		"trendPts.length>1",
+		"历史排队趋势：绿色虚线是",
+		"独立归一化",
 		"线上 Turso 基准",
 		"total_queue_groups",
 		"sample_count",
 		"if(!points.length&&!hist.length&&!trend.length)",
 		"renderPressureChart(pc,{points:[],message:'选门店后",
+		// scope 对象的 JSON 字段是 mode（QueueDashboardScope.Mode），不是 scope；
+		// 写成 scope.scope 会是死分支，"全国"前缀永不显示。
+		"qdDashboardData.scope.mode==='all'",
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少主图融合 Turso 历史趋势片段：%s", needle)
 		}
+	}
+
+	// 反向断言：旧文案与错误字段名必须已清除，防止回滚。
+	for _, stale := range []string{
+		"归一化到右侧压力轴",
+		"未选门店时为全国，选门店后为本机",
+		"qdDashboardData.scope.scope==='all'",
+	} {
+		if strings.Contains(indexHTML, stale) {
+			t.Errorf("indexHTML 仍含应已删除的旧片段：%s", stale)
+		}
+	}
+
+	// 图例里的 Turso 趋势项必须按数据条件渲染：图例块内 legend-turso-trend 出现且其前缀
+	// 必须紧跟 trendPts.length>1?，避免有人改回无条件渲染而测试漏过。
+	legendBlock := regexp.MustCompile(`<div class="chart-legend">[\s\S]*?</div>`).FindString(indexHTML)
+	if legendBlock == "" {
+		t.Fatalf("找不到 chart-legend 块")
+	}
+	if strings.Count(legendBlock, "legend-turso-trend") != 1 {
+		t.Fatalf("chart-legend 块应恰好包含 1 个 legend-turso-trend，实际 %d", strings.Count(legendBlock, "legend-turso-trend"))
+	}
+	if !strings.Contains(legendBlock, `trendPts.length>1?'<span class="legend-turso-trend"`) {
+		t.Fatalf("Turso 趋势图例项必须由 trendPts.length>1? 条件包裹，避免无数据时误导")
 	}
 
 	noStore := regexp.MustCompile(`if\(!store\)\{[\s\S]*?return\}`).FindString(indexHTML)
