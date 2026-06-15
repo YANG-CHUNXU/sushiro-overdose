@@ -468,9 +468,12 @@ function isAllowedLoopbackReturn(raw) {
   }
 }
 
+// fail-closed: 当 ALLOWED_GITHUB_LOGINS 为空时默认拒绝所有登录。
+// 部署者必须设置 ALLOWED_GITHUB_LOGINS secret（英文逗号分隔的 GitHub login），
+// 否则登录回调与 requireSession 都会拒绝访问，防止任意 GitHub 账号导出全国基准数据。
 function isAllowedGitHubUser(login, allowlist) {
   const value = String(allowlist || "").trim();
-  if (!value) return true;
+  if (!value) return false;
   const allowed = new Set(value.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
   return allowed.has(String(login || "").toLowerCase());
 }

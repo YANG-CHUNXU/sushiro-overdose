@@ -220,6 +220,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					t.LastError = err.Error()
 				})
 				if isAuthError(err) {
+					noteAuthResult(err) // 凭证失败则标记 stale
 					e.addLogLevel("狙击凭证失败，请重新捕获参数", "error")
 					sendNotification("寿司郎狙击 - 凭证失败", "凭证参数已失效")
 					DeleteLocalConfig()
@@ -239,6 +240,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 				continue
 			}
 
+			markAuthHealthy() // GetTimeslots 成功 → 凭证有效
 			for _, slot := range slots {
 				if slot.Date != target.Date || slot.Start < target.StartAfter || slot.Start >= target.StartBefore {
 					continue
@@ -260,6 +262,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 						t.LastAttemptAt = time.Now().In(settings.Location).Format(time.RFC3339)
 					})
 					if isAuthError(err) {
+						noteAuthResult(err) // 凭证失败则标记 stale
 						e.addLogLevel("预约凭证失败，终止狙击", "error")
 						sendNotification("寿司郎狙击 - 凭证失败", "预约凭证参数已失效")
 						DeleteLocalConfig()
@@ -298,6 +301,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 				}
 				reservation.MonitoredStoreID = target.StoreID
 				onBookingSuccess(reservation, storeName, storeInfo.Address, slotLabel, "狙击")
+				markAuthHealthy() // 狙击预约成功 → 凭证有效
 				UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 					t.Status = "done"
 					t.Attempts = attempts

@@ -207,9 +207,13 @@ func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWa
 		low := int(math.Floor(base * 0.85))
 		high := int(math.Ceil(base * 1.2))
 		if officialWait > 0 {
-			// 官方等待作为下界兜底，避免本机速度过于乐观。
-			if officialWait < low {
+			// 官方等待是门店整体等待分钟数，用户号码靠后时本机 remaining/rate 可能远大于它；
+			// 但用户不可能比门店整体更快叫到，所以用它抬高下界（max），并校正上界，避免区间与门店压力矛盾。
+			if officialWait > low {
 				low = officialWait
+			}
+			if officialWait > high {
+				high = officialWait
 			}
 		}
 		if high < low {
@@ -303,10 +307,11 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 
 	if targetNo > 0 {
 		advisor.Eta = buildQueueAdvisorEta(targetNo, travelMinutes, snapshot, store, rate, now, storeID)
-		// 合理性检查：号码远小于当前叫号，可能是输错或已经过号很久，避免误导用户白跑一趟。
-		if called := snapshot.DisplayCalledNo; called > 0 && targetNo < called-50 {
+		// 合理性检查：号码小于当前叫号即为过号（寿司郎过号不会自动叫到，需补号或重新取号）。
+		// 这里和 computeQueueEta 内部的过号分支互为兜底，任何 targetNo < called 都给出显式警告。
+		if called := snapshot.DisplayCalledNo; called > 0 && targetNo < called {
 			advisor.Warnings = append(advisor.Warnings,
-				fmt.Sprintf("你输入的 %d 号比当前叫到的 %d 号还小很多，可能已经过号或号码输错了，请到小程序核对后再判断。", targetNo, called))
+				fmt.Sprintf("你输入的 %d 号比当前叫到的 %d 号还小，可能已经过号或号码输错了，请到小程序核对后再判断。", targetNo, called))
 			if advisor.Eta != nil {
 				advisor.Eta.Risk = "high"
 			}
@@ -335,6 +340,15 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait int, rate f
 	}
 	waitRange, source := estimateWaitRange(remaining, officialWait, rate, hist)
 	if remaining <= 0 {
+		// remaining==0 有两种含义：targetNo==calledNo 是真的即将轮到；
+		// targetNo<calledNo 是已经过号——寿司郎过号不会自动叫到，需要补号或重新取号，
+		// 必须显式提示，不能再说“已轮到、低风险”（否则与 dashboard 路径自相矛盾）。
+		if targetNo < calledNo {
+			eta.WaitMinutesRange = &QueueWaitRange{Low: 0, High: 0}
+			eta.Risk = "high"
+			eta.ArrivalSuggestion = "这个号可能已经过号了，请到小程序确认是否需要补号或重新取号。"
+			return eta
+		}
 		eta.EstimatedCalledAt = now.Format(time.RFC3339)
 		eta.WaitMinutesRange = &QueueWaitRange{Low: 0, High: 0}
 		eta.Risk = "low"

@@ -131,7 +131,7 @@ func SaveSamplingConfig(cfg SamplingConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(samplingConfigPath(), data, 0o600)
+	return atomicWriteFile(samplingConfigPath(), data, 0o600)
 }
 
 func NormalizeSamplingConfig(cfg SamplingConfig) SamplingConfig {

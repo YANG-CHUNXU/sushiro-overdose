@@ -36,6 +36,31 @@ func isSushiroTargetHost(host string) bool {
 	return host == SushiroHost
 }
 
+// allowedProxyTarget reports whether a CONNECT tunnel / plain HTTP proxy
+// forward may be opened to the given host. The mobile capture proxy binds
+// 0.0.0.0 so a phone on the LAN can route sushiro traffic through it; without
+// this gate any LAN peer could turn the capture proxy into an open proxy /
+// SSRF hop by CONNECTing to arbitrary hosts. Only sushiro-owned hosts are
+// permitted — that is the sole purpose of the capture session. Everything
+// else is rejected before any outbound dial.
+func allowedProxyTarget(host string) bool {
+	host = strings.TrimSpace(host)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "" {
+		return false
+	}
+	// Exact sushiro API host (the only thing we actually MITM).
+	if host == SushiroHost {
+		return true
+	}
+	// Defensive suffix match so a sushiro subdomain the mobile client hits
+	// (e.g. static/CDN) still passes, but nothing outside sushiro.com.cn.
+	return strings.HasSuffix(host, ".sushiro.com.cn")
+}
+
 func shouldBufferSushiroAPIResponse(target *url.URL) bool {
 	if target == nil || !isSushiroTargetHost(target.Host) {
 		return false
@@ -135,12 +160,14 @@ func (ps *ProxyServer) traceConnect(hostPort string, mitm bool) {
 		return
 	}
 	ps.traceMu.Lock()
+	defer ps.traceMu.Unlock()
+	if ps.seenHosts == nil {
+		ps.seenHosts = map[string]struct{}{}
+	}
 	if _, ok := ps.seenHosts[host]; ok {
-		ps.traceMu.Unlock()
 		return
 	}
 	ps.seenHosts[host] = struct{}{}
-	ps.traceMu.Unlock()
 	mode := "passthrough"
 	if mitm {
 		mode = "mitm"
@@ -216,6 +243,15 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	ps.traceConnect(hostPort, isSushiro)
 
 	if !isSushiro {
+		// Security gate: the mobile capture proxy binds 0.0.0.0 so a phone on
+		// the LAN can route sushiro traffic here. Without this check any LAN
+		// peer could CONNECT to an arbitrary host:port and use this process as
+		// an open proxy / SSRF relay. Reject anything that is not sushiro.
+		if !allowedProxyTarget(hostPort) {
+			ps.addLog(fmt.Sprintf("Proxy tunnel blocked (non-allowlisted target): %s", sanitizeProxyHost(hostPort)))
+			fmt.Fprintf(clientConn, "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+			return
+		}
 		// Dial the real server for pass-through tunnels.
 		serverConn, err := net.DialTimeout("tcp", hostPort, proxyTunnelDialTimeout)
 		if err != nil {
@@ -362,6 +398,14 @@ func (ps *ProxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 		req.RequestURI = ""
 		if req.Host == "" {
 			req.Host = req.URL.Host
+		}
+		// Security gate (same rationale as the CONNECT path): the mobile
+		// capture proxy must not become an open forward proxy for arbitrary
+		// hosts. Only sushiro targets may be relayed over plain HTTP.
+		if !allowedProxyTarget(req.URL.Host) {
+			ps.addLog(fmt.Sprintf("HTTP proxy blocked (non-allowlisted target): %s %s", req.Method, sanitizeProxyHost(req.URL.Host)))
+			fmt.Fprintf(clientConn, "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+			return
 		}
 		removeHopByHopHeaders(req.Header)
 		setForwardRequestBody(req, bodyBytes)

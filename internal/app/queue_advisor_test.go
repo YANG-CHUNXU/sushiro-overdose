@@ -248,6 +248,18 @@ func TestEstimateWaitRange(t *testing.T) {
 	if wr, src := estimateWaitRange(100, 0, 2.0, nil); wr == nil || src != "recent_speed" {
 		t.Fatalf("speed range nil/src=%q", src)
 	}
+	// 速度 + 官方等待：用户不可能比门店整体更快叫到，官方等待抬低下界而非压缩。
+	// remaining=178/rate=2 → base≈89，low=floor(89*0.85)=75，high=ceil(89*1.2)=107。
+	// officialWait=120 高于本机估算区间 → low/high 都被抬到 120。
+	if wr, src := estimateWaitRange(178, 120, 2.0, nil); wr == nil || src != "recent_speed" {
+		t.Fatalf("official+speed range nil/src=%q", src)
+	} else if wr.Low < 120 || wr.High < 120 {
+		t.Errorf("officialWait should raise floor (max), got Low=%d High=%d want >=120", wr.Low, wr.High)
+	}
+	// officialWait 远小于本机估算（号码靠后）时不应压缩 low。
+	if wr, _ := estimateWaitRange(178, 30, 2.0, nil); wr == nil || wr.Low < 75 {
+		t.Errorf("small officialWait must not shrink low, got Low=%d want >=75", wr.Low)
+	}
 	// 无速度退化到官方。
 	wr, src := estimateWaitRange(0, 60, 0, nil)
 	if wr == nil || src != "official" {
@@ -268,10 +280,21 @@ func TestEstimateWaitRange(t *testing.T) {
 func TestComputeQueueEta(t *testing.T) {
 	now := time.Date(2026, 6, 8, 12, 30, 0, 0, time.Local)
 
-	// 已轮到。
-	done := computeQueueEta(900, 950, 0, 90, 2.0, nil, now)
+	// 已轮到：targetNo==calledNo 是真的即将轮到。
+	done := computeQueueEta(950, 950, 0, 90, 2.0, nil, now)
 	if done.RemainingGroups != 0 || done.Risk != "low" {
 		t.Errorf("done eta=%+v", done)
+	}
+
+	// 过号：targetNo<calledNo（哪怕只差一个号）也不能再说“已轮到、低风险”，
+	// 寿司郎过号不会自动叫到，需补号或重新取号，与 dashboard 路径口径一致。
+	passed := computeQueueEta(900, 950, 0, 90, 2.0, nil, now)
+	if passed.Risk != "high" || !strings.Contains(passed.ArrivalSuggestion, "过号") {
+		t.Errorf("passed eta should be high risk + 过号 hint, got %+v", passed)
+	}
+	passedBy1 := computeQueueEta(949, 950, 0, 90, 2.0, nil, now)
+	if passedBy1.Risk != "high" || !strings.Contains(passedBy1.ArrivalSuggestion, "过号") {
+		t.Errorf("passed-by-1 eta should be high risk + 过号 hint, got %+v", passedBy1)
 	}
 
 	// 正常：还差 178，速度 2/分 → ~89 分钟，带区间与出发建议。

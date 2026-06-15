@@ -63,7 +63,7 @@ func SaveNetTicketPlan(p NetTicketPlan) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(netTicketPlanPath(), data, 0o600)
+	return atomicWriteFile(netTicketPlanPath(), data, 0o600)
 }
 
 func normalizeNetTicketPlan(p NetTicketPlan, now time.Time) NetTicketPlan {
@@ -171,7 +171,9 @@ func netTicketTickByTime(ctx context.Context, plan NetTicketPlan, now time.Time,
 		if plan.Status != "armed" {
 			plan.Status = "armed"
 			plan.LastError = ""
-			_ = SaveNetTicketPlan(plan)
+			if err := SaveNetTicketPlan(plan); err != nil {
+				LogMessage(now, "保存排队号计划失败: "+err.Error())
+			}
 		}
 		return
 	}
@@ -180,7 +182,9 @@ func netTicketTickByTime(ctx context.Context, plan NetTicketPlan, now time.Time,
 		plan.Status = "expired"
 		plan.FiredDate = today
 		plan.FiredAt = now.Format(time.RFC3339)
-		_ = SaveNetTicketPlan(plan)
+		if err := SaveNetTicketPlan(plan); err != nil {
+			LogMessage(now, "保存排队号计划失败: "+err.Error())
+		}
 		sendQueueAlert(ctx, "⏰ 定时取号未执行", DefaultString(plan.StoreName, plan.StoreID)+"：超过 "+netTicketDisplayTime(plan.TargetTime)+" 窗口仍未取到号")
 		return
 	}
@@ -204,7 +208,9 @@ func netTicketTickOnOpen(ctx context.Context, plan NetTicketPlan, now time.Time,
 		if plan.Status != "armed" {
 			plan.Status = "armed"
 			plan.LastError = ""
-			_ = SaveNetTicketPlan(plan)
+			if err := SaveNetTicketPlan(plan); err != nil {
+				LogMessage(now, "保存排队号计划失败: "+err.Error())
+			}
 		}
 		return
 	}
@@ -219,14 +225,18 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 	}
 	plan.FiredDate = today
 	plan.FiredAt = now.Format(time.RFC3339)
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(now, "保存排队号计划失败: "+err.Error())
+	}
 
 	client := currentAuthedClient()
 	if client == nil {
 		plan.Enabled = false
 		plan.Status = "error"
 		plan.LastError = "尚未捕获凭证参数（或已过期），无法自动取号"
-		_ = SaveNetTicketPlan(plan)
+		if err := SaveNetTicketPlan(plan); err != nil {
+			LogMessage(now, "保存排队号计划失败: "+err.Error())
+		}
 		sendQueueAlert(ctx, "⚠️ 定时取号失败", plan.LastError)
 		return
 	}
@@ -236,7 +246,9 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 		if isTicketAlreadyIssuedError(err) {
 			if recovered, ok := recoverExistingNetTicket(ctx, client, &plan); ok {
 				plan = recovered
-				_ = SaveNetTicketPlan(plan)
+				if err := SaveNetTicketPlan(plan); err != nil {
+					LogMessage(now, "保存排队号计划失败: "+err.Error())
+				}
 				sendQueueAlert(ctx, "🎫 已恢复排队号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(plan.Number, "(详见我的预约)"))
 				return
 			}
@@ -248,7 +260,9 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 			plan.Enabled = false
 			plan.Status = "error"
 			plan.LastError = friendlyNetTicketError(err)
-			_ = SaveNetTicketPlan(plan)
+			if err := SaveNetTicketPlan(plan); err != nil {
+				LogMessage(now, "保存排队号计划失败: "+err.Error())
+			}
 			sendQueueAlert(ctx, "⚠️ 定时取号需要重置认证", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError+"。寿司郎凭证会过期或被手机端登录顶掉，请重置认证后重新启用自动取号。")
 			return
 		}
@@ -257,20 +271,26 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 			plan.FiredDate = ""
 			plan.FiredAt = ""
 			plan.LastError = friendlyNetTicketError(err)
-			_ = SaveNetTicketPlan(plan)
+			if err := SaveNetTicketPlan(plan); err != nil {
+				LogMessage(now, "保存排队号计划失败: "+err.Error())
+			}
 			clearNetTicketFire(today)
 			return
 		}
 		plan.Enabled = false
 		plan.Status = "error"
 		plan.LastError = friendlyNetTicketError(err)
-		_ = SaveNetTicketPlan(plan)
+		if err := SaveNetTicketPlan(plan); err != nil {
+			LogMessage(now, "保存排队号计划失败: "+err.Error())
+		}
 		sendQueueAlert(ctx, "⚠️ 定时取号失败", DefaultString(plan.StoreName, plan.StoreID)+"："+plan.LastError)
 		return
 	}
 	markAuthHealthy()
 	applyNetTicketSuccess(ctx, client, &plan, ticket)
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(now, "保存排队号计划失败: "+err.Error())
+	}
 	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))
 }
 
@@ -288,14 +308,18 @@ func resetNetTicketPlanAfterAuthReset() {
 		plan.Status = "error"
 	}
 	plan.LastError = "已重置本地凭证；寿司郎凭证会过期或被手机端登录顶掉，请重新获取凭证后再启用自动取号"
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
 }
 
 func markNetTicketIssuedUnknown(plan *NetTicketPlan, message string) {
 	plan.Enabled = false
 	plan.Status = "issued_unknown"
 	plan.LastError = message
-	_ = SaveNetTicketPlan(*plan)
+	if err := SaveNetTicketPlan(*plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
 }
 
 func recoverExistingNetTicket(ctx context.Context, client *Client, plan *NetTicketPlan) (NetTicketPlan, bool) {

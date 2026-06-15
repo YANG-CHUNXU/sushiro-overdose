@@ -432,12 +432,14 @@ func (e *BookingEngine) StartBooking() error {
 	if _, err := client.GetTimeslots(context.Background(), settings.StoreIDs[0]); err != nil {
 		e.abortStart(done, cancel)
 		e.setState(EngineIdle, "验证失败")
+		noteAuthResult(err) // 凭证失败则标记 stale
 		if isAuthError(err) {
 			DeleteLocalConfig()
 			return fmt.Errorf("凭证参数已过期，请重新捕获")
 		}
 		return fmt.Errorf("验证失败: %w", err)
 	}
+	markAuthHealthy() // 验证 GetTimeslots 成功 → 凭证有效
 
 	setNotifier(BuildNotifierFromConfig())
 
@@ -492,6 +494,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				}
 				reservation.MonitoredStoreID = best.StoreID
 				onBookingSuccess(reservation, storeName, storeInfo.Address, slotLabel, "预约")
+				markAuthHealthy() // 创建预约成功 → 凭证有效
 				e.mu.Lock()
 				e.state.Reservation = &reservation
 				e.mu.Unlock()
@@ -501,6 +504,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			}
 			lastErr = err
 			if isAuthError(err) {
+				noteAuthResult(err) // 凭证失败则标记 stale
 				e.addLogLevel("凭证失败", "error")
 				sendNotification("寿司郎 - 凭证失败", "请重新捕获参数")
 				DeleteLocalConfig()
@@ -553,6 +557,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			slots, err := client.GetTimeslots(ctx, storeID)
 			if err != nil {
 				if isAuthError(err) {
+					noteAuthResult(err) // 凭证失败则标记 stale
 					authErrors++
 					if authErrors >= 3 {
 						e.addLogLevel("凭证失败，请重新捕获参数", "error")
@@ -573,6 +578,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			}
 			errStreak = 0
 			authErrors = 0
+			markAuthHealthy() // GetTimeslots 成功 → 凭证有效
 			appendHistory(slots, storeID)
 
 			for i := range slots {
@@ -618,6 +624,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 		reservation, err := client.CreateReservation(ctx, best.StoreID, best.Date, best.Start)
 		if err != nil {
 			if isAuthError(err) {
+				noteAuthResult(err) // 凭证失败则标记 stale
 				authErrors++
 				if authErrors >= 3 {
 					e.addLogLevel("凭证失败", "error")
@@ -661,6 +668,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 		}
 		reservation.MonitoredStoreID = best.StoreID
 		onBookingSuccess(reservation, storeName, storeInfo.Address, slotLabel, "预约")
+		markAuthHealthy() // 创建预约成功 → 凭证有效
 
 		e.mu.Lock()
 		e.state.Reservation = &reservation

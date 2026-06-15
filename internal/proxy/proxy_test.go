@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -50,16 +51,9 @@ func TestBufferedConnReadsDataAlreadyBufferedAfterConnect(t *testing.T) {
 	}
 }
 
-func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
+func TestPlainHTTPProxyRejectsNonAllowlistedHost(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ping" || r.URL.RawQuery != "x=1" {
-			t.Fatalf("unexpected upstream URL: %s", r.URL.String())
-		}
-		if got := r.Header.Get("X-Test"); got != "yes" {
-			t.Fatalf("upstream X-Test = %q, want yes", got)
-		}
-		w.Header().Set("X-Upstream", "ok")
-		_, _ = w.Write([]byte("pong"))
+		t.Fatalf("proxy must not forward to non-allowlisted host, got %s", r.URL.String())
 	}))
 	defer upstream.Close()
 
@@ -73,7 +67,56 @@ func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
 		close(done)
 	}()
 
+	// upstream.URL is http://127.0.0.1:<port> — deliberately not a sushiro
+	// host. The mobile capture proxy must refuse to relay it.
 	if _, err := fmt.Fprintf(client, "GET %s/ping?x=1 HTTP/1.1\r\nHost: %s\r\nX-Test: yes\r\nConnection: close\r\n\r\n", upstream.URL, strings.TrimPrefix(upstream.URL, "http://")); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(client), nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (non-allowlisted forward must be blocked)", resp.StatusCode)
+	}
+	<-done
+}
+
+func TestPlainHTTPProxyForwardsAllowlistedHost(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ping" || r.URL.RawQuery != "x=1" {
+			t.Fatalf("unexpected upstream URL: %s", r.URL.String())
+		}
+		if got := r.Header.Get("X-Test"); got != "yes" {
+			t.Fatalf("upstream X-Test = %q, want yes", got)
+		}
+		w.Header().Set("X-Upstream", "ok")
+		_, _ = w.Write([]byte("pong"))
+	}))
+	defer upstream.Close()
+
+	// Rewrite the upstream address so the request targets a sushiro host while
+	// still hitting the local httptest server. Dial by resolving the sushiro
+	// host to the local upstream: we instead point the request at a synthetic
+	// allowlisted host and let a custom transport route it to upstream.URL.
+	ps := &ProxyServer{transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// addr will be crm-cn-prd.sushiro.com.cn:80 — route to local upstream.
+			return net.Dial("tcp", strings.TrimPrefix(upstream.URL, "http://"))
+		},
+	}}
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		ps.handleConn(server)
+		close(done)
+	}()
+
+	if _, err := fmt.Fprintf(client, "GET http://%s/ping?x=1 HTTP/1.1\r\nHost: %s\r\nX-Test: yes\r\nConnection: close\r\n\r\n", SushiroHost, SushiroHost); err != nil {
 		t.Fatalf("write request: %v", err)
 	}
 
@@ -94,6 +137,61 @@ func TestPlainHTTPProxyForwardsAbsoluteFormRequest(t *testing.T) {
 	}
 	if string(body) != "pong" {
 		t.Fatalf("body = %q, want pong", string(body))
+	}
+	<-done
+}
+
+func TestAllowedProxyTarget(t *testing.T) {
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{SushiroHost, true},
+		{SushiroHost + ":443", true},
+		{"  " + SushiroHost + "  ", true},
+		{SushiroHost + ".", true},
+		{"static.sushiro.com.cn", true},
+		{"cdn.sushiro.com.cn:443", true},
+		// Must reject: this is the open-proxy / SSRF surface.
+		{"evil.com", false},
+		{"evil.com:443", false},
+		{"127.0.0.1", false},
+		{"127.0.0.1:8080", false},
+		{"169.254.169.254", false}, // cloud metadata
+		{"sushiro.com.cn.evil.com", false},
+		{"notsushiro.com.cn", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := allowedProxyTarget(c.host); got != c.want {
+			t.Errorf("allowedProxyTarget(%q) = %v, want %v", c.host, got, c.want)
+		}
+	}
+}
+
+func TestConnectTunnelRejectsNonAllowlistedHost(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+
+	ps := &ProxyServer{transport: http.DefaultTransport.(*http.Transport).Clone()}
+	done := make(chan struct{})
+	go func() {
+		ps.handleConn(server)
+		close(done)
+	}()
+
+	// CONNECT to a non-sushiro target — must NOT open a tunnel.
+	if _, err := fmt.Fprintf(client, "CONNECT evil.example:443 HTTP/1.1\r\nHost: evil.example:443\r\n\r\n"); err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(client), nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (non-allowlisted CONNECT must be blocked)", resp.StatusCode)
 	}
 	<-done
 }

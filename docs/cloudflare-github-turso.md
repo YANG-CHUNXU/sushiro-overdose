@@ -73,7 +73,12 @@ ALLOWED_GITHUB_LOGINS=
 SESSION_TTL_SECONDS=2592000
 ```
 
-如果 `ALLOWED_GITHUB_LOGINS` 留空，任何 GitHub 账号登录后都可使用这套云端基准接口。要限制只允许你自己和朋友，用英文逗号分隔 GitHub login。
+`ALLOWED_GITHUB_LOGINS` 是 fail-closed：留空时 Worker 会拒绝所有 GitHub 登录（登录回调与每次 session 校验都会失败），任何账号都无法访问云端基准接口。要放行自己和朋友，用英文逗号分隔 GitHub login，并通过 secret 配置：
+
+```bash
+npx wrangler secret put ALLOWED_GITHUB_LOGINS
+# 输入例如：alice,bob
+```
 
 ## 部署命令
 

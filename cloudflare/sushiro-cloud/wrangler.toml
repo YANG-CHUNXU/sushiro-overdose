@@ -9,6 +9,9 @@ custom_domain = true
 
 [vars]
 SESSION_TTL_SECONDS = "2592000"
+# 必填（fail-closed）：留空时 Worker 会拒绝所有 GitHub 登录。
+# 用英文逗号分隔允许的 GitHub login，例如 "alice,bob"。生产请用 secret 覆盖：
+#   npx wrangler secret put ALLOWED_GITHUB_LOGINS
 ALLOWED_GITHUB_LOGINS = ""
 
 [secrets]

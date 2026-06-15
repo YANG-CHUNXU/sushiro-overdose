@@ -70,7 +70,9 @@ func syncLocalReservationState(reservations []ReservationRecord) {
 	if strings.TrimSpace(latest.Kind) == "" {
 		latest.Kind = "reservation"
 	}
-	_ = SaveState(StateFilePath(), State{ActiveReservation: &latest, SavedAt: time.Now().Format(time.RFC3339)})
+	if err := SaveState(StateFilePath(), State{ActiveReservation: &latest, SavedAt: time.Now().Format(time.RFC3339)}); err != nil {
+		LogMessage(time.Now(), "保存预约状态失败: "+err.Error())
+	}
 }
 
 func clearLocalReservationOnly() {
@@ -82,7 +84,9 @@ func clearLocalReservationOnly() {
 	if isLocalNetTicketRecord(active) {
 		return
 	}
-	_ = ClearState(StateFilePath())
+	if err := ClearState(StateFilePath()); err != nil {
+		LogMessage(time.Now(), "清除预约状态失败: "+err.Error())
+	}
 }
 
 func refreshReservationItemsWithCurrentNetTicket(ctx context.Context, client *Client, items []ReservationRecord) []ReservationRecord {
@@ -123,6 +127,7 @@ func normalizeNetTicketRecord(ticket ReservationRecord) ReservationRecord {
 }
 
 func syncLocalNetTicketState(ticket ReservationRecord) {
+	netTicketMu.Lock()
 	plan := LoadNetTicketPlan()
 	plan.Status = "success"
 	plan.Number = ticket.Number
@@ -131,27 +136,38 @@ func syncLocalNetTicketState(ticket ReservationRecord) {
 	if strings.TrimSpace(plan.StoreID) == "" {
 		plan.StoreID = DefaultString(ticket.MonitoredStoreID, ticket.StoreID)
 	}
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
+	netTicketMu.Unlock()
 
 	state, err := LoadState(StateFilePath())
 	if err == nil && (state.ActiveReservation == nil || isLocalNetTicketRecord(*state.ActiveReservation)) {
-		_ = SaveState(StateFilePath(), State{ActiveReservation: &ticket, SavedAt: time.Now().Format(time.RFC3339)})
+		if err := SaveState(StateFilePath(), State{ActiveReservation: &ticket, SavedAt: time.Now().Format(time.RFC3339)}); err != nil {
+			LogMessage(time.Now(), "保存排队号状态失败: "+err.Error())
+		}
 	}
 }
 
 func clearLocalNetTicketState() {
 	state, err := LoadState(StateFilePath())
 	if err == nil && state.ActiveReservation != nil && isLocalNetTicketRecord(*state.ActiveReservation) {
-		_ = ClearState(StateFilePath())
+		if err := ClearState(StateFilePath()); err != nil {
+			LogMessage(time.Now(), "清除排队号状态失败: "+err.Error())
+		}
 	}
+	netTicketMu.Lock()
 	plan := LoadNetTicketPlan()
 	if strings.TrimSpace(plan.Status) == "success" || strings.TrimSpace(plan.Status) == "issued_unknown" || plan.Number != "" || plan.TicketID != 0 {
 		plan.Status = "idle"
 		plan.Number = ""
 		plan.TicketID = 0
 		plan.LastError = ""
-		_ = SaveNetTicketPlan(plan)
+		if err := SaveNetTicketPlan(plan); err != nil {
+			LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+		}
 	}
+	netTicketMu.Unlock()
 }
 
 func clearStaleLocalNetTicketState(now time.Time) {
@@ -412,7 +428,9 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 			plan.FiredDate = time.Now().Format("2006-01-02")
 			plan.FiredAt = time.Now().Format(time.RFC3339)
 			if recovered, ok := recoverExistingNetTicket(r.Context(), client, &plan); ok {
-				_ = SaveNetTicketPlan(recovered)
+				if err := SaveNetTicketPlan(recovered); err != nil {
+					LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+				}
 				writeJSON(w, map[string]any{"ok": true, "ticket": recovered, "recovered": true})
 				return
 			}
@@ -430,7 +448,9 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 	plan.FiredDate = time.Now().Format("2006-01-02")
 	plan.FiredAt = time.Now().Format(time.RFC3339)
 	applyNetTicketSuccess(r.Context(), client, &plan, ticket)
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
 	writeJSON(w, map[string]any{"ok": true, "ticket": ticket})
 }
 
@@ -455,7 +475,9 @@ func handleQueueTicketStatus(w http.ResponseWriter, r *http.Request) {
 		plan.StoreID = ticket.StoreID
 	}
 	applyNetTicketSuccess(r.Context(), client, &plan, ticket)
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
 	writeJSON(w, map[string]any{"ok": true, "ticket": ticket, "plan": plan})
 }
 
@@ -480,6 +502,7 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 		if mode != "on_open" {
 			mode = "time"
 		}
+		netTicketMu.Lock()
 		plan := LoadNetTicketPlan()
 		plan.Enabled = body.Enabled
 		plan.StoreID = strings.TrimSpace(body.Store)
@@ -502,9 +525,11 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 		}
 		clearNetTicketFire(time.Now().Format("2006-01-02"))
 		if err := SaveNetTicketPlan(plan); err != nil {
+			netTicketMu.Unlock()
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		netTicketMu.Unlock()
 		writeJSON(w, plan)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "GET or POST only")
@@ -596,12 +621,16 @@ func handleCancelNetTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	markAuthHealthy()
 	// 取消成功后清掉本地取号计划状态，避免继续显示已取消的号。
+	netTicketMu.Lock()
 	plan := LoadNetTicketPlan()
 	plan.Status = "idle"
 	plan.Number = ""
 	plan.TicketID = 0
 	plan.LastError = ""
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
+	netTicketMu.Unlock()
 	writeJSON(w, map[string]any{"ok": true})
 }
 

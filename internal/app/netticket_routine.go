@@ -262,7 +262,9 @@ func retireRoutineGeneratedNetTicketPlan(plan NetTicketPlan) NetTicketPlan {
 	plan.RoutinePlannedDate = ""
 	plan.Status = "idle"
 	plan.LastError = "Routine 已改为提醒取号，不再自动提交取号。"
-	_ = SaveNetTicketPlan(plan)
+	if err := SaveNetTicketPlan(plan); err != nil {
+		LogMessage(time.Now(), "保存排队号计划失败: "+err.Error())
+	}
 	return plan
 }
 
