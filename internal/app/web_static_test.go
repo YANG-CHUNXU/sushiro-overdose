@@ -268,7 +268,6 @@ func TestEmbeddedAdvancedOnlyMutationMarkers(t *testing.T) {
 		`id="p-sn" class="hid advanced-page"`,
 		`id="p-re" class="hid advanced-page"`,
 		`id="qdSamplingFold" class="card adv mt16 advanced-only"`,
-		`id="qdPlanFold" class="card adv mt16 advanced-only"`,
 		`<details class="adv mt16 advanced-only">`,
 		`<details class="cd setting-fold settings-wide advanced-only" id="fold-sm"`,
 		`<details class="cd setting-fold settings-wide advanced-only" id="fold-in"`,
@@ -293,6 +292,23 @@ func TestEmbeddedAdvancedOnlyMutationMarkers(t *testing.T) {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("可见入口应通过进阶确认而不是直接跳转：%s", needle)
 		}
+	}
+}
+
+func TestEmbeddedPlanConverterIsFirstClass(t *testing.T) {
+	// 时间换算（几点取号 ⇄ 几点吃）是产品核心价值，必须对所有模式可见（非 advanced-only），
+	// 且双向用 ⇄ 换向、输入即算（debounce），不再藏在折叠/进阶门后。
+	for _, needle := range []string{
+		`id="qdPlanFold" class="plan-card mt16"`,
+		`onclick="swapPlanDir()"`,
+		`oninput="runPlanCalcDebounced()"`,
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少时间换算一等公民片段：%s", needle)
+		}
+	}
+	if strings.Contains(indexHTML, `id="qdPlanFold" class="card adv mt16 advanced-only"`) {
+		t.Fatalf("时间换算不应再是 advanced-only 折叠，应对所有模式可见")
 	}
 }
 

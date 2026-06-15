@@ -590,6 +590,23 @@ input:disabled,select:disabled,textarea:disabled{background:#F3F0ED;color:var(--
 input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:none;border-color:var(--line)}
 /* tooltip 始终在 sticky header 之上、overlay 之下 */
 .dash-tip{z-index:30}
+/* 时间换算器（几点取号 ⇄ 几点吃）—— 一等公民卡片 */
+.plan-card{border:1px solid var(--line);border-radius:14px;padding:18px;background:linear-gradient(135deg,#fff 0,#FBFAF8 100%);box-shadow:0 8px 24px rgba(42,35,28,.05)}
+.plan-card:before{content:"";display:block;height:4px;margin:-18px -18px 14px;border-radius:14px 14px 0 0;background:linear-gradient(90deg,var(--red),#F5BA24)}
+.plan-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.plan-head b{display:block;color:var(--ink);font-size:17px}
+.plan-head .mu{margin-top:5px;font-size:12px;line-height:1.6;max-width:560px}
+.plan-swap{flex:none;display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;border:1px solid var(--line-strong);background:#fff;color:var(--red);font-size:20px;font-weight:900;cursor:pointer;transition:transform .18s,background .18s}
+.plan-swap:hover{transform:rotate(180deg);background:var(--red-soft)}
+.plan-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+.plan-basis>summary{cursor:pointer;list-style:none;font-size:12px;font-weight:800;color:var(--mute);padding-top:6px}
+.plan-basis>summary::-webkit-details-marker{display:none}
+.plan-basis>summary::before{content:'▸ 为什么这么算 '}
+.plan-basis[open]>summary::before{content:'▾ '}
+/* 设置页危险操作隔离区（NN/G proximity：与良性配置空间隔离） */
+.danger-zone{margin-top:24px;padding:16px 18px;border:1.5px solid #F0B7B9;border-radius:14px;background:linear-gradient(135deg,#FFF6F6 0,#fff 60%)}
+.danger-zone-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.danger-zone-head b{color:var(--red);font-size:15px}
 </style>
 </head>
 <body>
@@ -720,6 +737,27 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         </div>
       </div>
       <div id="qdStores" class="chips mb16"><span class="mu">默认自动选择本机样本最多的门店</span></div>
+      <div id="qdPlanFold" class="plan-card mt16">
+        <div class="plan-head">
+          <div><b>几点取号 ⇄ 几点吃上</b><p class="mu">填一个时间，立刻算出另一个；用这家店的等待数据互推。只读，不会替你取号。</p></div>
+          <button type="button" class="plan-swap" id="planSwapBtn" onclick="swapPlanDir()" title="切换计算方向" aria-label="切换计算方向">⇄</button>
+        </div>
+        <div class="plan-row">
+          <div class="fg" id="qpPickupWrap">
+            <label>计划取号时间</label>
+            <input id="qpPickup" type="time" value="12:10" oninput="runPlanCalcDebounced()">
+          </div>
+          <div class="fg hid" id="qwMealWrap">
+            <label>想几点吃上</label>
+            <input id="qwMeal" type="time" value="13:00" oninput="runPlanCalcDebounced()">
+          </div>
+          <div class="fg hid" id="qwTravelWrap">
+            <label>路上几分钟（可选）</label>
+            <input id="qwTravel" type="number" min="0" placeholder="如 25" oninput="runPlanCalcDebounced()">
+          </div>
+        </div>
+        <div id="qpAnswer" class="answer-card mt8"><div class="ci">先在上方选门店，再填一个时间，这里立刻给出结果。</div></div>
+      </div>
       <div class="cd-t" style="margin-bottom:8px">现在 · 实时排队压力</div>
       <div id="qdAnswer" class="answer-card"><div class="ci">选门店、填号码，这里按当前实时叫号速度告诉你大概几点叫到、几点出发。</div></div>
       <div class="cd-t" style="margin:16px 0 8px">历史规律 · 到店建议</div>
@@ -773,24 +811,8 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <summary><span class="setting-fold-title"><b>📡 本机持续采集</b><span>让「几点叫到」的判断越用越准；数据只留在本机，不上传。</span></span></summary>
         <div id="qdSamplingCard" class="curve-sampling mt16"><div><p style="margin-top:0">常用门店的公开排队曲线（叫号、等位）已默认自动记录，不需要通行证，越用越准；拿通行证后还能额外采集可约时段。</p></div><div class="curve-sampling-actions"><button class="bt bt-w bt-s" onclick="openSettingsFold('fold-sm')">详细配置</button></div></div>
       </details>
-      <details id="qdPlanFold" class="card adv mt16 advanced-only">
-        <summary><span class="setting-fold-title"><b>⏱ 时间换算</b><span>只读 · 几点取号 ⇄ 几点吃上；用这家店的等待数据互推，没有历史样本时按当前实时等待粗估。</span></span></summary>
-        <div class="curve-sampling mt16">
-        <div>
-          <div class="fr">
-            <div class="fg"><label>我想算</label><select id="qpDir" onchange="onPlanDirChange()"><option value="pickup">几点取号 → 几点能吃</option><option value="meal">想几点吃 → 几点取号</option></select></div>
-            <div class="fg" id="qpPickupWrap"><label>计划取号时间</label><input id="qpPickup" type="time" value="12:10"></div>
-            <div class="fg hid" id="qwMealWrap"><label>目标就餐时间</label><input id="qwMeal" type="time" value="13:00"></div>
-            <div class="fg hid" id="qwTravelWrap"><label>路上要多久（分钟，可选）</label><input id="qwTravel" type="number" min="0" placeholder="如 25"></div>
-            <div class="fg" style="align-self:flex-end"><button class="bt bt-r bt-s" onclick="runPlanCalc()">算一下</button></div>
-          </div>
-          <div id="qpAnswer" class="answer-card mt8"><div class="ci">用上方选中的门店；填时间点「算一下」。</div></div>
-        </div>
-        </div>
-      </details>
     </div>
   </section>
-
   <section id="p-qt" class="hid">
     <div class="cd">
       <div class="page-lead"><div><h2 class="ph">现在去吃 <span class="pm" data-kind="salmon" data-size="32"></span></h2><p class="ph-sub"><span class="tag read">只读 · 直接用</span> 这里看今天的排队：门店是否营业、前面还有几桌、大概等多久。简化版不会替你取号。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新</button></div></div>
@@ -876,7 +898,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
   <section id="p-se" class="hid">
     <div class="settings-grid">
       <div class="cd settings-wide">
-        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">先看下面四条状态：红色需要处理，黄色按需配置；具体配置都在折叠里。</p></div></div>
+        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">先看顶部四条状态：红色要处理，黄色按需配置。通行证和通知默认展开；诊断、日志、危险操作在下方。</p></div></div>
         <div id="settingsStatus"><div class="ci">状态加载中</div></div>
         <div class="mode-settings mt16" id="uiModeSettings">
           <div><b>界面模式</b><p class="mu mt8">简化版只保留必要看板；进阶版显示完整预约、取号、采集和维护功能。</p></div>
@@ -886,7 +908,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
           </div>
         </div>
       </div>
-      <details class="cd setting-fold settings-wide">
+      <details class="cd setting-fold settings-wide" open>
         <summary><span class="setting-fold-title"><b>寿司郎通行证（认证凭证）</b><span>通行证不是排队号；只在抢未来预约、远程取号、读取我的单据时需要。它会被寿司郎定期回收，也可能被手机端重新打开小程序后顶掉。</span></span></summary>
         <div class="setting-fold-body">
         <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">通行证状态</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="openAuthWizard()">拿通行证（向导）</button><button class="bt bt-o bt-s" onclick="resetAuthOnly(true)">重置认证</button><button class="bt bt-w bt-s" onclick="testAuthProbe()">测试基础接口</button></div></div>
@@ -894,7 +916,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <div id="mobileAuthState" class="diag-detail mt8">尚未加载</div>
         </div>
       </details>
-      <details class="cd setting-fold">
+      <details class="cd setting-fold" open>
         <summary><span class="setting-fold-title"><b>通知渠道</b><span>配置飞书、Telegram、Bark 或 Server酱；抢到预约、叫号提醒会用这里推送。</span></span></summary>
         <div class="setting-fold-body">
         <div class="fg"><label>飞书 Webhook</label><input type="text" id="nf" placeholder="https://open.feishu.cn/..."></div>
@@ -943,15 +965,18 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <div class="setting-fold-body"><div class="lg" id="lv"></div></div>
       </details>
       <details class="cd setting-fold settings-wide advanced-only" id="fold-safe">
-        <summary><span class="setting-fold-title"><b>安全与维护</b><span>状态异常、代理残留、需要复制诊断时再打开。危险操作会单独确认。</span></span></summary>
+        <summary><span class="setting-fold-title"><b>诊断与维护</b><span>状态异常、代理残留、需要复制诊断时打开。</span></span></summary>
         <div class="setting-fold-body">
         <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">本机诊断</div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="lD()">刷新</button><button class="bt bt-w bt-s" onclick="copyDiag()">复制诊断</button><button class="bt bt-r bt-s" onclick="repairP()">修复代理</button><button class="bt bt-w bt-s" onclick="rST()">重置抓包</button></div></div>
-        <details class="btn-more danger mb16"><summary></summary><div class="fl g8 fw"><button class="bt bt-o bt-s" onclick="stopProcesses()">停止本应用进程</button><button class="bt bt-o bt-s" onclick="uninstallAll()">卸载清理</button></div></details>
         <div id="diagNext" class="diag-next warn"><h3>先处理这件事</h3><p>刷新诊断后会显示最值得先做的一步。</p></div>
         <div id="dg" class="cg"><div class="ci">尚未加载</div></div>
         <div id="ddetail" class="diag-detail hid"></div>
         </div>
       </details>
+      <div class="danger-zone settings-wide advanced-only">
+        <div class="danger-zone-head"><b>⚠ 危险操作</b><span class="mu">不可恢复，执行前会再次确认。与上方日常配置隔离。</span></div>
+        <div class="fl g8 fw mt8"><button class="bt bt-o bt-s" onclick="stopProcesses()">停止本应用进程</button><button class="bt bt-o bt-s" onclick="uninstallAll()">卸载清理</button></div>
+      </div>
     </div>
   </section>
 
@@ -1431,9 +1456,9 @@ function rS(d){const sl=as.filter(s=>s.date===d).sort((a,b)=>(a.store_name||'').
 
 async function lI(){await ensureStores();const c=el('ic');c.innerHTML='<div class="skeleton" style="height:46px;border-radius:10px;margin-bottom:8px"></div><div class="skeleton" style="height:200px;border-radius:10px"></div>';try{const d=await safeFetch('/api/insights?top=12');if(d.error){c.innerHTML=loadErrBoxHTML(d.error,'lI()','历史洞察');return}const rec=d.recommendations||[],min=d.min_recommendation_observations||3;const metrics='<div class="metric">'+chip('历史样本',d.valid_snapshots||0,'ok')+chip('推荐门槛','同一时段 '+min+' 次','warn')+chip('推荐数量',rec.length,'ok')+'</div>';const rows=rec.map(r=>'<tr><td data-label="门店">'+esc(storeName(r.store_id))+'<span class="mu debug-only"><br>'+esc(r.store_id)+'</span></td><td data-label="星期">'+esc(r.weekday_name)+'</td><td data-label="时段">'+esc(fT(r.start))+'-'+esc(fT(r.end))+'</td><td data-label="开放概率">'+Math.round((r.availability_rate||0)*100)+'%</td><td data-label="售罄速度">'+(r.sold_out_minutes==null?'-':Math.round(r.sold_out_minutes)+' 分')+'</td><td data-label="样本">'+esc(r.observations)+'</td></tr>').join('');const empty=(d.valid_snapshots||0)?'<div class="empty">样本还不够稳定。保持预测准确度，等同一门店、星期、时段至少积累 '+min+' 次观察后再给推荐。<div class="mt8"><button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">去预测准确度</button></div></div>':'<div class="empty">暂无历史数据。<div class="mt8"><button class="bt bt-w bt-s" onclick="openSettingsFold(\'fold-sm\')">去预测准确度</button></div></div>';c.innerHTML=metrics+(rows?'<table class="tbl tbl-cards"><thead><tr><th>门店</th><th>星期</th><th>时段</th><th>开放概率</th><th>售罄速度</th><th>样本</th></tr></thead><tbody>'+rows+'</tbody></table>':empty)}catch(e){c.innerHTML=loadErrBoxHTML(e,'lI()','历史洞察')}}
 
-async function lQD(){await ensureStores();if(!qdSelected.length){const saved=recallStores('sushiro_qd_store').slice(0,1);if(saved.length)qdSelected=saved}renderDashboardStores();fillNetTicketStores();loadNetTicketRoutine();await loadCloudAuth(false);await loadSampling();await loadQueueAlerts();await loadQueueAlertStatus();await loadQueueDashboard();stopQDAutoRefresh();qdAutoTimer=setInterval(()=>{if(document.hidden)return;loadQueueAdvisorCard()},45000)}
+async function lQD(){await ensureStores();if(!qdSelected.length){const saved=recallStores('sushiro_qd_store').slice(0,1);if(saved.length)qdSelected=saved}renderDashboardStores();applyPlanDir();fillNetTicketStores();loadNetTicketRoutine();await loadCloudAuth(false);await loadSampling();await loadQueueAlerts();await loadQueueAlertStatus();await loadQueueDashboard();runPlanCalc();stopQDAutoRefresh();qdAutoTimer=setInterval(()=>{if(document.hidden)return;loadQueueAdvisorCard()},45000)}
 function dashboardParams(){const p=new URLSearchParams();p.set('scope',qdSelected.length?'local':'all');p.set('date_type','all');p.set('window','12');p.set('bucket','10');const target=parseInt(el('qdTargetNo')?.value||'',10);if(target>0)p.set('target_no',String(target));if(qdSelected.length)p.set('stores',qdSelected.slice(0,1).join(','));return p}
-function applyDashboardStores(ids){qdSelected=(ids||[]).slice(0,1).map(String);rememberStores('sushiro_qd_store',qdSelected);renderDashboardStores();renderReminderTemplateHint();loadQueueDashboard();loadQueueAlertStatus()}
+function applyDashboardStores(ids){qdSelected=(ids||[]).slice(0,1).map(String);rememberStores('sushiro_qd_store',qdSelected);renderDashboardStores();renderReminderTemplateHint();loadQueueDashboard();loadQueueAlertStatus();runPlanCalcDebounced()}
 function renderDashboardStores(){const c=el('qdStores');if(!c)return;if(!qdSelected.length){const target=parseInt(el('qdTargetNo')?.value||'',10);c.innerHTML='<span class="mu">'+(target>0?'已填写当天排队号：请先选择门店，避免用其他门店曲线误判。':'未指定门店：可先浏览样本最多、最新的门店；填当天排队号前建议选定门店。')+'</span>';renderTicketReminderCard();return}c.innerHTML=qdSelected.map(id=>'<button class="chip on" data-store="'+escA(String(id))+'">'+esc(storeDisplayName(id))+' ✕</button>').join('');c.querySelectorAll('.chip.on').forEach(b=>b.onclick=()=>{const id=b.dataset.store;qdSelected=qdSelected.filter(x=>x!==id);rememberStores('sushiro_qd_store',qdSelected);renderDashboardStores();renderReminderTemplateHint();loadQueueDashboard();loadQueueAlertStatus()})}
 function qdReminderStore(){const id=qdSelected[0];if(!id)return null;return{id:String(id),name:storeDisplayName(id)}}
 function reminderTemplatePoints(target,tpl){const presets={normal:[80,50,25],conservative:[120,90,60,30],urgent:[50,25,10]},offsets=presets[tpl]||[];return Array.from(new Set(offsets.map(n=>target-n).filter(n=>n>0&&n<=target))).sort((a,b)=>a-b)}
@@ -1533,13 +1558,20 @@ function pressureLabelCN(level){return {low:'低',medium:'中',high:'高',extrem
 function riskLabelCN(r){return {low:'风险低',medium:'风险中',high:'风险高'}[r]||'风险未知'}
 function riskClass(r){return {low:'press-low',medium:'press-medium',high:'press-extreme'}[r]||'press-unknown'}
 // ---------- 取号→几点吃 ----------
-function onPlanDirChange(){const d=(el('qpDir')||{}).value||'pickup';el('qpPickupWrap').classList.toggle('hid',d!=='pickup');el('qwMealWrap').classList.toggle('hid',d!=='meal');el('qwTravelWrap').classList.toggle('hid',d!=='meal')}
-function runPlanCalc(){((el('qpDir')||{}).value==='meal')?loadQueueMealPlan():loadQueuePickupPlan()}
+// 时间换算方向：pickup=几点取号→几点吃；meal=想几点吃→几点取号。用 localStorage 记忆，避免依赖被移除的 select。
+function planDir(){try{return localStorage.getItem('sushiro_plan_dir')==='meal'?'meal':'pickup'}catch(e){return 'pickup'}}
+function setPlanDir(d){try{localStorage.setItem('sushiro_plan_dir',d==='meal'?'meal':'pickup')}catch(e){}}
+function applyPlanDir(){const d=planDir();el('qpPickupWrap').classList.toggle('hid',d!=='pickup');el('qwMealWrap').classList.toggle('hid',d!=='meal');el('qwTravelWrap').classList.toggle('hid',d!=='meal')}
+function swapPlanDir(){setPlanDir(planDir()==='meal'?'pickup':'meal');applyPlanDir();runPlanCalcDebounced()}
+let _planCalcTimer=null
+function runPlanCalcDebounced(){clearTimeout(_planCalcTimer);_planCalcTimer=setTimeout(runPlanCalc,300)}
+function onPlanDirChange(){applyPlanDir();runPlanCalcDebounced()}
+function runPlanCalc(){planDir()==='meal'?loadQueueMealPlan():loadQueuePickupPlan()}
 async function loadQueuePickupPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const pickup=(el('qpPickup')?.value||'').replace(':','');ans.innerHTML='<div class="ci">正在估算…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&pickup='+encodeURIComponent(pickup),null,15000);renderPickupPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueuePickupPlan()','取号规划')}}
-function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.meal_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const wr=d.wait_minutes_range||{},mr=d.meal_range||{},lead='如果 '+esc(d.pickup)+' 取号，预计 '+esc(mr.early||'?')+'-'+esc(mr.late||'?')+' 吃上（等待约 '+(wr.low||0)+'-'+(wr.high||0)+' 分钟）。';const chips=[answerChip('推荐就餐',esc((mr.early||'?')+'-'+(mr.late||'?')),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+lead+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'')}
+function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.meal_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const wr=d.wait_minutes_range||{},mr=d.meal_range||{},lead='如果 '+esc(d.pickup)+' 取号，预计 '+esc(mr.early||'?')+'-'+esc(mr.late||'?')+' 吃上（等待约 '+(wr.low||0)+'-'+(wr.high||0)+' 分钟）。';const chips=[answerChip('推荐就餐',esc((mr.early||'?')+'-'+(mr.late||'?')),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+lead+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<details class="plan-basis mt8"><summary>为什么</summary><div class="mu mt8">'+esc(d.basis)+'</div></details>':'')}
 // ---------- 想几点吃→几点取号 ----------
 async function loadQueueMealPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const meal=(el('qwMeal')?.value||'').replace(':',''),travel=Math.max(0,parseInt(el('qwTravel')?.value||'',10)||0);ans.innerHTML='<div class="ci">正在倒推…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&target_meal='+encodeURIComponent(meal)+(travel>0?'&travel_minutes='+travel:''),null,15000);renderMealPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueueMealPlan()','取号倒推')}}
-function renderMealPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<div class="mu mt8">依据：'+esc(d.basis)+'</div>':'')}
+function renderMealPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<details class="plan-basis mt8"><summary>为什么</summary><div class="mu mt8">'+esc(d.basis)+'</div></details>':'')+'<div class="mu mt8">⚠ 倒推按历史等待估的；取号后前面可能被插队，实际等待可能 ±15 分钟，别把建议取号时间当死线。</div>'}
 function renderQueueDashboard(d){renderDashboardAdvisor(d.advisor||{});renderDashboardInsights(d);renderDashboardDataSource(d)}
 function dashboardBaselineStatusHTML(d){const b=(d&&d.baseline)||{};const configured=!!b.configured,authenticated=!!b.authenticated,used=!!b.used,rollupCount=Number(b.rollup_count||0),latestCount=Number(b.latest_count||0),rollup=fmtN(rollupCount),latest=fmtN(latestCount);let title,lines=[],cls='ok';if(used){title='本次图表已使用线上 Turso 基准';lines.push('来源：线上 Turso 基准');if(rollupCount||latestCount)lines.push('聚合样本 '+rollup+' 条，最新明细 '+latest+' 条');else lines.push('基准已响应，暂无样本');cls='ok'}else if(authenticated){title='仍在用本机数据，线上 Turso 基准未参与本次图表';lines.push('GitHub 已登录，但 Turso 基准还没验证成功，需在设置页确认。');cls='warn'}else if(configured){title='本次图表用本机数据，GitHub 尚未登录';lines.push('云端服务已配置；登录 GitHub 后可验证 Turso 基准并叠加线上参考。');cls='warn'}else{title='本次图表用本机数据，未配置线上 Turso 基准';lines.push('可在「设置」登录 GitHub 并验证 Turso 基准后，叠加全国线上参考。');cls='warn'}const ws=(d&&d.warnings)||[];if(ws.length){cls=cls==='ok'?'warn':cls;lines.push('注意：'+ws.join('；'));if(ws.some(w=>/明细|基准|曲线/.test(w)))lines.push('这能解释为什么基准可用、但叫号曲线仍没明细。')}return{cls:cls,html:'<b>📊 图表数据来源</b><p>'+esc(title)+'</p><div class="data-source-lines">'+lines.map(l=>'<span>'+esc(l)+'</span>').join('')+'</div>'}}
 function renderDashboardDataSource(d){const box=el('qdDataSource');if(!box)return;const s=dashboardBaselineStatusHTML(d);box.className='data-source mt16 '+(s.cls||'');box.innerHTML=s.html||''}
