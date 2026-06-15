@@ -942,12 +942,18 @@ func buildQueueMealPlan(ctx context.Context, storeID, mealRaw string, travelMinu
 	}
 	out.StablePickup = best.Format("15:04")
 	out.WaitMinutesRange = &bestWR
+	// 推荐取号区间：best（最接近目标就餐时间的取号点）与 latest（不晚于目标的稳妥最晚取号点）
+	// 是独立选取的，best 可能晚于 latest，导致 Early>Late 倒序（前端显示成 12:30-12:00）。
+	// 这里校正为早→晚。
+	early, latePick := best, best
 	if !latest.IsZero() {
 		out.LatestPickup = latest.Format("15:04")
-		out.RecommendPickupRange = &QueueTimeRange{Early: best.Format("15:04"), Late: latest.Format("15:04")}
-	} else {
-		out.RecommendPickupRange = &QueueTimeRange{Early: best.Format("15:04"), Late: best.Format("15:04")}
+		latePick = latest
 	}
+	if latePick.Before(early) {
+		early, latePick = latePick, early
+	}
+	out.RecommendPickupRange = &QueueTimeRange{Early: early.Format("15:04"), Late: latePick.Format("15:04")}
 	out.Basis = "同门店同日型历史等待；今日实时压力仅修正风险"
 	out.Risk = queuePlanRisk(storeID, now, bestWR)
 	return out

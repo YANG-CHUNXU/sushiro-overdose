@@ -455,13 +455,17 @@ func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
 }
 
 func TestEmbeddedDashboardMainChartReadableOnMobile(t *testing.T) {
-	for _, needle := range []string{
-		"#qdPressChart{overflow:auto}",
-		"#qdPressChart svg{min-width:680px;height:260px}",
-	} {
-		if !strings.Contains(indexHTML, needle) {
-			t.Errorf("indexHTML 缺少移动端主图可读性样式：%s", needle)
-		}
+	// 移动端主图：容器可横向滚动兜底，但 svg 不再固定 680px 宽（会顶破窄屏），
+	// 而是允许收缩（min-width:0）+ 用 viewBox/preserveAspectRatio 自适应缩放。
+	if !strings.Contains(indexHTML, "#qdPressChart{overflow:auto}") {
+		t.Errorf("indexHTML 缺少移动端主图容器滚动兜底：#qdPressChart{overflow:auto}")
+	}
+	if !strings.Contains(indexHTML, "#qdPressChart svg{min-width:0;height:auto}") {
+		t.Errorf("indexHTML 缺少移动端主图自适应样式：#qdPressChart svg{min-width:0;height:auto}")
+	}
+	// 旧的固定 680px 宽规则会在窄屏横向溢出，必须移除。
+	if strings.Contains(indexHTML, "#qdPressChart svg{min-width:680px;height:260px}") {
+		t.Fatalf("indexHTML 仍包含会顶破窄屏的 #qdPressChart svg{min-width:680px}")
 	}
 }
 

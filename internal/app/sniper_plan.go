@@ -7,10 +7,17 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 const sniperWindow = 3 * time.Minute
+
+// sniperPlanMu 串行化「读-改-写」整段操作：engine runSniper goroutine 每 50ms
+// 调 UpdateSniperPlanTarget，UI 保存/handleSniperPlan 也写 plan，并发时会出现
+// lost-update（刚写 done 的 target 被 UI 的旧 plan 覆盖）。只保护 Update/Stop
+// 这两个复合操作；单独的 Load/Save 不持锁，Save 用 atomicWriteFile 保证写原子。
+var sniperPlanMu sync.Mutex
 
 type SniperPlanState struct {
 	UpdatedAt string             `json:"updated_at"`
@@ -105,7 +112,8 @@ func SaveSniperPlan(state SniperPlanState, loc *time.Location) error {
 		return err
 	}
 	_ = os.MkdirAll(AppDirPath(), 0o755)
-	return os.WriteFile(sniperConfigPath(), data, 0o600)
+	// 原子写：避免并发读读到半截 JSON。
+	return atomicWriteFile(sniperConfigPath(), data, 0o600)
 }
 
 func RefreshSniperPlan(state SniperPlanState, now time.Time, loc *time.Location) SniperPlanState {
@@ -169,6 +177,8 @@ func refreshSniperPlanTarget(target SniperPlanTarget, now time.Time, loc *time.L
 }
 
 func UpdateSniperPlanTarget(targetID string, loc *time.Location, update func(*SniperPlanTarget)) {
+	sniperPlanMu.Lock()
+	defer sniperPlanMu.Unlock()
 	state, err := LoadSniperPlan(loc)
 	if err != nil {
 		return
@@ -183,6 +193,8 @@ func UpdateSniperPlanTarget(targetID string, loc *time.Location, update func(*Sn
 }
 
 func StopRemainingSniperPlanTargetsAfterSuccess(doneTargetID string, loc *time.Location) {
+	sniperPlanMu.Lock()
+	defer sniperPlanMu.Unlock()
 	state, err := LoadSniperPlan(loc)
 	if err != nil {
 		return

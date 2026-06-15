@@ -44,6 +44,10 @@ type NetTicketPlan struct {
 	// ServerRetryCount 是官方服务器临时错误（5xx 等）下的连续重试计数，
 	// 达到 netTicketMaxServerRetries 后放弃，避免一直重发取号请求。
 	ServerRetryCount int `json:"server_retry_count,omitempty"`
+	// RetryDate 记录 ServerRetryCount 所属的日期 YYYY-MM-DD，仅跨天才清零计数。
+	// 之前的实现只判断 ServerRetryCount!=0 就清零，导致每个 tick 都清零、
+	// 重试上限永远失效、5xx 时每 20s 无限重发取号请求（刷号风险）。
+	RetryDate string `json:"retry_date,omitempty"`
 }
 
 func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
@@ -157,9 +161,12 @@ func netTicketTick(ctx context.Context) {
 	if plan.FiredDate == today {
 		return // 今天已处理过
 	}
-	// 跨天后清掉历史重试计数，今天重新开始计数。
-	if plan.ServerRetryCount != 0 {
+	// 仅在真正跨天时清掉历史重试计数，今天重新开始计数。
+	// （不能只看 ServerRetryCount!=0：重试分支会置空 FiredDate，下个 tick 又走到这里，
+	// 那样每 tick 都清零，重试上限永远失效。）
+	if plan.ServerRetryCount != 0 && plan.RetryDate != today {
 		plan.ServerRetryCount = 0
+		plan.RetryDate = ""
 		if err := SaveNetTicketPlan(plan); err != nil {
 			LogMessage(now, "保存排队号计划失败: "+err.Error())
 		}
@@ -281,6 +288,7 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 		}
 		if isOfficialServerHTTPError(err) {
 			plan.ServerRetryCount++
+			plan.RetryDate = today
 			plan.LastError = friendlyNetTicketError(err)
 			// 超过重试上限：放弃当天取号，保留 FiredDate 占位避免再次触发，转 error 并通知。
 			if plan.ServerRetryCount > netTicketMaxServerRetries {
@@ -365,6 +373,7 @@ func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketP
 	plan.TicketID = ticket.TicketID
 	plan.LastError = ""
 	plan.ServerRetryCount = 0
+	plan.RetryDate = ""
 	storeName := DefaultString(plan.StoreName, plan.StoreID)
 	storeAddress := ""
 	if info, err := client.GetStoreInfo(ctx, plan.StoreID); err == nil {

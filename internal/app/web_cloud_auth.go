@@ -147,7 +147,7 @@ func handleCloudAuthTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func redirectCloudAuthResult(w http.ResponseWriter, r *http.Request, errMsg string) {
-	target := "/#se"
+	var target string
 	if errMsg != "" {
 		target = "/?cloud_error=" + neturl.QueryEscape(errMsg) + "#se"
 	} else {

@@ -147,18 +147,34 @@ var (
 
 // CachedAllStores 返回全国门店全量（不带定位距离），带进程内短 TTL 缓存。
 // 选择器、基准采集、开放轮询三处共用，避免反复打公开接口；取数失败时回退旧缓存。
+//
+// 注意：网络拉取在锁外执行。原来全程持锁会让一次 15s 的门店列表请求把所有调用者
+// （含后台采集 tick、门店选择器）串行卡住，这里改成「锁内查缓存 → 锁外拉取 → 锁内双检写回」。
 func (c *QueueLiveClient) CachedAllStores(ctx context.Context) ([]QueueLiveStore, error) {
 	allStoresCacheMu.Lock()
-	defer allStoresCacheMu.Unlock()
 	if len(allStoresCache) > 0 && time.Since(allStoresCacheAt) < allStoresCacheTTL {
-		return allStoresCache, nil
+		out := allStoresCache
+		allStoresCacheMu.Unlock()
+		return out, nil
 	}
+	allStoresCacheMu.Unlock()
+
 	stores, err := c.fetchStores(ctx, "")
 	if err != nil {
+		// 失败回退旧缓存（锁内快照）。
+		allStoresCacheMu.Lock()
+		defer allStoresCacheMu.Unlock()
 		if len(allStoresCache) > 0 {
 			return allStoresCache, nil
 		}
 		return nil, err
+	}
+
+	allStoresCacheMu.Lock()
+	defer allStoresCacheMu.Unlock()
+	// 双检：并发拉取期间可能已有别的调用者写入了更新鲜的缓存，直接用它。
+	if len(allStoresCache) > 0 && time.Since(allStoresCacheAt) < allStoresCacheTTL {
+		return allStoresCache, nil
 	}
 	allStoresCache = stores
 	allStoresCacheAt = time.Now()

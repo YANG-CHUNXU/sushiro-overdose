@@ -33,6 +33,10 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleReservations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
 	ws := getWebSettings()
 	if len(ws.StoreIDs) == 0 {
 		writeJSON(w, []ReservationRecord{})

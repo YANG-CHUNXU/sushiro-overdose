@@ -16,6 +16,10 @@ type calendarStoreResult struct {
 }
 
 func handleCalendar(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
 	ws := getWebSettings()
 	if len(ws.StoreIDs) == 0 {
 		writeError(w, http.StatusServiceUnavailable, "暂无配置，请先完成参数捕获")

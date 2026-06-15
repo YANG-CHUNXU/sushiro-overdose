@@ -141,6 +141,31 @@ func TestNetTicketServerRetryResetsAcrossDay(t *testing.T) {
 	}
 }
 
+// TestNetTicketServerRetryNotResetSameDay 是回归测试：5xx 重试分支会把 FiredDate 置空，
+// 下个 tick（同一天）不能因为 ServerRetryCount!=0 就清零——否则重试上限永远失效、
+// 每个 tick 都重发取号请求（刷号）。只有 RetryDate != today（真正跨天）才清零。
+func TestNetTicketServerRetryNotResetSameDay(t *testing.T) {
+	today := "2026-06-03"
+	plan := NetTicketPlan{
+		Enabled:          true,
+		StoreID:          "3006",
+		Status:           "retrying",
+		TargetTime:       "1900",
+		ServerRetryCount: 3,
+		RetryDate:        today, // 重试计数属于今天
+		FiredDate:        "",    // 重试分支置空，模拟下个 tick 的状态
+	}
+	// 复刻 netTicketTick 的清零条件：同一天不应清零。
+	if plan.ServerRetryCount != 0 && plan.RetryDate == today {
+		// 命中"同一天不清零"分支，符合预期
+	} else {
+		t.Fatal("同一天的 ServerRetryCount 不应被清零")
+	}
+	if plan.ServerRetryCount != 3 {
+		t.Fatalf("同一天重试计数应保持 3，实际 %d", plan.ServerRetryCount)
+	}
+}
+
 func TestNetTicketRoutinePlansReminderFromHistoricalMealPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

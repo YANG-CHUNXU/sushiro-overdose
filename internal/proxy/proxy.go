@@ -561,7 +561,12 @@ func sanitizedProxyURL(u *url.URL) string {
 		values := out.Query()
 		for key := range values {
 			lower := strings.ToLower(key)
-			if strings.Contains(lower, "token") || strings.Contains(lower, "auth") || strings.Contains(lower, "phone") || strings.Contains(lower, "wechat") {
+			if strings.Contains(lower, "token") || strings.Contains(lower, "auth") ||
+				strings.Contains(lower, "phone") || strings.Contains(lower, "wechat") ||
+				strings.Contains(lower, "code") || strings.Contains(lower, "openid") ||
+				strings.Contains(lower, "unionid") || strings.Contains(lower, "session") ||
+				strings.Contains(lower, "secret") || strings.Contains(lower, "ticket") ||
+				strings.Contains(lower, "sign") || lower == "key" || lower == "sid" {
 				values.Set(key, "***")
 			}
 		}
