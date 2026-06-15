@@ -159,7 +159,7 @@ func TestEmbeddedHomeDecisionOnboarding(t *testing.T) {
 		"通行证只在提交动作前需要",
 		`class="home-decision-card read" onclick="go('qt')"`,
 		`class="home-decision-card read" onclick="go('qd')"`,
-		`class="home-decision-card auth" onclick="go('ca')"`,
+		`class="home-decision-card auth" onclick="currentUIMode()==='advanced'?go('ca'):enterAdvanced('ca')"`,
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少首页决策说明片段：%s", needle)
@@ -177,6 +177,67 @@ func TestEmbeddedHomeDecisionOnboarding(t *testing.T) {
 	}
 	if strings.Contains(indexHTML, "现在想去吃") {
 		t.Fatalf("首页术语应统一为“现在去吃”，不要保留“现在想去吃”")
+	}
+}
+
+func TestEmbeddedUIModeSwitchContracts(t *testing.T) {
+	satisfied := satisfiedDOMIDs()
+	for _, id := range []string{"uiModeSwitch", "uiModeSimple", "uiModeAdvanced", "uiModeSettings"} {
+		if !satisfied[id] {
+			t.Errorf("缺少界面模式锚点 id=%q", id)
+		}
+	}
+	for _, needle := range []string{
+		"function currentUIMode(",
+		"function setUIMode(",
+		"function applyUIMode(",
+		"function enterAdvanced(",
+		"function isAdvancedPage(",
+		"function ensurePrefsLoaded(",
+		"await ensurePrefsLoaded()",
+		"简化版",
+		"进阶版",
+		"该功能在进阶版中",
+		"advanced-only",
+		"simple-mode",
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少简化/进阶模式片段：%s", needle)
+		}
+	}
+}
+
+func TestEmbeddedAdvancedOnlyMutationMarkers(t *testing.T) {
+	for _, needle := range []string{
+		`id="p-ca" class="hid advanced-page"`,
+		`id="p-sn" class="hid advanced-page"`,
+		`id="p-re" class="hid advanced-page"`,
+		`id="qdSamplingFold" class="card adv mt16 advanced-only"`,
+		`id="qdPlanFold" class="card adv mt16 advanced-only"`,
+		`<details class="adv mt16 advanced-only">`,
+		`<details class="cd setting-fold settings-wide advanced-only" id="fold-sm"`,
+		`<details class="cd setting-fold settings-wide advanced-only" id="fold-in"`,
+		`<details class="cd setting-fold settings-wide advanced-only" id="fold-lo"`,
+		`<details class="cd setting-fold settings-wide advanced-only" id="fold-safe"`,
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("indexHTML 缺少进阶门控片段：%s", needle)
+		}
+	}
+
+	if got := strings.Count(indexHTML, `if(currentUIMode()==='advanced')items.push({t:'预测数据'`); got < 2 {
+		t.Fatalf("简化版的准备清单和运行前置条件不应直接露出预测数据采集入口，advanced-only gates=%d", got)
+	}
+
+	for _, needle := range []string{
+		`buttons:[{l:'查看我的单据',f:"enterAdvanced('re')"},{l:'几点叫到我',f:"go('qd')"}]`,
+		`b.onclick=()=>enterAdvanced('re')`,
+		`buttons:[{l:'回首页',f:"go('da')"},{l:'查可约时段',f:"enterAdvanced('ca')"}]`,
+		`currentUIMode()==='advanced'?'门店、叫号、在等桌数为公开实时信息；远程取号是会执行操作的实验性功能，确认后才会提交。':'门店、叫号、在等桌数为公开实时信息；简化版保持只读，不会替你取号。'`,
+	} {
+		if !strings.Contains(indexHTML, needle) {
+			t.Errorf("可见入口应通过进阶确认而不是直接跳转：%s", needle)
+		}
 	}
 }
 
@@ -206,9 +267,8 @@ func TestEmbeddedUXM1PrimaryActions(t *testing.T) {
 		t.Fatalf("自动取号计划启用按钮应使用次要描边按钮")
 	}
 
-	// Simplified check: class verification happens below
-	if !strings.Contains(indexHTML, `class="bt bt-o bt-s" onclick="takeTicket`) {
-		t.Fatalf("远程取号按钮应使用次要描边按钮，让页面保持只读优先")
+	if !strings.Contains(indexHTML, `class="bt bt-o bt-s advanced-only" onclick="takeTicket`) {
+		t.Fatalf("远程取号按钮应使用次要描边按钮且仅进阶版展示，让页面保持只读优先")
 	}
 }
 

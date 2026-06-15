@@ -22,6 +22,9 @@ const (
 	SlotStrategyLatest   = "latest"
 	SlotStrategyClosest  = "closest"
 
+	UIModeSimple   = "simple"
+	UIModeAdvanced = "advanced"
+
 	DefaultTargetTime = "1930"
 )
 
@@ -34,6 +37,7 @@ type TimeRange struct {
 // UserPreferences stores all user-configurable booking preferences.
 // Persisted to ~/.sushiro/preferences.json and editable from the Web UI.
 type UserPreferences struct {
+	UIMode          string      `json:"ui_mode"`
 	Adult           int         `json:"adult"`
 	Child           int         `json:"child"`
 	TableType       string      `json:"table_type"`
@@ -56,6 +60,7 @@ func PreferencesPath() string {
 
 func DefaultPreferences() UserPreferences {
 	return UserPreferences{
+		UIMode:          UIModeSimple,
 		Adult:           2,
 		Child:           0,
 		TableType:       "T",
@@ -87,6 +92,9 @@ func NormalizePreferences(prefs UserPreferences) UserPreferences {
 	}
 	if prefs.TableType == "" {
 		prefs.TableType = "T"
+	}
+	if prefs.UIMode != UIModeAdvanced {
+		prefs.UIMode = UIModeSimple
 	}
 	if !validDayPriorityMode(prefs.DayPriorityMode) {
 		prefs.DayPriorityMode = DayPriorityDate

@@ -147,6 +147,25 @@ func TestNormalizePreferencesDefaults(t *testing.T) {
 	}
 }
 
+func TestNormalizePreferencesUIMode(t *testing.T) {
+	got := NormalizePreferences(UserPreferences{})
+	if got.UIMode != UIModeSimple {
+		t.Fatalf("default ui mode = %q want %q", got.UIMode, UIModeSimple)
+	}
+
+	for _, mode := range []string{UIModeSimple, UIModeAdvanced} {
+		got := NormalizePreferences(UserPreferences{UIMode: mode})
+		if got.UIMode != mode {
+			t.Errorf("valid ui mode %q normalized to %q", mode, got.UIMode)
+		}
+	}
+
+	got = NormalizePreferences(UserPreferences{UIMode: "debug"})
+	if got.UIMode != UIModeSimple {
+		t.Fatalf("invalid ui mode normalized to %q want %q", got.UIMode, UIModeSimple)
+	}
+}
+
 func TestNormalizePreferencePhoneNumber(t *testing.T) {
 	cases := map[string]string{
 		"138-0013-8000": "13800138000",
