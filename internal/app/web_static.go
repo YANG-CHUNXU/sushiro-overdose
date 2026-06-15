@@ -607,6 +607,12 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
 .danger-zone{margin-top:24px;padding:16px 18px;border:1.5px solid #F0B7B9;border-radius:14px;background:linear-gradient(135deg,#FFF6F6 0,#fff 60%)}
 .danger-zone-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .danger-zone-head b{color:var(--red);font-size:15px}
+/* 设置页分区标题（把「垃圾桶式」平铺折叠归类为有层级的分区） */
+.sect-divider{grid-column:1/-1;display:flex;align-items:center;gap:10px;margin:22px 0 2px;padding-top:18px;border-top:1px solid var(--line)}
+.sect-divider:first-of-type{margin-top:8px;border-top:0;padding-top:0}
+.sect-divider .sect-no{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:var(--ink);color:#fff;font-size:13px;font-weight:900}
+.sect-divider b{color:var(--ink);font-size:15px;letter-spacing:.01em}
+.sect-divider .mu{font-size:12px;margin-left:auto;text-align:right;max-width:60%}
 </style>
 </head>
 <body>
@@ -898,7 +904,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
   <section id="p-se" class="hid">
     <div class="settings-grid">
       <div class="cd settings-wide">
-        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">先看顶部四条状态：红色要处理，黄色按需配置。通行证和通知默认展开；诊断、日志、危险操作在下方。</p></div></div>
+        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">按从上到下分区配置：凭证 → 通知 → 数据 → 排障。顶部状态条红色要处理，黄色按需配置。</p></div></div>
         <div id="settingsStatus"><div class="ci">状态加载中</div></div>
         <div class="mode-settings mt16" id="uiModeSettings">
           <div><b>界面模式</b><p class="mu mt8">简化版只保留必要看板；进阶版显示完整预约、取号、采集和维护功能。</p></div>
@@ -908,23 +914,13 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
           </div>
         </div>
       </div>
+      <div class="sect-divider"><span class="sect-no">1</span><b>凭证与认证</b><span class="mu">寿司郎通行证抢号取号才需要；GitHub 登录只用于补强线上排队基准。</span></div>
       <details class="cd setting-fold settings-wide" open>
         <summary><span class="setting-fold-title"><b>寿司郎通行证（认证凭证）</b><span>通行证不是排队号；只在抢未来预约、远程取号、读取我的单据时需要。它会被寿司郎定期回收，也可能被手机端重新打开小程序后顶掉。</span></span></summary>
         <div class="setting-fold-body">
         <div class="fl ai jb mb16 fw g8"><div class="cd-t" style="margin-bottom:0">通行证状态</div><div class="fl g8 fw"><button class="bt bt-r bt-s" onclick="openAuthWizard()">拿通行证（向导）</button><button class="bt bt-o bt-s" onclick="resetAuthOnly(true)">重置认证</button><button class="bt bt-w bt-s" onclick="testAuthProbe()">测试基础接口</button></div></div>
         <div class="ps">遇到 E010/error.server、401/403、远程取号失败或我的单据读不到时，优先点“重置认证”，再重新获取凭证。重置只清理本机保存的凭证，不会取消你已经拿到的预约或排队号。</div>
         <div id="mobileAuthState" class="diag-detail mt8">尚未加载</div>
-        </div>
-      </details>
-      <details class="cd setting-fold" open>
-        <summary><span class="setting-fold-title"><b>通知渠道</b><span>配置飞书、Telegram、Bark 或 Server酱；抢到预约、叫号提醒会用这里推送。</span></span></summary>
-        <div class="setting-fold-body">
-        <div class="fg"><label>飞书 Webhook</label><input type="text" id="nf" placeholder="https://open.feishu.cn/..."></div>
-        <div class="fr"><div class="fg" style="flex:1"><label>Telegram Token</label><input type="text" id="ntt" placeholder="123456:ABC..."></div><div class="fg" style="flex:1"><label>Chat ID</label><input type="text" id="ntc" placeholder="-100..."></div></div>
-        <div class="fr"><div class="fg" style="flex:1"><label>Bark URL</label><input type="text" id="nbu" placeholder="https://api.day.app"></div><div class="fg" style="flex:1"><label>Bark Key</label><input type="text" id="nbk"></div></div>
-        <div class="fg"><label>Server 酱 Key</label><input type="text" id="ns" placeholder="SCT..."></div>
-        <div class="fl g8 fw mt8"><button class="bt bt-r" onclick="sN()">保存通知</button><button class="bt bt-w" onclick="tN('all')">保存并测试全部</button></div>
-        <details class="btn-more mt8"><summary></summary><div class="ps mt8">单渠道测试会先保存当前表单再发送。</div><div class="fl g8 fw mt8"><button class="bt bt-w bt-s" onclick="tN('feishu')">测试飞书</button><button class="bt bt-w bt-s" onclick="tN('telegram')">测试 Telegram</button><button class="bt bt-w bt-s" onclick="tN('bark')">测试 Bark</button><button class="bt bt-w bt-s" onclick="tN('serverchan')">测试 Server酱</button></div></details>
         </div>
       </details>
       <details class="cd setting-fold settings-wide advanced-only">
@@ -936,6 +932,19 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <details class="btn-more mt16"><summary></summary><div class="fg mt8"><label>云端服务地址</label><input type="url" id="cloudUrl" placeholder="https://sushiro-cloud.your-name.workers.dev"></div><div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="saveCloudAuth()">保存服务地址</button></div><div class="ps mt8">仅自建或排障时需要。线上数据库凭证只应保存在云端服务 secrets 里。</div></details>
         </div>
       </details>
+      <div class="sect-divider"><span class="sect-no">2</span><b>通知</b><span class="mu">抢到预约、叫号提醒会用这里推送；至少配一个渠道。</span></div>
+      <details class="cd setting-fold" open>
+        <summary><span class="setting-fold-title"><b>通知渠道</b><span>配置飞书、Telegram、Bark 或 Server酱；抢到预约、叫号提醒会用这里推送。</span></span></summary>
+        <div class="setting-fold-body">
+        <div class="fg"><label>飞书 Webhook</label><input type="text" id="nf" placeholder="https://open.feishu.cn/..."></div>
+        <div class="fr"><div class="fg" style="flex:1"><label>Telegram Token</label><input type="text" id="ntt" placeholder="123456:ABC..."></div><div class="fg" style="flex:1"><label>Chat ID</label><input type="text" id="ntc" placeholder="-100..."></div></div>
+        <div class="fr"><div class="fg" style="flex:1"><label>Bark URL</label><input type="text" id="nbu" placeholder="https://api.day.app"></div><div class="fg" style="flex:1"><label>Bark Key</label><input type="text" id="nbk"></div></div>
+        <div class="fg"><label>Server 酱 Key</label><input type="text" id="ns" placeholder="SCT..."></div>
+        <div class="fl g8 fw mt8"><button class="bt bt-r" onclick="sN()">保存通知</button><button class="bt bt-w" onclick="tN('all')">保存并测试全部</button></div>
+        <details class="btn-more mt8"><summary></summary><div class="ps mt8">单渠道测试会先保存当前表单再发送。</div><div class="fl g8 fw mt8"><button class="bt bt-w bt-s" onclick="tN('feishu')">测试飞书</button><button class="bt bt-w bt-s" onclick="tN('telegram')">测试 Telegram</button><button class="bt bt-w bt-s" onclick="tN('bark')">测试 Bark</button><button class="bt bt-w bt-s" onclick="tN('serverchan')">测试 Server酱</button></div></details>
+        </div>
+      </details>
+      <div class="sect-divider advanced-only"><span class="sect-no">3</span><b>数据与预测</b><span class="mu">让「几点叫到」更准；看历史规律反推更值得抢的时段。</span></div>
       <details class="cd setting-fold settings-wide advanced-only" id="fold-sm" ontoggle="if(this.open)lSm()">
         <summary><span class="setting-fold-title"><b>预测准确度 <span class="pm" data-kind="unagi" data-size="26"></span></b><span>提升“几点叫到、几点出发”的判断；常用门店的公开排队曲线已默认自动记录，这里只在想更准时配置。</span></span></summary>
         <div class="setting-fold-body">
@@ -960,10 +969,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <div id="ic"><div class="empty">加载中</div></div>
         </div>
       </details>
-      <details class="cd setting-fold settings-wide advanced-only" id="fold-lo" ontoggle="if(this.open)lL()">
-        <summary><span class="setting-fold-title"><b>运行日志 <span class="pm" data-kind="maguro" data-mood="sleep" data-size="26"></span></b><span>排障时看；平时不用展开。</span></span></summary>
-        <div class="setting-fold-body"><div class="lg" id="lv"></div></div>
-      </details>
+      <div class="sect-divider advanced-only"><span class="sect-no">4</span><b>排障</b><span class="mu">状态异常、代理残留、看日志；平时不用动。</span></div>
       <details class="cd setting-fold settings-wide advanced-only" id="fold-safe">
         <summary><span class="setting-fold-title"><b>诊断与维护</b><span>状态异常、代理残留、需要复制诊断时打开。</span></span></summary>
         <div class="setting-fold-body">
@@ -972,6 +978,10 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <div id="dg" class="cg"><div class="ci">尚未加载</div></div>
         <div id="ddetail" class="diag-detail hid"></div>
         </div>
+      </details>
+      <details class="cd setting-fold settings-wide advanced-only" id="fold-lo" ontoggle="if(this.open)lL()">
+        <summary><span class="setting-fold-title"><b>运行日志 <span class="pm" data-kind="maguro" data-mood="sleep" data-size="26"></span></b><span>排障时看；平时不用展开。</span></span></summary>
+        <div class="setting-fold-body"><div class="lg" id="lv"></div></div>
       </details>
       <div class="danger-zone settings-wide advanced-only">
         <div class="danger-zone-head"><b>⚠ 危险操作</b><span class="mu">不可恢复，执行前会再次确认。与上方日常配置隔离。</span></div>
