@@ -16,21 +16,23 @@ const (
 // 实时快照来自 getStoreById；近15分钟叫号/历史均速/预估等待来自本机采样历史，
 // 没有历史时这些字段为 nil，前端据此提示“数据收集中”。
 type QueueLivePanel struct {
-	StoreID         string   `json:"store_id"`
-	StoreName       string   `json:"store_name"`
-	StoreStatus     string   `json:"store_status"`
-	NetTicketStatus string   `json:"net_ticket_status"`
-	OnlineOpen      bool     `json:"online_open"`
-	CalledNo        int      `json:"called_no"`               // 当前叫号
-	WaitGroups      int      `json:"wait_groups"`             // 当前需等待（组/桌）
-	WaitTimeCap     int      `json:"wait_time_cap,omitempty"` // 接口给的等待上限（分钟）
-	ServerWaitMin   int      `json:"server_wait_minutes"`     // 接口直接给的预估等待（分钟）
-	Called15m       *int     `json:"called_15m,omitempty"`    // 近15分钟叫号推进
-	RatePerMin      *float64 `json:"rate_per_min,omitempty"`  // 历史均速（组/分）
-	EtaMinutes      *int     `json:"eta_minutes,omitempty"`   // 综合预估等待（基于均速+在等组数）
-	ObservedAt      string   `json:"observed_at"`             // 本次快照时间
-	HistoryPoints   int      `json:"history_points"`          // 参与计算的历史观测数
-	Spark           []int    `json:"spark,omitempty"`         // 最近一段叫号序列（时间升序），用于画推进小图
+	StoreID          string   `json:"store_id"`
+	StoreName        string   `json:"store_name"`
+	StoreStatus      string   `json:"store_status"`
+	NetTicketStatus  string   `json:"net_ticket_status"`
+	OnlineOpen       bool     `json:"online_open"`
+	CalledNo         int      `json:"called_no"`               // 当前叫号
+	WaitGroups       int      `json:"wait_groups"`             // 当前需等待（组/桌）
+	WaitTimeCap      int      `json:"wait_time_cap,omitempty"` // 接口给的等待上限（分钟）
+	TablesCapacity   int      `json:"tables_capacity,omitempty"`
+	CountersCapacity int      `json:"counters_capacity,omitempty"`
+	ServerWaitMin    int      `json:"server_wait_minutes"`    // 接口直接给的预估等待（分钟）
+	Called15m        *int     `json:"called_15m,omitempty"`   // 近15分钟叫号推进
+	RatePerMin       *float64 `json:"rate_per_min,omitempty"` // 历史均速（组/分）
+	EtaMinutes       *int     `json:"eta_minutes,omitempty"`  // 综合预估等待（基于均速+在等组数）
+	ObservedAt       string   `json:"observed_at"`            // 本次快照时间
+	HistoryPoints    int      `json:"history_points"`         // 参与计算的历史观测数
+	Spark            []int    `json:"spark,omitempty"`        // 最近一段叫号序列（时间升序），用于画推进小图
 }
 
 const queuePanelSparkMax = 40
@@ -46,16 +48,18 @@ func buildQueueLivePanel(ctx context.Context, storeID string, now time.Time) (Qu
 	snapshot := queueObservationFromLiveStore(store, now)
 
 	panel := QueueLivePanel{
-		StoreID:         snapshot.StoreID,
-		StoreName:       store.Name,
-		StoreStatus:     store.StoreStatus,
-		NetTicketStatus: store.NetTicketStatus,
-		OnlineOpen:      snapshot.OnlineOpen,
-		CalledNo:        snapshot.DisplayCalledNo,
-		WaitGroups:      snapshot.GroupQueuesCount,
-		WaitTimeCap:     store.WaitTimeCap,
-		ServerWaitMin:   store.Wait,
-		ObservedAt:      now.Format(time.RFC3339),
+		StoreID:          snapshot.StoreID,
+		StoreName:        store.Name,
+		StoreStatus:      store.StoreStatus,
+		NetTicketStatus:  store.NetTicketStatus,
+		OnlineOpen:       snapshot.OnlineOpen,
+		CalledNo:         snapshot.DisplayCalledNo,
+		WaitGroups:       snapshot.GroupQueuesCount,
+		WaitTimeCap:      store.WaitTimeCap,
+		TablesCapacity:   store.TablesCapacity,
+		CountersCapacity: store.CountersCapacity,
+		ServerWaitMin:    store.Wait,
+		ObservedAt:       now.Format(time.RFC3339),
 	}
 
 	history := recentStoreObservations(loadQueueObservations(), snapshot.StoreID, now, queuePanelRateWindow)
