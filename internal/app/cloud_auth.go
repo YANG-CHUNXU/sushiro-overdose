@@ -13,6 +13,7 @@ import (
 	neturl "net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -413,7 +414,8 @@ func consumeCloudOAuthState(state string) bool {
 func localCloudCallbackURL(r *http.Request) string {
 	host := r.Host
 	if host == "" {
-		host = "127.0.0.1:8081"
+		// r.Host 一般都有；兜底用实际监听端口，而不是硬编码。
+		host = "127.0.0.1:" + strconv.Itoa(GetActiveWebPort())
 	}
 	return "http://" + host + "/api/cloud/auth/callback"
 }

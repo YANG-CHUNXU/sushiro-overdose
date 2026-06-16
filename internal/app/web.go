@@ -25,7 +25,9 @@ import (
 	"time"
 )
 
-const defaultWebPort = 8081
+// defaultWebPort 是 Web UI 的起始端口。用高位端口（39871）避开 8080/8081/3000/5000
+// 等常见开发工具端口；若被占会自动递增到下一个可用端口（见 findAvailablePort）。
+const defaultWebPort = 39871
 
 func cmdWeb() {
 	printBanner()
