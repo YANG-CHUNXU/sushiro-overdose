@@ -29,14 +29,20 @@ import (
 // 等常见开发工具端口；若被占会自动递增到下一个可用端口（见 findAvailablePort）。
 const defaultWebPort = 39871
 
+// cmdWeb 启动本地 Web UI：注册全部 HTTP 路由、选定可用端口、装上安全中间件、
+// 拉起后台采集/调度协程，最后阻塞在 server.ListenAndServe 上。
+// 设计上只监听 127.0.0.1（loopback），不对外暴露，配合 webSecurityMiddleware 做请求准入。
 func cmdWeb() {
 	printBanner()
 
+	// checkStaleProxy：上次进程异常退出（崩溃/被杀）来不及清理系统代理时，这里兜底清掉，
+	// 否则系统仍指向已关闭的代理端口，会导致整机联网异常。
 	if checkStaleProxy() {
 		fmt.Println("已清除上次异常退出的系统代理设置")
 	}
 
 	setNotifier(BuildNotifierFromConfig())
+	// 进程级 CSRF token：每次启动重新生成，旧页面里的 token 会失效（需刷新页面）。
 	setWebCSRFToken(newWebCSRFToken())
 
 	mux := http.NewServeMux()
@@ -127,6 +133,8 @@ func cmdWeb() {
 
 	port := findAvailablePort(defaultWebPort)
 	SetActiveWebPort(port)
+	// 只绑定 loopback：本 UI 只服务本机浏览器/应用窗口，绝不对外网卡监听，
+	// 从网络层就杜绝局域网内其他设备直接访问（手机抓包另有 0.0.0.0 代理，与此无关）。
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{
 		Addr:    addr,
@@ -170,6 +178,9 @@ func cmdWeb() {
 	}
 }
 
+// findAvailablePort 从 preferred（defaultWebPort）开始向上最多探 100 个端口，
+// 返回第一个能 bind 的。都占满时退回 preferred（随后 ListenAndServe 会以真实错误失败），
+// 避免「端口被占直接 fatal」让用户毫无排查线索。
 func findAvailablePort(preferred int) int {
 	if port, ok := FirstAvailableLocalPort(preferred, 100); ok {
 		return port
@@ -178,10 +189,13 @@ func findAvailablePort(preferred int) int {
 }
 
 var (
+	// webSettingsMu 保护 webSettings 与 webClient 两个相关字段：写时持写锁同时刷新两者，
+	// 读时持读锁整体返回，避免调用方拿到 client 却用了被并发清空的 settings。
 	webSettingsMu sync.RWMutex
 	webSettings   Settings
 	webClient     *Client
 
+	// webCSRFMu 保护 webCSRFToken。token 在进程启动时写一次，校验时高频读，故用 RWMutex。
 	webCSRFMu    sync.RWMutex
 	webCSRFToken string
 )
@@ -212,6 +226,9 @@ func getWebClient() *Client {
 	return webClient
 }
 
+// refreshWebClient 在写操作前重新从磁盘读取凭证配置并重建 client。
+// 凭证可能在 Web 之外被更新（如代理抓包刚捕获到），所以每次敏感写操作都先 reload：
+// 读不到 / 校验不过就 clearWebSettings，让上层返回「请先获取凭证」。
 func refreshWebClient() {
 	tokens, err := LoadLocalConfig()
 	if err != nil {
@@ -227,6 +244,8 @@ func refreshWebClient() {
 	setWebSettings(settings)
 }
 
+// newWebCSRFToken 用 crypto/rand 生成 32 字节随机数后 base64 编码，作为本进程的 CSRF token。
+// 失败（系统熵源不可用）视为致命错误直接退出——拿不到强随机就不应继续提供 Web 服务。
 func newWebCSRFToken() string {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
@@ -248,6 +267,13 @@ func getWebCSRFToken() string {
 	return webCSRFToken
 }
 
+// webSecurityMiddleware 是所有请求的准入闸门，按顺序做两件事：
+//  1. Host 头校验（isAllowedWebHost）：只接受 127.0.0.1/localhost/::1，防止 DNS 重绑定（DNS rebinding）
+//     把外部域名解析到本机 loopback 再借 Host 绕过同源策略。
+//  2. 对 /api/ 下的写方法（POST/PUT）叠加双重校验：Origin 同源（validWebOrigin）+ 自定义 CSRF 头匹配
+//     （validWebCSRF）。GET 等读请求不要求 CSRF 头，因为它们不应有副作用。
+//
+// 这套组合挡住了「外部网站用浏览器里用户的会话对本 UI 发起写请求」这类 CSRF 攻击。
 func webSecurityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isAllowedWebHost(r.Host) {
@@ -269,6 +295,8 @@ func webSecurityMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// validWebCSRF 用恒定时间比较校验请求自带的 CSRF 头，避免基于耗时的侧信道猜测 token。
+// 先判长度不等直接返回 false，既省一次常量比较，也保证 subtle 比较的两个切片等长。
 func validWebCSRF(got string) bool {
 	want := getWebCSRFToken()
 	if got == "" || want == "" || len(got) != len(want) {
@@ -277,6 +305,10 @@ func validWebCSRF(got string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
+// validWebOrigin 校验写请求的 Origin 头是否与本机 UI 同源。
+// 三道关：Origin 不能为空或字面量 "null"（沙箱 iframe / 被篡改时常见）；scheme 只许 http/https；
+// 解析出的 host 必须既等于请求 Host（同源），又是允许的 loopback host（isAllowedWebHost）。
+// 拒绝非同源 Origin 即可阻断跨站表单/脚本对本 UI 的写操作。
 func validWebOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" || origin == "null" {
@@ -292,6 +324,9 @@ func validWebOrigin(r *http.Request) bool {
 	return normalizeWebHost(u.Host) == normalizeWebHost(r.Host) && isAllowedWebHost(u.Host)
 }
 
+// isAllowedWebHost 判断 host 是否为本地回环地址之一（127.0.0.1 / localhost / ::1）。
+// 这是 Host 头白名单的核心：本 UI 只预期被本机访问，任何其它 host 名都按可疑拒绝。
+// 先 SplitHostPort 去端口，再 Trim "[]" 兼容 IPv6 字面量（如 [::1]）。
 func isAllowedWebHost(host string) bool {
 	h := normalizeWebHost(host)
 	if h == "" {
@@ -305,6 +340,7 @@ func isAllowedWebHost(host string) bool {
 	return h == "127.0.0.1" || h == "localhost" || h == "::1"
 }
 
+// normalizeWebHost 统一小写 + 去首尾空白，让 host 比较大小写/空格无关。
 func normalizeWebHost(host string) string {
 	return strings.ToLower(strings.TrimSpace(host))
 }

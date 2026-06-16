@@ -17,6 +17,10 @@ const (
 	authHealthStale   = "stale"   // 最近一次凭证请求被官方判为凭证失败
 )
 
+// authHealthTracker 是凭证健康的状态机：三态 unknown/ok/stale 之间被动迁移。
+// 状态机迁移：unknown→{ok|stale}、ok→stale、stale→ok、ok→ok、stale→stale。
+// notified 用于 stale 周期内的通知去重——只在"非 stale → stale"的跃迁推一次，
+// 持续 stale 不重复刷屏，直到回到 ok 才清零。
 type authHealthTracker struct {
 	mu        sync.RWMutex
 	status    string
@@ -54,6 +58,8 @@ func markAuthHealthy() {
 	authHealth.mu.Unlock()
 }
 
+// resetAuthHealth 把状态机重置回 unknown（不清除 notified 之外的语义），
+// 通常在断开/登出凭证时调用，表示"当前没有任何凭证可判断"。
 func resetAuthHealth() {
 	authHealth.mu.Lock()
 	authHealth.status = authHealthUnknown
@@ -66,6 +72,8 @@ func resetAuthHealth() {
 // markAuthStale：官方判定凭证失败时调用。仅在 ok/unknown→stale 跃迁时推一次通知。
 func markAuthStale(reason string) {
 	authHealth.mu.Lock()
+	// wasStale 记录进入本次调用前的状态：只有"本来不是 stale"才需要推一次通知，
+	// 配合 notified 形成"每段 stale 只推一次"的去重。
 	wasStale := authHealth.status == authHealthStale
 	authHealth.status = authHealthStale
 	if reason != "" {

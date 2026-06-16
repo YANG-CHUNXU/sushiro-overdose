@@ -26,21 +26,24 @@ const (
 	cloudAuthURLEnv               = "SUSHIRO_CLOUD_URL"
 	cloudAuthSessionTokenEnv      = "SUSHIRO_CLOUD_SESSION_TOKEN"
 	defaultCloudAuthBaseURL       = "https://sushiro-cloud.ryujo.online"
-	cloudAuthBaselineProbeStoreID = "3006"
+	cloudAuthBaselineProbeStoreID = "3006" // 健康探测固定用的门店号，只验证线上基准接口能否返回数据
 	cloudAuthTimeout              = 12 * time.Second
-	cloudOAuthStateTTL            = 10 * time.Minute
-	cloudAuthSessionTokenSize     = 32
+	cloudOAuthStateTTL            = 10 * time.Minute // OAuth state 有效期：留出用户在浏览器走完 GitHub 登录的窗口，又不至于无限堆积
+	cloudAuthSessionTokenSize     = 32               // 生成 state 时的随机字节数（base64 后约 43 字符），足够防爆破
 )
 
+// CloudAuthConfig 是 cloud_auth.json 的持久化结构：GitHub 登录后存本机，用于读取线上排队基准。
+// 安全语义：SessionToken 是登录云端（Cloudflare Worker）的会话令牌，仅用于读取公开排队数据，
+// 数据库密钥不会落到本机；omitempty 让未登录时不落盘敏感字段。所有时间字段均为 RFC3339 字符串。
 type CloudAuthConfig struct {
-	BaseURL        string `json:"base_url"`
-	SessionToken   string `json:"session_token,omitempty"`
-	UserLogin      string `json:"user_login,omitempty"`
-	UserName       string `json:"user_name,omitempty"`
-	AvatarURL      string `json:"avatar_url,omitempty"`
-	ConnectedAt    string `json:"connected_at,omitempty"`
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	LastVerifiedAt string `json:"last_verified_at,omitempty"`
+	BaseURL        string `json:"base_url"`                   // 云端 Worker 地址
+	SessionToken   string `json:"session_token,omitempty"`    // Bearer 令牌，请求 /api/me 等接口时带
+	UserLogin      string `json:"user_login,omitempty"`       // GitHub login（展示用）
+	UserName       string `json:"user_name,omitempty"`        // GitHub 昵称（展示用）
+	AvatarURL      string `json:"avatar_url,omitempty"`       // 头像地址（展示用）
+	ConnectedAt    string `json:"connected_at,omitempty"`     // 首次连上的时间
+	ExpiresAt      string `json:"expires_at,omitempty"`       // 云端会话过期时间（由云端返回）
+	LastVerifiedAt string `json:"last_verified_at,omitempty"` // 上次本地校验通过的时间
 }
 
 type CloudAuthStatus struct {
@@ -82,6 +85,10 @@ type cloudSession struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
+// cloudOAuthStates 保存 OAuth 回调的 state 一次性票据：值=过期时间，TTL=cloudOAuthStateTTL。
+// 防御 CSRF：state 由本机生成随机串，随授权 URL 带给 GitHub，回调时必须原样带回并被本机
+// 单次消费（consumeCloudOAuthState 命中即删），防止重放。同时 newCloudOAuthState 顺带清扫
+// 过期项，避免 map 长期堆积（无独立 GC 线程）。
 var cloudOAuthStates struct {
 	sync.Mutex
 	values map[string]time.Time
@@ -91,6 +98,9 @@ func cloudAuthConfigPath() string {
 	return filepath.Join(AppDirPath(), cloudAuthConfigFile)
 }
 
+// LoadCloudAuthConfig 从 cloud_auth.json 读配置，再用环境变量覆盖。优先级坑：环境变量
+// SUSHIRO_CLOUD_URL / SUSHIRO_CLOUD_SESSION_TOKEN 一旦设置就盖过磁盘值（用于 CI/容器注入），
+// 因此写盘的值在 env 存在时会被忽略——排查"改了配置不生效"先看环境变量。最后对每个字段做 TrimSpace 兜底。
 func LoadCloudAuthConfig() CloudAuthConfig {
 	var cfg CloudAuthConfig
 	if data, err := os.ReadFile(cloudAuthConfigPath()); err == nil {
@@ -116,6 +126,8 @@ func LoadCloudAuthConfig() CloudAuthConfig {
 	return cfg
 }
 
+// SaveCloudAuthConfig 写回 cloud_auth.json。写盘前重新 normalize + 校验 URL，
+// 并用 0o600 权限（仅属主可读写）落盘，避免会话令牌被同机其他用户读到。
 func SaveCloudAuthConfig(cfg CloudAuthConfig) error {
 	cfg.BaseURL = normalizeCloudBaseURL(cfg.BaseURL)
 	cfg.SessionToken = strings.TrimSpace(cfg.SessionToken)
@@ -138,6 +150,8 @@ func SaveCloudAuthConfig(cfg CloudAuthConfig) error {
 	return os.WriteFile(cloudAuthConfigPath(), data, 0o600)
 }
 
+// normalizeCloudBaseURL 把 BaseURL 规整成无尾斜杠、无 query/fragment 的形式，
+// 保证后续拼 endpoint 时 base + path 不会出现 // 或带脏参数。
 func normalizeCloudBaseURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -152,6 +166,8 @@ func normalizeCloudBaseURL(raw string) string {
 	return strings.TrimRight(u.String(), "/")
 }
 
+// validateCloudBaseURL 校验云端地址合法：必须有 scheme+host 且只允许 http/https。
+// allowEmpty=true 时允许空串（用于"未连接"的中间态），否则空串报错。
 func validateCloudBaseURL(raw string, allowEmpty bool) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -178,10 +194,14 @@ func (cfg CloudAuthConfig) connected() bool {
 	return cfg.configured() && strings.TrimSpace(cfg.SessionToken) != ""
 }
 
+// cacheKey 用 "cloud\x00"+BaseURL+"\x00"+SessionToken 拼出缓存键。\x00 不可出现在
+// 正常 URL/令牌里，避免两个不同组合撞键。
 func (cfg CloudAuthConfig) cacheKey() string {
 	return "cloud\x00" + strings.TrimSpace(cfg.BaseURL) + "\x00" + strings.TrimSpace(cfg.SessionToken)
 }
 
+// endpoint 把 BaseURL 与 path、query 安全拼成最终请求地址：先保证 base 以 / 结尾，
+// 再用 base.Parse 解析相对路径（自动处理路径合并），避免手拼字符串造成的 // 或错位。
 func (cfg CloudAuthConfig) endpoint(path string, query neturl.Values) (string, error) {
 	if err := validateCloudBaseURL(cfg.BaseURL, false); err != nil {
 		return "", err
@@ -201,6 +221,9 @@ func (cfg CloudAuthConfig) endpoint(path string, query neturl.Values) (string, e
 	return u.String(), nil
 }
 
+// BuildCloudAuthStatus 构造给前端的云端连接状态。verify=true 时会真正打 /api/me 校验会话，
+// 并把拉回的用户信息回写配置（含首次写入 ConnectedAt），再做一次基准接口探测。
+// verify=false 或未连接时只回静态状态，不发网络请求。
 func BuildCloudAuthStatus(ctx context.Context, verify bool) CloudAuthStatus {
 	cfg := LoadCloudAuthConfig()
 	status := cloudAuthStatusFromConfig(cfg)
@@ -245,6 +268,9 @@ func cloudAuthStatusFromConfig(cfg CloudAuthConfig) CloudAuthStatus {
 	}
 }
 
+// applyCloudBaselineProbe 用一个固定门店号探测线上基准接口，确认"登录可用 + 基准接口已响应"。
+// 各 count 为 0 时再用本地数据兜底重算一次（兼容旧版响应缺字段）。全部为 0 说明接口通了但
+// 暂无该门店数据，给出温和提示而非报错。
 func applyCloudBaselineProbe(ctx context.Context, cfg CloudAuthConfig, status *CloudAuthStatus) error {
 	export, err := fetchQueueBaselineFromCloud(ctx, cfg, cloudAuthBaselineProbeStoreID, time.Now())
 	if err != nil {
@@ -321,6 +347,9 @@ func cloudPOSTJSON(ctx context.Context, cfg CloudAuthConfig, path string, query 
 	return cloudJSON(ctx, http.MethodPost, cfg, path, query, body, out)
 }
 
+// cloudJSON 是所有云端请求的统一入口：带 Bearer、设 UA、统一 12s 超时、限制响应体 64MB。
+// 限制响应体是因为全国基准导出能到 6-8MB 且持续增长，给余量并在超限时报明确错误，
+// 而不是让下游 JSON 解析报"unexpected end of JSON input"。
 func cloudJSON(ctx context.Context, method string, cfg CloudAuthConfig, path string, query neturl.Values, body []byte, out any) error {
 	if !cfg.connected() {
 		return fmt.Errorf("尚未登录云端数据服务")
@@ -375,6 +404,9 @@ func cloudJSON(ctx context.Context, method string, cfg CloudAuthConfig, path str
 	return nil
 }
 
+// newCloudOAuthState 生成一次性的 OAuth state：crypto/rand 取随机字节，base64 编码，
+// 写入 cloudOAuthStates 并设置 TTL。写锁内顺带 GC 掉已过期项，避免 map 无限增长。
+// 该 state 会随授权 URL 一起发给 GitHub，回调必须原样带回并被 consumeCloudOAuthState 消费。
 func newCloudOAuthState() (string, error) {
 	buf := make([]byte, cloudAuthSessionTokenSize)
 	if _, err := rand.Read(buf); err != nil {
@@ -396,6 +428,9 @@ func newCloudOAuthState() (string, error) {
 	return state, nil
 }
 
+// consumeCloudOAuthState 校验并单次消费 OAuth state：命中即从 map 删除（无论是否过期），
+// 仅当"存在且未过期"返回 true。单次消费是核心——防止同一个 state 被重放成多次登录。
+// 空 state 直接拒绝。
 func consumeCloudOAuthState(state string) bool {
 	state = strings.TrimSpace(state)
 	if state == "" {
@@ -411,6 +446,9 @@ func consumeCloudOAuthState(state string) bool {
 	return ok && now.Before(expires)
 }
 
+// localCloudCallbackURL 拼出 OAuth 回调地址给云端跳转。优先用请求自带的 r.Host
+// （反映用户实际访问的本机地址/端口，反代场景也能用），缺失时兜底用本机实际监听端口，
+// 而不是硬编码端口——避免用户换了端口后回调地址失效。
 func localCloudCallbackURL(r *http.Request) string {
 	host := r.Host
 	if host == "" {

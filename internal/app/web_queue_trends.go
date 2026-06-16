@@ -41,6 +41,8 @@ func handleQueueDashboard(w http.ResponseWriter, r *http.Request) {
 		BucketMinutes: atoiDefault(q.Get("bucket"), queueDashboardDefaultBucketMins),
 		TargetNo:      atoiDefault(q.Get("target_no"), 0),
 	}
+	// 校验：填了「手里号码」（target_no）就必须同时选门店。否则会用别的门店排队曲线去推算
+	// 当前号还要等多久，得出错误结论（不同门店放号速度差很大）。在算法入口就拦住。
 	if query.TargetNo > 0 && len(query.StoreIDs) == 0 {
 		writeError(w, http.StatusBadRequest, "已填写手里号码，请先选择门店，避免用其他门店曲线误判。")
 		return

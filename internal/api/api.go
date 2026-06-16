@@ -17,10 +17,12 @@ import (
 	"time"
 )
 
-var ErrNoReservationAvailable = errors.New("no reservation available")
-var ErrReservationsEndpointUnavailable = errors.New("reservations endpoint unavailable")
-var ErrActiveReservationExists = errors.New("active reservation exists")
+// 业务语义错误哨兵：与 HTTP 层错误（APIError）区分，调用方用 errors.Is 判断后再决定重试/提示。
+var ErrNoReservationAvailable = errors.New("no reservation available")                   // 名额已满（E044 等）
+var ErrReservationsEndpointUnavailable = errors.New("reservations endpoint unavailable") // 预约列表接口 404，老门店/老版本可能没有
+var ErrActiveReservationExists = errors.New("active reservation exists")                 // 已有未完成预约（E052 等，官方一次只允许一个）
 
+// APIError 包装 HTTP >=400 的响应，Body 已经过 NormalizeErrorBody 规整成可读字符串。
 type APIError struct {
 	StatusCode int
 	Body       string
@@ -30,6 +32,9 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Body)
 }
 
+// Client 是官方接口的薄封装。所有写操作都走 api_auth 路径（需 ReservationAuth），
+// 查询走 api 路径（需 QueryAuthorization）。storeCache 缓存门店详情，避免重复拉取。
+// 并发约定：mu 只保护 storeCache；httpClient 本身并发安全，doJSON 不加锁。
 type Client struct {
 	settings   Settings
 	httpClient *http.Client
@@ -37,6 +42,7 @@ type Client struct {
 	storeCache map[string]StoreInfo
 }
 
+// NewClient 构造 Client。HTTP 超时固定 15s——官方接口偶有抖动，但取号场景不能无限等。
 func NewClient(settings Settings) *Client {
 	return &Client{
 		settings: settings,
@@ -47,6 +53,9 @@ func NewClient(settings Settings) *Client {
 	}
 }
 
+// GetStoreInfo 拉门店详情（GET /wechat/api/2.0/getStoreById?storeId=...）。
+// 用 QueryAuthorization；结果按 storeID 缓存（门店静态信息短期内不变）。
+// 缓存读写都在临界区内，避免并发重复请求互相覆盖。
 func (c *Client) GetStoreInfo(ctx context.Context, storeID string) (StoreInfo, error) {
 	c.mu.Lock()
 	if store, ok := c.storeCache[storeID]; ok {
@@ -73,6 +82,8 @@ func (c *Client) GetStoreInfo(ctx context.Context, storeID string) (StoreInfo, e
 	return store, nil
 }
 
+// GetTimeslots 拉某门店可约时段（GET /wechat/api/2.0/store/timeslots）。
+// 用 QueryAuthorization；query 带桌型/门店/人数，人数影响返回哪些桌型有档期。
 func (c *Client) GetTimeslots(ctx context.Context, storeID string) ([]Slot, error) {
 	query := url.Values{}
 	query.Set("tableType", c.settings.TableType)
@@ -91,6 +102,10 @@ func (c *Client) GetTimeslots(ctx context.Context, storeID string) ([]Slot, erro
 	return slots, nil
 }
 
+// CreateReservation 提交一个预约（POST /wechat/api_auth/2.0/ticketing/createReservation）。
+// 走 api_auth（需 ReservationAuth）；slotDate/slotTime 为紧凑日期(YYYYMMDD)/时间(HHMMSS)。
+// 失败时把错误原文映射成语义哨兵：名额已满→ErrNoReservationAvailable，已有预约→ErrActiveReservationExists。
+// 官方一次只允许一个活跃预约，重复提交会被它拒绝。
 func (c *Client) CreateReservation(ctx context.Context, storeID, slotDate, slotTime string) (ReservationRecord, error) {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/createReservation"
 	payload := map[string]any{
@@ -148,6 +163,8 @@ func (c *Client) CreateNetTicket(ctx context.Context, storeID string) (Reservati
 	return parseReservationRecord(body, "net ticket")
 }
 
+// GetNetTicketStatus 查当前排队号状态（GET /wechat/api_auth/2.0/ticket/status?wechatId=...）。
+// 用 ReservationAuth；按微信ID查当前活跃号，用于轮询「前面还排多少人」。
 func (c *Client) GetNetTicketStatus(ctx context.Context) (ReservationRecord, error) {
 	query := url.Values{}
 	query.Set("wechatId", c.settings.WechatID)
@@ -159,6 +176,9 @@ func (c *Client) GetNetTicketStatus(ctx context.Context) (ReservationRecord, err
 	return parseReservationRecord(body, "net ticket status")
 }
 
+// GetReservations 查历史/当前预约列表（POST /wechat/api_auth/2.0/ticketing/getReservations）。
+// 响应可能是顶层数组，也可能是 {data:[...]} 包裹，故两种形态都试。404 特判为接口不可用哨兵
+// （部分门店/版本没开放此接口）。
 func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, error) {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/getReservations"
 	body, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
@@ -187,6 +207,8 @@ func (c *Client) GetReservations(ctx context.Context) ([]ReservationRecord, erro
 	return reservations, nil
 }
 
+// CancelReservation 按票据ID取消预约（POST .../cancelReservation）。
+// 走 api_auth；需带 ticketId + 身份字段（wechatId/phoneNumber）。
 func (c *Client) CancelReservation(ctx context.Context, ticketID int64) error {
 	target := c.settings.BaseURL + "/wechat/api_auth/2.0/ticketing/cancelReservation"
 	_, err := c.doJSON(ctx, http.MethodPost, target, c.BaseHeaders(c.settings.ReservationAuth, "application/json"), map[string]any{
@@ -207,6 +229,9 @@ func (c *Client) CancelNetTicket(ctx context.Context) error {
 	return err
 }
 
+// BaseHeaders 组装官方接口需要的公共请求头。authorization 由调用方决定用查询还是预约令牌；
+// EnsureBearer 保证带 Bearer 前缀。Xweb_xhr 模拟微信小程序 WebView，提高和官方请求的相似度
+// （降低被风控拦的概率）。contentType 非空时才加（GET 请求不带）。
 func (c *Client) BaseHeaders(authorization, contentType string) map[string]string {
 	headers := map[string]string{
 		"Authorization": EnsureBearer(authorization),
@@ -223,6 +248,13 @@ func (c *Client) BaseHeaders(authorization, contentType string) map[string]strin
 	return headers
 }
 
+// doJSON 是所有接口请求的统一通道：序列化 payload、发请求、读响应。
+// 错误处理约定：
+//   - HTTP >=400 → 返回 *APIError（Body 已规整），调用方可用 IsHTTPStatus/errors.As 判断状态码；
+//   - 响应体非合法 JSON → 返回普通 error（官方偶尔返回 HTML 错误页，必须兜住）；
+//   - 空响应体 → 返回 (nil, nil)，调用方自行处理。
+//
+// 所有请求都带 ctx，超时由 httpClient.Timeout（15s）和 ctx 双重约束。
 func (c *Client) doJSON(ctx context.Context, method, target string, headers map[string]string, payload any) ([]byte, error) {
 	var body io.Reader
 	if payload != nil {
@@ -263,10 +295,16 @@ func (c *Client) doJSON(ctx context.Context, method, target string, headers map[
 	return responseBody, nil
 }
 
+// reservationLooksSuccessful 判断一条记录是否代表「真的拿到了号」：
+// 要么有官方票据 ID，要么有排队号字符串。两者都空视为没成功。
 func reservationLooksSuccessful(r ReservationRecord) bool {
 	return r.TicketID != 0 || strings.TrimSpace(r.Number) != ""
 }
 
+// parseReservationRecord 解析预约/取号接口的响应。官方响应结构多变：
+// 1) 直接是 ReservationRecord；2) 套在 netTicket/reservationTicket/data/ticket/currentTicket 等任意键里；
+// 3) 更深的 TICKET_DETAIL + STORE_INFO 嵌套。这里按这个优先级逐层尝试。
+// 都拿不到有效票据时再尝试映射业务错误（满座/已有预约），最后才报「missing ticket id/number」。
 func parseReservationRecord(body []byte, label string) (ReservationRecord, error) {
 	var record ReservationRecord
 	if err := json.Unmarshal(body, &record); err != nil {
@@ -309,6 +347,9 @@ func parseReservationRecord(body []byte, label string) (ReservationRecord, error
 	return ReservationRecord{}, fmt.Errorf("%s response missing ticket id/number: %s", label, NormalizeErrorBody(body))
 }
 
+// parseReservationCandidate 处理「票务详情套在某个键里」的嵌套结构。
+// 先试直接反序列化；不行就找 TICKET_DETAIL（大写/驼峰/下划线三种命名），
+// 找到后再尝试从同级的 STORE_INFO 补门店名/地址。返回 bool=false 表示这层也没拿到有效票。
 func parseReservationCandidate(raw json.RawMessage) (ReservationRecord, bool) {
 	var record ReservationRecord
 	if err := json.Unmarshal(raw, &record); err == nil && reservationLooksSuccessful(record) {
@@ -372,6 +413,9 @@ func markReservationRecordsKind(records []ReservationRecord, kind string) {
 	}
 }
 
+// ReservationBusinessError 从响应体里找业务错误码/文案，映射成语义哨兵。
+// 先看规整后的文本，再看 JSON 里的 code/errorCode/message 等键值，匹配 IsNoReservationText/IsActiveReservationText。
+// 命中返回对应哨兵，否则返回 nil（表示不是已知的业务错误）。
 func ReservationBusinessError(body []byte) error {
 	text := NormalizeErrorBody(body)
 	if IsNoReservationText(text) {
@@ -399,6 +443,8 @@ func ReservationBusinessError(body []byte) error {
 	return nil
 }
 
+// IsNoReservationText 判断文本是否表示「名额已满/无号可约」。
+// 覆盖官方多语言/多形态：错误码 E044、英文 no_more_reservations、中文「名额已满/已满」。
 func IsNoReservationText(text string) bool {
 	text = strings.ToLower(text)
 	return strings.Contains(text, "e044") ||
@@ -408,6 +454,8 @@ func IsNoReservationText(text string) bool {
 		strings.Contains(text, "已满")
 }
 
+// IsActiveReservationText 判断文本是否表示「已存在活跃预约」（官方一次只允许一个）。
+// 覆盖错误码 E052、英文 already...reservation、日文「すでにご予約」、中文「已有/已经有预约/一次只能预约」。
 func IsActiveReservationText(text string) bool {
 	text = strings.ToLower(text)
 	return strings.Contains(text, "e052") ||

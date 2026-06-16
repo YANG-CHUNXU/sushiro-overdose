@@ -26,6 +26,8 @@ func handleCloudAuth(w http.ResponseWriter, r *http.Request) {
 		current := LoadCloudAuthConfig()
 		next := current
 		next.BaseURL = body.BaseURL
+		// 切换 Worker BaseURL 等于切换云端实例：旧实例签发的 session token 在新实例无效，
+		// 因此一旦 baseURL 变化（归一化后比较），就清空所有会话字段，强制重新走 OAuth 登录。
 		if normalizeCloudBaseURL(next.BaseURL) != normalizeCloudBaseURL(current.BaseURL) {
 			next.SessionToken = ""
 			next.UserLogin = ""
@@ -45,6 +47,9 @@ func handleCloudAuth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleCloudAuthStart 发起云端（Cloudflare Worker + GitHub）OAuth 登录。
+// 流程：本地生成一次性 state（防 CSRF）→ 把 return_to 与 state 拼到 Worker 的 /auth/github/start → 302 跳转过去。
+// state 会被记下，回调时必须原样带回并消费成功，否则视作伪造的回调。
 func handleCloudAuthStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET only")
@@ -71,6 +76,10 @@ func handleCloudAuthStart(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
+// handleCloudAuthCallback 处理 OAuth 回调，把云端返回的会话落盘。
+// 顺序很关键：先看 Worker 是否回传 error；再 consumeCloudOAuthState 校验并「消费」state
+// （一次性，防重放与伪造）；通过后才接受 token。token 拿到后再调 fetchCloudMe 用服务端权威数据
+// 覆盖回调里用户可填的字段（login/name/avatar/expires），避免被回调参数污染。
 func handleCloudAuthCallback(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET only")
@@ -82,6 +91,7 @@ func handleCloudAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := strings.TrimSpace(q.Get("state"))
+	// consumeCloudOAuthState：state 必须存在且本次消费掉，拒绝重复使用 / 无匹配的回调（CSRF 防护核心）。
 	if !consumeCloudOAuthState(state) {
 		redirectCloudAuthResult(w, r, "云端登录 state 已失效，请重试")
 		return
@@ -99,6 +109,7 @@ func handleCloudAuthCallback(w http.ResponseWriter, r *http.Request) {
 	cfg.ExpiresAt = strings.TrimSpace(q.Get("expires_at"))
 	cfg.ConnectedAt = time.Now().Format(time.RFC3339)
 	cfg.LastVerifiedAt = ""
+	// 用 Worker 服务端 /me 复核并覆盖用户信息：回调参数可被中间人篡改，服务端凭 token 取回的数据才是权威来源。
 	if me, err := fetchCloudMe(r.Context(), cfg); err == nil {
 		cfg.UserLogin = me.User.Login
 		cfg.UserName = me.User.Name

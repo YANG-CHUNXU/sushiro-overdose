@@ -17,8 +17,12 @@ import (
 	"time"
 )
 
+// mobileUACaptureTTL 是扫码 UA 采集地址的最长有效期：到点自动关闭采集服务，
+// 避免采集端口长期暴露。比凭证捕获短，因为只采 UA 一项、操作更快。
 const mobileUACaptureTTL = 10 * time.Minute
 
+// mobileUACaptureManager 用一个带随机 token 路径的 HTTP 页面采集手机微信 UA：
+// 手机扫码访问该页面时，服务端从请求头读出 UA 并落盘。mu 保护 server/token/last 等运行态字段。
 type mobileUACaptureManager struct {
 	mu        sync.Mutex
 	server    *http.Server
@@ -79,6 +83,9 @@ func handleMobileUACaptureStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, mobileUACapture.status())
 }
 
+// start 启动扫码 UA 采集：起一个 0.0.0.0:0（随机端口）的 HTTP 服务，路径为 /ua/<token>。
+// 绑 0.0.0.0 才能让手机经局域网访问；token 路径防他人乱扫。访问命中路径时即采集 UA 并落盘，
+// 其余路径返回"地址已失效"占位页。
 func (m *mobileUACaptureManager) start() (map[string]any, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -98,6 +105,7 @@ func (m *mobileUACaptureManager) start() (map[string]any, error) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	path := "/ua/" + token
+	// 命中采集路径：从 r.UserAgent() 取手机微信 UA 并立即落盘，成功则缓存到 m.last 供 status 展示。
 	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -157,6 +165,8 @@ func (m *mobileUACaptureManager) stopLocked() {
 	m.expiresAt = time.Time{}
 }
 
+// expire 是 TTL 自动过期：睡满 after 后，只有当本次 token 仍是当前会话（未被替换）时才关闭服务。
+// token 比对防止"用户中途重启采集"时旧协程误关新服务。
 func (m *mobileUACaptureManager) expire(token string, after time.Duration) {
 	time.Sleep(after)
 	m.mu.Lock()
@@ -191,6 +201,8 @@ func (m *mobileUACaptureManager) statusLocked() map[string]any {
 	return status
 }
 
+// newMobileUAToken 生成采集路径的随机 token：crypto/rand 取 18 字节再 base64（约 24 字符），
+// 随机失败才退化为时间戳纳秒——这是几乎不可能触发的兜底，避免完全无 token。
 func newMobileUAToken() string {
 	buf := make([]byte, 18)
 	if _, err := rand.Read(buf); err != nil {
@@ -211,6 +223,9 @@ func mobileUACaptureURLs(port int, token string) []string {
 	return urls
 }
 
+// localIPv4s 枚举本机所有"UP 且非 loopback"的 IPv4 地址，用于生成给手机扫码/设代理的地址列表。
+// 过滤掉回环和链路本地地址（169.254/16），并按"更像家庭网络"的优先级排序，
+// 让首选地址尽量是用户能直接用的局域网 IP。
 func localIPv4s() []string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -256,6 +271,8 @@ func addrIP(addr net.Addr) net.IP {
 	}
 }
 
+// privateIPScore 给私网 IP 打排序分：192.168 优先于 10. 优先于 172.16-31，其余（公网/特殊）排最后。
+// 目的是把最常见家庭路由网段的 IP 排到列表前面，作为给手机的首选地址。
 func privateIPScore(ip string) int {
 	if strings.HasPrefix(ip, "192.168.") {
 		return 0

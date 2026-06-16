@@ -20,23 +20,42 @@ import (
 const (
 	apiDiscoveryConfigFile  = "api_discovery.json"
 	apiDiscoveryRecordsFile = "api_discovery.jsonl"
-	defaultDiscoveryLimit   = 500
-	maxDiscoveryLimit       = 2000
+	// 默认/上限记录条数。discovery 会把每次抓到的请求元数据追加到 jsonl，超过上限时裁剪旧记录，
+	// 防止长期运行后文件无限增长。
+	defaultDiscoveryLimit = 500
+	maxDiscoveryLimit     = 2000
 )
 
+// apiDiscoveryMu 保护对 api_discovery.jsonl 的并发读写（抓包器追加 + UI 读取/清理可能并发）。
 var apiDiscoveryMu sync.Mutex
 
+// discoveryErrorTextRedactors 用于对官方错误响应里的疑似敏感串做兜底脱敏：
+//   - wx-xxx / wx_xxx：微信相关标识（openid/session 形态）。
+//   - 形如 word-word 的复合 token：常见的各种 id/sessionkey。
+//   - 24 位以上的 base64 串：长 token/jwt。
+//
+// 这是黑名单兜底，因为官方错误文案可能把敏感值拼进 message，仅靠 key 名无法覆盖。
 var discoveryErrorTextRedactors = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bwx[-_][a-z0-9._-]{3,}\b`),
 	regexp.MustCompile(`(?i)\b[a-z0-9._-]{4,}[-_][a-z0-9._-]{3,}\b`),
 	regexp.MustCompile(`\b[A-Za-z0-9+/=]{24,}\b`),
 }
 
+// APIDiscoveryConfig 是 api_discovery.json 的结构。Enabled 默认 false——discovery 是调试辅助，
+// 默认关闭以避免记录请求元数据带来的隐私/性能开销，需要时手动打开。
+// MaxRecords 控制保留多少条历史记录。
 type APIDiscoveryConfig struct {
 	Enabled    bool `json:"enabled"`
 	MaxRecords int  `json:"max_records"`
 }
 
+// APIDiscoveryRecord 是单次请求的「元数据快照」（不存响应体本身，只存结构摘要）。
+// 设计取舍：只记 key 名 + 字段类型 + 长度等元数据，不记具体值——既能复盘接口结构、定位
+// 缺哪个参数，又避免把凭证/PII 落盘。字段语义：
+//   - QueryFields/RequestBodyFields：key → 类型标签（如 string/number/empty），不是真实值。
+//   - Response* 系列：响应 JSON 的结构摘要（顶层 keys、数组长度、data 字段嵌套结构）。
+//   - ResponseErrorFields：从响应里抽取的 error/message/code 等错误字段值（会脱敏）。
+//   - Diagnosis：基于状态码和字段缺失自动生成的排查建议（中文）。
 type APIDiscoveryRecord struct {
 	Timestamp                 string            `json:"timestamp"`
 	Method                    string            `json:"method"`
@@ -61,6 +80,8 @@ type APIDiscoveryRecord struct {
 	Diagnosis                 []string          `json:"diagnosis,omitempty"`
 }
 
+// APIDiscoveryJSONSummary 是 SummarizeAPIDiscoveryJSON 产出的中间结构，描述一段 JSON 的形状
+// （顶层类型、keys、数组长度、data 子结构），用于填充 APIDiscoveryRecord 的 Response* 字段。
 type APIDiscoveryJSONSummary struct {
 	Kind              string
 	Keys              []string
@@ -72,14 +93,18 @@ type APIDiscoveryJSONSummary struct {
 	DataArrayItemKeys []string
 }
 
+// APIDiscoveryConfigPath 返回 discovery 配置文件路径（~/.sushiro/api_discovery.json）。
 func APIDiscoveryConfigPath() string {
 	return filepath.Join(AppDirPath(), apiDiscoveryConfigFile)
 }
 
+// APIDiscoveryRecordsPath 返回 discovery 记录文件路径（~/.sushiro/api_discovery.jsonl，每行一条 JSON）。
 func APIDiscoveryRecordsPath() string {
 	return filepath.Join(AppDirPath(), apiDiscoveryRecordsFile)
 }
 
+// LoadAPIDiscoveryConfig 读 discovery 配置；文件缺失或解析失败都返回「默认关闭」的安全配置，
+// 保证开箱即用且默认不记录。
 func LoadAPIDiscoveryConfig() APIDiscoveryConfig {
 	cfg := APIDiscoveryConfig{MaxRecords: defaultDiscoveryLimit}
 	data, err := os.ReadFile(APIDiscoveryConfigPath())
@@ -92,6 +117,7 @@ func LoadAPIDiscoveryConfig() APIDiscoveryConfig {
 	return NormalizeAPIDiscoveryConfig(cfg)
 }
 
+// SaveAPIDiscoveryConfig 写 discovery 配置（0600，避免用户开关状态被改）。
 func SaveAPIDiscoveryConfig(cfg APIDiscoveryConfig) error {
 	cfg = NormalizeAPIDiscoveryConfig(cfg)
 	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
@@ -104,6 +130,7 @@ func SaveAPIDiscoveryConfig(cfg APIDiscoveryConfig) error {
 	return os.WriteFile(APIDiscoveryConfigPath(), data, 0o600)
 }
 
+// NormalizeAPIDiscoveryConfig 把 MaxRecords 钳制到 [default, max] 区间，<=0 给默认，>max 截断。
 func NormalizeAPIDiscoveryConfig(cfg APIDiscoveryConfig) APIDiscoveryConfig {
 	if cfg.MaxRecords <= 0 {
 		cfg.MaxRecords = defaultDiscoveryLimit
@@ -114,10 +141,14 @@ func NormalizeAPIDiscoveryConfig(cfg APIDiscoveryConfig) APIDiscoveryConfig {
 	return cfg
 }
 
+// APIDiscoveryEnabled 读配置判断 discovery 是否开启。默认关——只有用户显式 enable 才记录请求元数据。
 func APIDiscoveryEnabled() bool {
 	return LoadAPIDiscoveryConfig().Enabled
 }
 
+// BuildAPIDiscoveryRecord 把一次请求的各项元数据组装成一条 APIDiscoveryRecord。
+// 它只处理传入的「keys/类型」和响应体摘要，不接触原始凭证值——body 里只抽结构不存值。
+// 调用方应在代理层拿到请求/响应后调用它，再用 RecordAPIDiscovery 落盘。
 func BuildAPIDiscoveryRecord(method string, target *url.URL, status int, upstreamProto string, requestHeaderKeys, requestBodyKeys []string, requestBodyFields map[string]string, responseBody []byte) APIDiscoveryRecord {
 	record := APIDiscoveryRecord{
 		Timestamp:         time.Now().Format(time.RFC3339),
@@ -148,6 +179,9 @@ func BuildAPIDiscoveryRecord(method string, target *url.URL, status int, upstrea
 	return record
 }
 
+// RecordAPIDiscovery 把一条记录追加到 jsonl。Enabled=false 时直接静默返回（不记录、不报错）。
+// 落盘前先 sanitize（去敏感、归一化），文件权限 0600。写完检查是否超过 MaxRecords，超了就裁旧。
+// 全程持 apiDiscoveryMu，保证追加+裁剪之间的读操作看到一致状态。
 func RecordAPIDiscovery(record APIDiscoveryRecord) error {
 	cfg := LoadAPIDiscoveryConfig()
 	if !cfg.Enabled {
@@ -163,6 +197,7 @@ func RecordAPIDiscovery(record APIDiscoveryRecord) error {
 	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
 		return err
 	}
+	// O_APPEND 保证多协程/多进程追加时行与行不交错（单次 Write 对普通文件是原子的）。
 	f, err := os.OpenFile(APIDiscoveryRecordsPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
@@ -363,6 +398,9 @@ func discoveryStringKind(value string) string {
 	return "string"
 }
 
+// shouldRedactDiscoveryPathSegment 判断 URL 路径里的某一段是否像「带 ID/手机号」的敏感片段，
+// 是的话在 sanitizeDiscoveryPathSegments 里替换成 {id}（如 /store/123456 → /store/{id}）。
+// 规则：手机号、纯数字段、>=8 位且含数字的 token 形态段，都视为应脱敏。
 func shouldRedactDiscoveryPathSegment(segment string) bool {
 	segment = strings.TrimSpace(segment)
 	if len(segment) < 4 {
@@ -516,6 +554,9 @@ func sanitizeDiscoveryErrorValue(value any) string {
 	return text
 }
 
+// APIDiscoveryDiagnosis 基于一条记录的状态码、路径、字段缺失情况，生成中文排查建议。
+// 它是「经验规则」集合：401/403→看登录态；422→看参数；init/store 类路径缺经纬度/城市码→提示补定位；
+// api_auth 路径没带 Authorization→提示重新登录。返回的建议供 UI 展示，帮用户快速定位失败原因。
 func APIDiscoveryDiagnosis(record APIDiscoveryRecord) []string {
 	notes := []string{}
 	status := record.Status
@@ -651,6 +692,8 @@ func sanitizeDiscoveryPath(path string) string {
 	return redactDiscoveryPathSegments(path)
 }
 
+// loadAPIDiscoveryRecordsLocked 读 jsonl 并返回最近 limit 条。必须在持 apiDiscoveryMu 时调用（*Locked 后缀）。
+// 采用「边读边截断」的滑动窗口：一旦累计超过 limit 就 copy 出尾部 limit 条，避免大文件全量入内存。
 func loadAPIDiscoveryRecordsLocked(limit int) ([]APIDiscoveryRecord, error) {
 	f, err := os.Open(APIDiscoveryRecordsPath())
 	if err != nil {
@@ -684,6 +727,8 @@ func loadAPIDiscoveryRecordsLocked(limit int) ([]APIDiscoveryRecord, error) {
 	return records, nil
 }
 
+// trimAPIDiscoveryRecordsLocked 在记录数达到 limit 时裁掉最旧的，把文件重写为最近 limit 条。
+// 必须持锁调用。len(records) < limit 时不做任何 IO，直接返回。
 func trimAPIDiscoveryRecordsLocked(limit int) error {
 	if limit <= 0 {
 		limit = defaultDiscoveryLimit

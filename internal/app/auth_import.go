@@ -15,6 +15,9 @@ type authImportRequest struct {
 	Text string `json:"text"`
 }
 
+// handleAuthImport 接收用户粘贴的抓包文本（JSON / curl / 原始请求头），解析出凭证字段，
+// 字段不全则只回预览不落盘；齐全则存 UA、存凭证、补默认门店、刷新设置并标记健康。
+// 是凭证捕获代理之外的"手动导入"入口。
 func handleAuthImport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
@@ -70,6 +73,9 @@ func handleAuthImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
+// parseAuthImportText 对同一段文本依次跑 JSON、curl、原始头三种解析器，每种命中就往 tokens 里补字段。
+// 三者可以叠加（比如一段 curl 里既有 -H 头又有 -d body），所以不是"命中一种就停"。
+// 只要最终没识别到任何凭证字段才算失败。返回的 sources 标注命中的来源，供前端展示。
 func parseAuthImportText(text string) (*CapturedTokens, []string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -99,6 +105,8 @@ func parseAuthImportText(text string) (*CapturedTokens, []string, error) {
 	return tokens, sourceList, nil
 }
 
+// finalizeImportedTokens 交叉补齐两套 Authorization：寿司郎的查询接口和预约接口各自带 auth，
+// 用户经常只抓到其中一个，这里用已有的那一个填充缺失的另一个，尽量让导入结果可直接用。
 func finalizeImportedTokens(tokens *CapturedTokens) {
 	tokens.Lock()
 	defer tokens.Unlock()
@@ -189,6 +197,9 @@ func parseHeaderContainer(tokens *CapturedTokens, v any, context string) {
 	}
 }
 
+// parseAuthImportCurl 解析 curl 命令：先按 shell 风格分词，再逐个识别 -H/--header、-A/--user-agent、
+// -d/--data 等 flag，并把命令里的 URL 拿来抽 storeId 与上下文。同时兼容 "-Hxxx"、"--header=xxx"
+// 这种连写形式。命中任意凭证字段即返回 true。
 func parseAuthImportCurl(tokens *CapturedTokens, text string) bool {
 	fields := shellLikeFields(text)
 	if len(fields) == 0 {
@@ -321,6 +332,10 @@ func parseAuthImportURL(tokens *CapturedTokens, rawURL string) {
 	}
 }
 
+// applyAuthField 把单个"字段名=值"写入 tokens。两条核心规则：
+//  1. 先到先得：每个字段只在为空时写入，避免后面的低质量来源覆盖前面已抓到的准确值。
+//  2. authorization 按 context 区分：context=="reservation" 写 ReservationAuth，否则写 QueryAuth——
+//     因为同一个 Authorization 头在两个接口里语义不同，靠 URL/正文推断出的 context 来分流。
 func applyAuthField(tokens *CapturedTokens, key, value, context string) {
 	value = strings.TrimSpace(trimShellToken(value))
 	if value == "" {
@@ -396,6 +411,8 @@ func addImportedStoreUnlocked(tokens *CapturedTokens, storeID string) {
 	tokens.StoreIDs = append(tokens.StoreIDs, storeID)
 }
 
+// shellLikeFields 做一个轻量的 shell 风格分词：处理行尾反斜杠续行、单/双引号包裹、反斜杠转义。
+// 不追求完整 shell 语法（无变量展开、无命令替换），只覆盖 curl/抓包导出常见的引号与续行场景。
 func shellLikeFields(s string) []string {
 	s = strings.ReplaceAll(s, "\\\r\n", " ")
 	s = strings.ReplaceAll(s, "\\\n", " ")
@@ -525,6 +542,9 @@ func splitStoreIDs(value string) []string {
 	return out
 }
 
+// authContextFromText 从 URL 或正文片段推断这套凭证属于哪个接口上下文：
+// 含 api_auth/reservation/ticketing → "reservation"（预约接口）；含 /wechat/api/ 或 query → "query"（查询接口）；
+// 否则空串（未知，applyAuthField 会按 query 兜底）。这个推断决定 Authorization 写到哪个字段。
 func authContextFromText(s string) string {
 	lower := strings.ToLower(s)
 	if strings.Contains(lower, "api_auth") || strings.Contains(lower, "reservation") || strings.Contains(lower, "ticketing") {
@@ -536,6 +556,8 @@ func authContextFromText(s string) string {
 	return ""
 }
 
+// mergeImportContext 合并上下文推断：reservation 优先级最高（一旦认定预约就不再降级），
+// next 为空保持 current，否则用 next。用于把 URL、字段名等多处线索汇成一个最终 context。
 func mergeImportContext(current, next string) string {
 	if current == "reservation" || next == "" {
 		return current

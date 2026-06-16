@@ -9,12 +9,15 @@ import (
 	"net/http"
 )
 
+// serverChanNotifier 走 Server酱（ServerChan），通过微信"方糖"服务号推送。
 type serverChanNotifier struct {
-	key string
+	key string // Server酱 SendKey，同时是 URL 路径的一部分
 }
 
 func (s *serverChanNotifier) Name() string { return "serverchan" }
 
+// Send 调用 Server酱接口 POST https://sctapi.ftqq.com/{key}.send，
+// title 作消息标题、desp 作正文（支持 markdown）。HTTP >=400 视为失败。
 func (s *serverChanNotifier) Send(ctx context.Context, title, content string) error {
 	payload := map[string]any{
 		"title": title,

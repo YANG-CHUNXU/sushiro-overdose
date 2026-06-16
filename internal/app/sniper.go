@@ -35,6 +35,10 @@ type SniperTarget struct {
 	StoreID     string `json:"store_id"`     // target store
 }
 
+// cmdSniper 是 CLI 子命令 sushiro sniper 的入口：解析参数 → 加载凭证 → 验活 →
+// 组目标（快速参数模式或交互式配置）→ 展示开放时间 → 跑 runSniperLoop。
+// 与 Web 版 runSniper 的区别：这是 CLI 一次性运行，输出走 stdout/LogMessage，
+// 不写 SniperPlan 文件、不广播 SSE。
 func cmdSniper(args []string) {
 	printBanner()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -253,8 +257,11 @@ func interactiveSniperConfig(ctx context.Context, client *Client, tokens *Captur
 	return targets, nil
 }
 
-// sniperOpenTime calculates when a target slot opens for booking.
-// Rule: slot opens 30 days before the target date, at the same time.
+// sniperOpenTime 计算某目标时段的「放号时刻」。
+// 业务规则：寿司郎预约系统在「目标日期前 30 天的同一时刻」放出该日同时段的可约名额，
+// 例如 5/3 的 19:00 时段在 4/3 的 19:00 放号。用目标起始时间（StartAfter）的时分作为放号时分。
+// 跨月/跨年用 AddDate(-30天) 自动正确处理；解析失败返回零值，调用方据此判定目标无效。
+// 注意：30 天是经验值/官方口径，若官方调整放号周期需同步改这里和 sniperWindow。
 func sniperOpenTime(target SniperTarget, loc *time.Location) time.Time {
 	day, err := ParseCompactDate(target.Date, loc)
 	if err != nil {
@@ -267,6 +274,9 @@ func sniperOpenTime(target SniperTarget, loc *time.Location) time.Time {
 	return time.Date(openDay.Year(), openDay.Month(), openDay.Day(), hour, minute, 0, 0, loc)
 }
 
+// runSniperLoop 是 CLI 版狙击主循环（对应 Web 版 runSniper，但无 SniperPlan 落盘）。
+// 按放号时间升序逐目标处理：等到放号前 3s → 开放窗口内（openAt+3min）高频 50ms 轮询抢约。
+// 已开放超 3min 的目标视为过期，跳过等待直接试一次；凭证失败立即终止整个循环。
 func runSniperLoop(ctx context.Context, client *Client, settings Settings, targets []SniperTarget) {
 	doneActivity := markMainFlowActive("sniping")
 	defer doneActivity()
@@ -294,7 +304,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			target.Date, FormatCompactTime(target.StartAfter),
 			FormatCompactTime(target.StartBefore), storeName)
 
-		// Skip if too far past
+		// 已开放超 3min（放号窗口已过）的视为过期：不再等，直接试一次碰运气。
 		if openAt.Before(now.Add(-3 * time.Minute)) {
 			// Already open, try immediately
 			LogMessage(now, fmt.Sprintf("目标已开放，立即尝试: %s", targetLabel))
@@ -302,7 +312,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			wait := time.Until(openAt)
 			LogMessage(now, fmt.Sprintf("等待 %v 后开始狙击: %s", wait.Round(time.Second), targetLabel))
 
-			// Sleep until 3 seconds before open time
+			// 睡到放号前 3s：留余量应对本地与服务端时钟偏差，避免因慢几秒而错过放号瞬间。
 			if wait > 5*time.Second {
 				select {
 				case <-ctx.Done():
@@ -312,7 +322,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 			}
 		}
 
-		// High-speed polling phase
+		// High-speed polling phase：开放窗口 [基准点, 基准点+3min]，基准点取 max(openAt, now)。
 		deadline := now
 		if openAt.After(now) {
 			deadline = openAt
@@ -339,14 +349,16 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 				}
 				if isOfficialServerHTTPError(err) {
 					LogMessage(time.Now().In(settings.Location), friendlyOfficialAPIError(err))
+					// 5xx 退避 200ms，给服务端恢复时间。
 					time.Sleep(200 * time.Millisecond)
 					continue
 				}
+				// 普通 GetTimeslots 失败退避 100ms（CLI 版比 Web 版 50ms 略保守）。
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
-			// Find matching slot
+			// Find matching slot：匹配目标日期 + 起始时间落在 [StartAfter, StartBefore) 半开区间。
 			for _, s := range slots {
 				if s.Date != target.Date {
 					continue
@@ -365,14 +377,17 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 
 				reservation, err := client.CreateReservation(ctx, target.StoreID, s.Date, s.Start)
 				if err != nil {
+					// 名额已满：不冷却，下一轮继续刷（别人可能取消释放名额）。
 					if errors.Is(err, ErrNoReservationAvailable) {
 						fmt.Printf("\r[%s] %s - 名额已满，继续尝试...", time.Now().Format("15:04:05"), slotLabel)
 					} else if isAuthError(err) {
+						// 预约接口凭证失败：判定真失效，删配置并终止整个循环（与 Web 版一致，不重试）。
 						LogMessage(time.Now().In(settings.Location), "预约凭证失败，终止狙击")
 						sendNotification("寿司郎狙击 - 凭证失败", "预约凭证参数已失效")
 						DeleteLocalConfig()
 						return
 					} else if isOfficialServerHTTPError(err) {
+						// 5xx：该时段冷却 30s 再试，避免对抽风时段无脑重试。
 						markTemporaryBookingSkip(temporarySkips, key, time.Now().In(settings.Location))
 						LogMessage(time.Now().In(settings.Location), bookingServerErrorLog(slotLabel, err))
 					}
@@ -388,6 +403,7 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 				return
 
 			}
+			// 每轮 GetTimeslots 之间 50ms：放号瞬间名额秒空，必须高频刷新才能抢到。
 			time.Sleep(50 * time.Millisecond)
 		}
 
@@ -397,6 +413,8 @@ func runSniperLoop(ctx context.Context, client *Client, settings Settings, targe
 	}
 }
 
+// sortSniperTargets 按放号时间升序原地排序目标。放号早的先抢，避免错过近的时段。
+// 用插入排序：目标数量通常个位数（交互式一般选几条），插入排序在小 n 下比快排开销更低且稳定。
 func sortSniperTargets(targets []SniperTarget, loc *time.Location) {
 	type indexed struct {
 		target SniperTarget

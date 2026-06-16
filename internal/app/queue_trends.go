@@ -265,6 +265,8 @@ func appendQueueObservation(observation QueueObservation) error {
 	if strings.TrimSpace(observation.CollectedAt) == "" {
 		observation.CollectedAt = time.Now().Format(time.RFC3339)
 	}
+	// 空值过滤：没有叫号、没有等待、没有排队桌、各队列为空，则不落盘。
+	// 防止关店/接口异常的全零快照污染历史，拉低分位数和速率。
 	if observation.DisplayCalledNo <= 0 && observation.WaitMinutes <= 0 && observation.GroupQueuesCount <= 0 && !queueGroupQueuesHasAny(observation.GroupQueues) {
 		return nil
 	}
@@ -628,6 +630,10 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 				}
 			}
 		}
+		// 第二遍：从同一天内相邻观测的叫号差推算「叫号推进」(GlobalPassed)，
+		// 这是无需用户取号、仅靠公开叫号就能积累的预测信号。
+		// lastCalledByDate 按天记上一次叫号，只取 diff>0（叫号前进）且 <=500 的差：
+		// 跨天/叫号重置会出现负数或巨大跳变，必须丢弃，否则会把「重置」误算成「几百桌推进」。
 		lastCalledByDate := map[string]int{}
 		for _, observation := range storeObservations {
 			at, ok := parseRFC3339Local(queueObservationCollectedAt(observation))
@@ -660,6 +666,10 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 	return summary
 }
 
+// addQueueBaselineToTrend 把远端全国基准的 rollup 累加进趋势。
+// 每条 rollup 已是某店某日型某时段的聚合（typical/safe 等），这里按 SampleCount 做加权累积
+// （存 sum 和 N，最后在 finalizeQueueTrendPoints 里除出加权均值），让样本多的时段权重更高。
+// 注意 rollup 的 TimeBucket 可能与查询桶宽不同，要用 queueBaselineBucketForQuery 归一到查询桶。
 func addQueueBaselineToTrend(series map[string]*queueTrendAccumulator, summary QueueTrendSummary, query QueueTrendQuery, baseline QueueBaselineExport, storeNames map[string]string, storeFilter map[string]bool) QueueTrendSummary {
 	for _, store := range baseline.Stores {
 		storeID := strconv.Itoa(store.StoreID)
@@ -799,6 +809,9 @@ func queueTrendMatches(query QueueTrendQuery, at time.Time, storeFilter map[stri
 	return queueTrendTimeInRange(at, query.Start, query.End)
 }
 
+// queueTrendTimeInRange 判断某时刻是否落在 [start,end) 时间区间内。
+// start==end（或解析失败）视为不限制；start<end 是普通区间；
+// start>end（如 22:00-02:00）按跨午夜处理：>=start 或 <end 都算在内。
 func queueTrendTimeInRange(at time.Time, startRaw, endRaw string) bool {
 	start := ParseTimeSeconds(compactTrendTime(startRaw))
 	end := ParseTimeSeconds(compactTrendTime(endRaw))
@@ -862,6 +875,9 @@ func queueTrendAcc(series map[string]*queueTrendAccumulator, storeID, storeName,
 	return acc
 }
 
+// finalizeQueueTrendPoints 把各累加器收口成对外点：本机真实样本算 P50/P80 分位数，
+// 远端基准做兜底——当某桶本机无样本时，用基准的 typical 充当 P50、safe 充当 P80，
+// 让无本机数据的时段也有曲线，而非空缺。最后按 bucket/dateType/storeID 稳定排序。
 func finalizeQueueTrendPoints(series map[string]*queueTrendAccumulator) []QueueTrendPoint {
 	points := make([]QueueTrendPoint, 0, len(series))
 	for _, acc := range series {
@@ -869,12 +885,14 @@ func finalizeQueueTrendPoints(series map[string]*queueTrendAccumulator) []QueueT
 		point.WaitP50Minutes = floatPtr(queueQuantile(acc.waits, 0.50))
 		point.WaitP80Minutes = floatPtr(queueQuantile(acc.waits, 0.80))
 		if acc.baseline.waitTypicalN > 0 {
+			// 基准加权均值；若本机没有 P50（waits 为空），用基准 typical 顶上，保证有值。
 			point.BaselineWaitMinutes = floatPtr(acc.baseline.waitTypicalSum / float64(acc.baseline.waitTypicalN))
 			if point.WaitP50Minutes == nil {
 				point.WaitP50Minutes = cloneFloatPtr(point.BaselineWaitMinutes)
 			}
 		}
 		if acc.baseline.waitSafeN > 0 {
+			// 基准 safe（偏保守）充当 P80 的兜底。
 			point.BaselineSafeMinutes = floatPtr(acc.baseline.waitSafeSum / float64(acc.baseline.waitSafeN))
 			if point.WaitP80Minutes == nil {
 				point.WaitP80Minutes = cloneFloatPtr(point.BaselineSafeMinutes)
@@ -1135,6 +1153,9 @@ func buildQueueSamplingStatus(now time.Time, summary QueueTrendSummary) QueueSam
 	return status
 }
 
+// queueActualPassed 从一次真实取号会话算「叫到用户时共推进了多少号」：
+// passed = 叫到用户时的叫号(CalledNoWhenUserCalled) - 取号时的叫号(DisplayCalledNoAtTake)。
+// 这是反映真实排队长度的最强信号（用户亲自等过）。负数或 >1000 视为记录异常/叫号重置，丢弃。
 func queueActualPassed(session QueueSession) (int, bool) {
 	if session.CalledNoWhenUserCalled <= 0 || session.DisplayCalledNoAtTake <= 0 {
 		return 0, false
@@ -1167,6 +1188,8 @@ func queueSessionBucket(session QueueSession) (queueLocalBucket, bool) {
 	}, true
 }
 
+// queueSessionWaitMinutes 取会话等待分钟，优先用显式记录的 ActualWaitMinutes；
+// 没有则用 calledForUserAt - takenAt 倒推。calledAt 早于 takenAt 视为无效（时间倒错）。
 func queueSessionWaitMinutes(session QueueSession) (float64, bool) {
 	if session.ActualWaitMinutes > 0 {
 		return float64(session.ActualWaitMinutes), true
@@ -1314,6 +1337,9 @@ func queueTrendStores(names map[string]string, queryStores []string, points []Qu
 	return out
 }
 
+// queueTrendDateType 判定某时刻的日型，优先级：调休工作日(workday) > 节假日(holiday) > 周末窗口(weekend) > 工作日(weekday)。
+// 调休/节假日查 holidays.json 显式配置；周末用 queueTrendWeekendWindow 的时间窗口判断（周五晚也算周末）。
+// 日型决定了历史样本归到哪一类聚合，不同日型的客流差异很大，混在一起会让预测失真。
 func queueTrendDateType(at time.Time, holidays, workdays map[string]bool) string {
 	key := at.Format("2006-01-02")
 	if workdays[key] {
@@ -1328,6 +1354,10 @@ func queueTrendDateType(at time.Time, holidays, workdays map[string]bool) string
 	return "weekday"
 }
 
+// queueTrendWeekendWindow 判断某时刻是否落在「周末客流」窗口内（而非单纯按星期几）。
+// 用时间窗口而非整天，是因为周末客流是连续的：周五 16:30 起进入晚高峰（接近周末节奏），
+// 周日 22:00 前仍是周末客流、之后夜宵档回落接近工作日。这样把周五晚和周日晚分别划入/划出周末，
+// 让同日型聚合更纯净。周六全天算周末。
 func queueTrendWeekendWindow(at time.Time) bool {
 	seconds := at.Hour()*3600 + at.Minute()*60 + at.Second()
 	switch at.Weekday() {
@@ -1357,6 +1387,9 @@ func queueTrendDateTypeName(dateType string) string {
 	}
 }
 
+// queueTrendDateTypeRank 给日型定一个稳定排序序号（weekday<workday<weekend<holiday<all）。
+// 用于多处 sort 的次序键（趋势点、推荐排序），让相同时间桶的点按日型从「常态」到「特殊」排列，
+// 保持输出顺序稳定可预期。
 func queueTrendDateTypeRank(dateType string) int {
 	switch dateType {
 	case "weekday":
@@ -1379,6 +1412,8 @@ func queueTrendBucket(at time.Time, minutes int) string {
 	return halfHourBucket(at)
 }
 
+// halfHourBucket 把任意时刻向下取整到半小时桶（如 14:07、14:29 都归 14:00，14:30-14:59 归 14:30）。
+// 向下取整保证桶内样本可比较；下游所有「半小时聚合」都基于此。
 func halfHourBucket(t time.Time) string {
 	minute := 0
 	if t.Minute() >= 30 {
@@ -1412,6 +1447,10 @@ func normalizeQueueTableType(v string) string {
 	}
 }
 
+// queueQuantile 计算线性插值分位数（类似 numpy 默认 linear 方法）。
+// 空集返回 NaN（配合 floatPtr 会被转成 nil，表示「无数据」）。
+// 单元素直接返回该值；多元素时按 q*(n-1) 定位，落在两个样本之间则线性插值，
+// 避免分位数只能取到样本值导致 P50/P80 阶跃。
 func queueQuantile(values []float64, q float64) float64 {
 	if len(values) == 0 {
 		return math.NaN()

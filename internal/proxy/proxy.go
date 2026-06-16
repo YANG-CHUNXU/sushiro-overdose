@@ -20,13 +20,25 @@ import (
 	"time"
 )
 
+// ProxyPort 是代理首选监听端口；若被占用则向上探查 ProxyPortSearchLimit 个端口。
+// 8080 是 HTTP 代理的常见端口，便于系统代理一键设置。
 const ProxyPort = 8080
 const ProxyPortSearchLimit = 100
+
+// SushiroHost 是唯一会被 MITM 解密的寿司郎 API 主机。白名单与证书签发都以此为准。
 const SushiroHost = "crm-cn-prd.sushiro.com.cn"
 const proxyErrorBodyLogLimit = 4096
+
+// proxyTunnelDialTimeout 限制 pass-through 隧道连真实上游的等待时间，避免卡死在已下线的主机。
 const proxyTunnelDialTimeout = 3 * time.Second
+
+// maxSushiroBufferedResponseBytes 限制被缓冲进内存做 API 发现的寿司郎响应体大小（8 MiB）。
+// 超过即判定异常并中断，防止恶意/异常大响应把内存吃爆。
 const maxSushiroBufferedResponseBytes = 8 << 20
 
+// isSushiroTargetHost 判断目标 host 是否就是 SushiroHost（去端口、去末尾点、忽略大小写）。
+// 命中即代表「这条 CONNECT 要做 MITM」，与 allowedProxyTarget 的白名单语义不同：
+// 后者放行 sushiro.com.cn 整域做 pass-through，但只有精确的 API 主机才被解密。
 func isSushiroTargetHost(host string) bool {
 	host = strings.TrimSpace(host)
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -43,6 +55,11 @@ func isSushiroTargetHost(host string) bool {
 // SSRF hop by CONNECTing to arbitrary hosts. Only sushiro-owned hosts are
 // permitted — that is the sole purpose of the capture session. Everything
 // else is rejected before any outbound dial.
+//
+// 中文要点：这是「防止本进程变成开放代理/SSRF 跳板」的核心闸门。
+// 移动抓包代理监听 0.0.0.0（局域网可连），若不限制目标，同网段任意设备都能拿它当中转连任何主机。
+// 这里只放行 sushiro.com.cn 域（精确 API 主机 + 防御性子域后缀匹配，覆盖 CDN/静态资源），
+// 其余一律在拨号前拒绝。注意：放行 ≠ 解密，只有精确的 SushiroHost 才会被 MITM（见 isSushiroTargetHost）。
 func allowedProxyTarget(host string) bool {
 	host = strings.TrimSpace(host)
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -61,6 +78,9 @@ func allowedProxyTarget(host string) bool {
 	return strings.HasSuffix(host, ".sushiro.com.cn")
 }
 
+// shouldBufferSushiroAPIResponse 决定是否把响应体整块读进内存做 API 发现记录。
+// 只有寿司郎 API 主机下的 /wechat/api/ 与 /wechat/api_auth/ 路径才缓冲——这些是含业务语义的接口，
+// 值得采样存档；其它响应一律流式透传，避免无谓占用内存。
 func shouldBufferSushiroAPIResponse(target *url.URL) bool {
 	if target == nil || !isSushiroTargetHost(target.Host) {
 		return false
@@ -91,6 +111,9 @@ type ProxyOptions struct {
 	PatchRequests bool
 }
 
+// BufferedConn 把一个底层 net.Conn 连同一个 bufio.Reader 包成统一的 Read 来源。
+// MITM 路径里，读 CONNECT 头用的 bufio.Reader 可能已经「多读」进了若干 TLS 握手字节，
+// 直接把裸 conn 交给 tls.Server 会丢这些字节；用 BufferedConn 让 Read 优先消费缓冲区，再回退到底层 conn。
 type BufferedConn struct {
 	net.Conn
 	reader *bufio.Reader
@@ -217,6 +240,7 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	firstLine = strings.TrimSpace(firstLine)
 
 	if !strings.HasPrefix(firstLine, "CONNECT ") {
+		// 非 CONNECT：明文 HTTP 代理请求，走另一条转发路径（同样有白名单闸门）。
 		ps.handlePlainHTTPProxy(clientConn, firstLine, br)
 		return
 	}
@@ -239,6 +263,8 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 		}
 	}
 
+	// 关键分支：只有寿司郎 API 主机走 MITM（解密 + 抓凭证），其余 sushiro.com.cn 子域走 pass-through 透传，
+	// 其它一切 host 直接 403 拒绝。这决定了下游两条完全不同的连接处理路径。
 	isSushiro := isSushiroTargetHost(hostPort)
 	ps.traceConnect(hostPort, isSushiro)
 
@@ -283,6 +309,8 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	}
 
 	// ---- MITM for sushiro ----
+	// 这一段对寿司郎 API 做「中间人」：先伪造一张该域名的 TLS 证书（由本地 CA 签发）骗过客户端握手，
+	// 随后在解密后的明文里读 HTTP 请求、抓取凭证参数、按需 patch 后转发到真服务器，再把响应回传给客户端。
 
 	// Tell client the tunnel is ready. The real upstream connection is opened by
 	// the HTTP transport when forwarding each captured request.
@@ -294,6 +322,8 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	}
 
 	// TLS handshake with client (using forged cert)
+	// 用本地 CA 即时签发一张 serverName 的叶子证书，才能在 tls.Server 端完成与客户端的握手。
+	// 前提是客户端系统已信任本 CA（见 cert.go 的安装流程），否则客户端会报证书不受信任。
 	hostCert, err := generateHostCert(ps.caCert, ps.caKey, serverName)
 	if err != nil {
 		return
@@ -301,7 +331,8 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	tlsClient := tls.Server(&BufferedConn{Conn: clientConn, reader: br}, &tls.Config{
 		Certificates: []tls.Certificate{hostCert},
 		MinVersion:   tls.VersionTLS12,
-		NextProtos:   []string{"http/1.1"},
+		// 锁定 ALPN 为 http/1.1：本代理只解析 HTTP/1.1 文本，强制不与客户端协商 h2，否则后续 ReadRequest 会失败。
+		NextProtos: []string{"http/1.1"},
 	})
 	defer tlsClient.Close()
 	if err := tlsClient.Handshake(); err != nil {
@@ -313,6 +344,8 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 	ps.addLog(fmt.Sprintf("MITM established for %s (client_tls=%s alpn=%s)", serverName, tlsVersionName(state.Version), DefaultString(state.NegotiatedProtocol, "http/1.1")))
 
 	// Read-Forward-Relay loop
+	// 在同一条 TLS 连接上循环：读一条请求 → 抓凭证/patch → 转发真服务器 → 回传响应。
+	// 客户端主动关闭（io.EOF）即结束；任何读/转发失败都结束本连接。
 	clientReader := bufio.NewReader(tlsClient)
 	for {
 		req, err := http.ReadRequest(clientReader)
@@ -332,6 +365,8 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 		requestHeaderKeys := APIDiscoveryHeaderKeys(req.Header)
 		requestBodyKeys := APIDiscoveryPayloadKeys(bodyBytes)
 		requestBodyFields := APIDiscoveryPayloadFieldKinds(bodyBytes)
+		// patchRequests 仅桌面代理启用：把 PC 微信发的请求体改造成手机端兼容形态再转发，
+		// 移动抓包代理（PatchRequests=false）不改请求，保持手机原始流量。
 		if ps.patchRequests {
 			var patches []string
 			bodyBytes, patches = patchSushiroRequestForForward(req, bodyBytes)
@@ -341,10 +376,12 @@ func (ps *ProxyServer) handleConn(clientConn net.Conn) {
 		}
 
 		// Capture tokens
+		// 抓取凭证的核心一步：从请求头/体里识别 wechatId、token、门店等参数写入 tokens。
 		ps.tokens.CaptureFromRequest(req, bodyBytes)
 		ps.addLog(fmt.Sprintf("Request address: %s %s", req.Method, sanitizedProxyURL(requestURLForTrace(req, "https", hostPort))))
 
 		// Rebuild request for forwarding
+		// 把代理收到的请求改写成「直连真服务器」的绝对 URL 请求，再剥掉逐跳头交给 transport。
 		req.URL.Scheme = "https"
 		req.URL.Host = hostPort
 		req.RequestURI = ""
@@ -427,6 +464,10 @@ func (ps *ProxyServer) handlePlainHTTPProxy(clientConn net.Conn, firstLine strin
 	}
 }
 
+// removeHopByHopHeaders 转发前剥掉「逐跳」头：这些头只在相邻一跳的连接上有意义，
+// 透传到上游会破坏 HTTP 语义（如让上游误以为客户端要 Upgrade、或被 Keep-Alive 带偏连接复用）。
+// 先按 Connection 头里点名的字段删，再删固定的逐跳头集合；最后删 Content-Length，
+// 因为下面 setForwardRequestBody 会用已知 bodyBytes 重新设置。
 func removeHopByHopHeaders(header http.Header) {
 	for _, value := range header.Values("Connection") {
 		for _, name := range strings.Split(value, ",") {
@@ -552,6 +593,9 @@ func stripQUICAdvertisement(header http.Header) {
 	header.Del("Alternate-Protocol")
 }
 
+// sanitizedProxyURL 把 URL 里的敏感查询参数脱敏后再用于日志/展示。
+// 命中 token/auth/phone/wechat/code/openid/unionid/session/secret/ticket/sign/key/sid 等关键字的参数值
+// 一律替换为 ***，防止把微信凭证、手机号写进日志外泄。返回的是拷贝，不改动原 URL。
 func sanitizedProxyURL(u *url.URL) string {
 	if u == nil {
 		return "-"

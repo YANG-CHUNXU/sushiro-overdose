@@ -118,6 +118,16 @@ type QueueBaselineLatest struct {
 	GroupQueuesJSON   string `json:"group_queues_json,omitempty"`
 }
 
+// QueueBaselineRollup 是某店、某日型、某时段(bucket)的聚合基准。
+// 字段语义：
+//   - SampleCount：该聚合包含的快照数，越大越可信；下游做加权平均时用它当权重。
+//   - OpenRate/OnlineOpenRate/BusyRate：开门率/在线取号开放率/繁忙率(有排队占比)。
+//   - WaitTypicalMinutes/WaitSafeMinutes：等待分钟的典型值(约 P50)和安全值(偏保守，约 P80)。
+//   - QueueGroupsTypical/Safe：同上，但单位是排队桌数。
+//   - CalledNoSlow/Typical/Fast：叫号速度的三档分位(慢/典型/快)，反映叫号推进节奏。
+//   - Confidence：聚合可信度(high/medium/low)，由样本量决定。
+//
+// 指针字段为 nil 表示该店该时段缺这类样本（如叫号字段在旧 schema 里不存在）。
 type QueueBaselineRollup struct {
 	StoreID            int      `json:"store_id"`
 	DateType           string   `json:"date_type"`
@@ -229,12 +239,16 @@ func (c *QueueBaselineCollector) Start(ctx context.Context) {
 	}()
 }
 
+// tick 以固定 base cadence(30s) 轮询，但只在达到配置间隔时才真正采集，支持运行时热改开关/间隔。
+// 取数失败时不更新 lastAt，这样下一个 30s 周期会立即重试，而不是等满一个间隔——
+// 对「间隔设很大但首次失败」的场景更友好。
 func (c *QueueBaselineCollector) tick(ctx context.Context) {
 	cfg := LoadQueueBaselineConfig()
 	if !cfg.Enabled {
 		return
 	}
 	c.mu.Lock()
+	// due：从未采过(lastAt 零值)或距上次采集已达配置间隔。
 	due := c.lastAt.IsZero() || time.Since(c.lastAt) >= time.Duration(cfg.IntervalMinutes)*time.Minute
 	c.mu.Unlock()
 	if !due {
@@ -253,6 +267,10 @@ func collectQueueBaseline(ctx context.Context) (int, error) {
 	return collectQueueBaselineWithConfig(ctx, LoadQueueBaselineConfig())
 }
 
+// collectQueueBaselineWithConfig 拉取本地选定门店的公开快照并落盘，返回写入条数。
+// 单店失败不中断整体（记 lastErr、continue），只有全部失败才返回错误。
+// 注意双重写入：每店快照既写基准记录(queue_baseline.jsonl)，又顺手写一份排队观测
+// (queue_observations.jsonl)——因为公开快照含当前叫号，能让叫号/到店预测在无通行证时也积累曲线。
 func collectQueueBaselineWithConfig(ctx context.Context, cfg QueueBaselineConfig) (int, error) {
 	storeIDs := queueBaselineStoreIDs(cfg)
 	if len(storeIDs) == 0 {

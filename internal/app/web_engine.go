@@ -38,6 +38,8 @@ func handleReservations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws := getWebSettings()
+	// 没绑定门店就不去打官方接口：寿司郎预约列表是「按已绑定门店」查询的，
+	// 无门店时返回空数组，避免空配置触发无意义的远端请求与潜在错误。
 	if len(ws.StoreIDs) == 0 {
 		writeJSON(w, []ReservationRecord{})
 		return
@@ -250,6 +252,12 @@ func reservationRecordHasSchedule(record ReservationRecord) bool {
 		strings.TrimSpace(record.End) != ""
 }
 
+// localNetTicketIsStale 判断本地保存的排队号记录是否「跨天失效」。
+// 排队号只对当天有效，过夜即为废号。判定维度二选一满足即判 stale：
+//   - 记录自带的 QueueDate（YYYYMMDD）与今天不等；
+//   - 或保存时刻 savedAt（RFC3339）落到今天以外的日期（用 now 的时区比较，避免 UTC 偏移误判）。
+//
+// now 为零值时回退 time.Now()，方便调用方不传。非本地排队号记录直接返回 false（不归本函数管）。
 func localNetTicketIsStale(record ReservationRecord, savedAt string, now time.Time) bool {
 	if !isLocalNetTicketRecord(record) {
 		return false
@@ -269,6 +277,9 @@ func localNetTicketIsStale(record ReservationRecord, savedAt string, now time.Ti
 	return false
 }
 
+// isNoCurrentNetTicketError 判定错误是否语义上等价于「当前没有排队号」（而非网络/鉴权故障）。
+// 用途：区分「该清掉本地过号记录」与「只是请求失败要保留」。命中 404 或中英文「无号」提示即视为前者。
+// 注意最后一条 missing ticket id/number 还要叠加 null/{}/[] 才算，避免把含号错误误判。
 func isNoCurrentNetTicketError(err error) bool {
 	if err == nil {
 		return false
@@ -415,6 +426,8 @@ func handleQueueTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "缺少门店 ID")
 		return
 	}
+	// 写操作前强制重新读盘刷新凭证：取号是会产生真实副作用的操作（占用排队号），
+	// 必须用最新凭证，避免用过期/被顶掉的旧凭证请求。
 	refreshWebClient()
 	client := getWebClient()
 	if client == nil {
@@ -655,6 +668,9 @@ func handleCancelReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Kind) != "reservation" {
+		// 安全保护：取消是真实副作用，必须显式以 kind=reservation 调用本接口，
+		// 防止前端误传或调用方把「排队号」当「预约」取消（排队号应走 cancelNetTicket），
+		// 也避免 ticket_id 张冠李戴误删未来的预约。
 		writeError(w, http.StatusBadRequest, "安全保护：此接口只允许取消明确标记为预约的记录；排队号请使用“取消排队号”。")
 		return
 	}

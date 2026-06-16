@@ -68,6 +68,9 @@ type SamplingRunResult struct {
 	Diagnostics    map[string]any           `json:"diagnostics,omitempty"`
 }
 
+// SamplingRunOptions 控制单次采样的行为。
+// IgnoreActiveWindow：忽略时间窗限制（手动「立刻采一次」时用）。
+// UseProcessLock：抢进程级独占锁，防止手动触发与后台守护同时采样。
 type SamplingRunOptions struct {
 	IgnoreActiveWindow bool
 	UseProcessLock     bool
@@ -84,6 +87,9 @@ type SamplingStoreRunResult struct {
 	Error           string `json:"error,omitempty"`
 }
 
+// SlotSampler 是采样后台循环的状态机，单例（sampler）。
+// 并发模型：mu 保护 cancel/done/generation/state；runMu 保证同一时刻只有一轮采样在跑（TryLock 失败即跳过）。
+// generation 是循环的代次，Stop/Restart 时旧循环的代次对不上，defer 清理就不会误清新循环的状态。
 type SlotSampler struct {
 	mu         sync.Mutex
 	runMu      sync.Mutex
@@ -134,6 +140,9 @@ func SaveSamplingConfig(cfg SamplingConfig) error {
 	return atomicWriteFile(samplingConfigPath(), data, 0o600)
 }
 
+// NormalizeSamplingConfig 钳制并补全采样配置：
+//
+//	间隔区间 [60, 24h]（过密会刷接口、过疏等于没采）；时间窗解析失败回退默认 10:00-22:00。
 func NormalizeSamplingConfig(cfg SamplingConfig) SamplingConfig {
 	if cfg.IntervalSeconds <= 0 {
 		cfg.IntervalSeconds = defaultSamplingIntervalSeconds
@@ -189,6 +198,8 @@ func (s *SlotSampler) Start(parent context.Context) error {
 	return s.startWithConfig(parent, cfg)
 }
 
+// StartIfAuto 在进程启动时被调用：仅当配置同时 Enabled+AutoStart 才自启动。
+// 关键去重：若已有独立守护进程（PID 文件存在且活着）在跑，就不在本进程再起一份，避免双开争抢采样。
 func (s *SlotSampler) StartIfAuto(parent context.Context) {
 	cfg := LoadSamplingConfig()
 	if cfg.Enabled && cfg.AutoStart {
@@ -202,6 +213,10 @@ func (s *SlotSampler) StartIfAuto(parent context.Context) {
 	}
 }
 
+// startWithConfig 启动后台采样循环。幂等：已运行直接返回 nil。
+// 两段式上锁是为了避免竞态——先抢进程级独占锁（防止 web 和守护进程同时采样），
+// 抢到后再在 mu 下二次检查 cancel 是否已被并发路径置上，是则放弃本次启动（释放刚拿的资源）。
+// generation 在这里自增并传给 loop，loop 退出时只在代次匹配时才清 cancel/done/状态。
 func (s *SlotSampler) startWithConfig(parent context.Context, cfg SamplingConfig) error {
 	cfg = NormalizeSamplingConfig(cfg)
 	s.mu.Lock()
@@ -211,6 +226,7 @@ func (s *SlotSampler) startWithConfig(parent context.Context, cfg SamplingConfig
 	}
 	s.mu.Unlock()
 
+	// 进程级独占锁：保证同一台机器同一时刻只有一个采样进程在跑。
 	lock, err := acquireProcessLock(samplingLockFileName)
 	if err != nil {
 		return err
@@ -218,6 +234,7 @@ func (s *SlotSampler) startWithConfig(parent context.Context, cfg SamplingConfig
 	ctx, cancel := context.WithCancel(parent)
 	done := make(chan struct{})
 	s.mu.Lock()
+	// 二次检查：在拿进程锁的间隙，可能已有别的路径启动了循环。
 	if s.cancel != nil {
 		s.mu.Unlock()
 		cancel()
@@ -245,6 +262,8 @@ func (s *SlotSampler) Stop() {
 	s.stopAndWait(2 * time.Second)
 }
 
+// Restart 先同步等旧循环退出再启动新循环；若旧循环在 timeout 内没退出则报错让调用方重试。
+// 这里必须用 stopAndWait 而非 Stop（fire-and-forget），否则新旧循环可能短暂并存争抢 runMu/进程锁。
 func (s *SlotSampler) Restart(parent context.Context, cfg SamplingConfig) error {
 	if !s.stopAndWait(2 * time.Second) {
 		return fmt.Errorf("采样正在停止，请稍后重试")
@@ -252,6 +271,9 @@ func (s *SlotSampler) Restart(parent context.Context, cfg SamplingConfig) error 
 	return s.startWithConfig(parent, cfg)
 }
 
+// stopAndWait 发出 cancel 后最多等 timeout 让 loop 退出。
+// 返回值表示「是否在超时前真正停掉」。注意：超时只放弃等待，loop 仍可能在后台继续跑（依赖 loop defer 自行清理）。
+// 没有运行中的循环（cancel==nil）时直接置 idle 并返回 true。
 func (s *SlotSampler) stopAndWait(timeout time.Duration) bool {
 	s.mu.Lock()
 	cancel := s.cancel
@@ -281,6 +303,10 @@ func (s *SlotSampler) stopAndWait(timeout time.Duration) bool {
 	return stopped
 }
 
+// loop 是后台采样主循环。每个周期：重新读配置（支持运行中改配置热生效）-> 算下次等待时长 ->
+// 设定 NextRunAt -> 可中断睡眠 -> 再次校验配置 -> 跑一轮采样。
+// defer 里按 generation 清理：只有当代次仍匹配（没被 Restart 抢占）才清 cancel/done 并把状态从 running 收回 idle。
+// done 在最后 close，通知 stopAndWait 等待者循环已退出。
 func (s *SlotSampler) loop(ctx context.Context, cfg SamplingConfig, generation int, lock *processLock, done chan struct{}) {
 	defer func() {
 		lock.Release()
@@ -300,20 +326,23 @@ func (s *SlotSampler) loop(ctx context.Context, cfg SamplingConfig, generation i
 
 	first := true
 	for {
+		// 每轮重新读配置：用户在 UI/CLI 改配置后无需重启即可生效（关掉 Enabled 即可让循环自然退出）。
 		fileCfg := LoadSamplingConfig()
 		if !fileCfg.Enabled {
 			return
 		}
 		cfg = fileCfg
 		wait := samplingWaitDuration(cfg, time.Now())
+		// 首轮若已在采样窗口内，跳过等待立刻采一次，保证启动后能尽快出数据。
 		if first && samplingInActiveWindow(cfg, time.Now()) {
 			wait = 0
 		}
 		first = false
 		s.setNextRun(time.Now().Add(wait))
 		if !sleepContext(ctx, wait) {
-			return
+			return // 被 cancel（Stop/Restart）唤醒，退出循环。
 		}
+		// 睡醒后再读一次配置：睡眠期间配置可能被关掉。
 		fileCfg = LoadSamplingConfig()
 		if !fileCfg.Enabled {
 			return
@@ -332,6 +361,10 @@ func (s *SlotSampler) RunOnceNow(ctx context.Context, cfg SamplingConfig) Sampli
 	return s.runOnce(ctx, cfg, SamplingRunOptions{IgnoreActiveWindow: true, UseProcessLock: true})
 }
 
+// runOnce 执行一轮采样。返回值带 Skipped/SkipReason：任何一个前置条件不满足都会直接跳过本轮（不算失败）。
+// 跳过的层次（短路顺序）：单实例重入(runMu) -> 进程锁(仅手动触发) -> 时间窗 -> 主流程冲突 -> 凭证 -> 门店列表。
+// 逐门店循环里也会在每家门店前复查 samplingBlockedReason：因为采样耗时，期间用户可能开始抢号，
+// 一旦检测到主流程/抢号进程启动就立刻中止剩余门店，避免采样请求和抢号请求撞车。
 func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts SamplingRunOptions) SamplingRunResult {
 	cfg = NormalizeSamplingConfig(cfg)
 	started := time.Now()
@@ -340,6 +373,7 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 		Config:    cfg,
 	}
 
+	// 单实例重入保护：后台循环和手动 RunOnceNow 可能并发，TryLock 失败即跳过，不阻塞。
 	if !s.runMu.TryLock() {
 		result.Skipped = true
 		result.SkipReason = "已有采样任务正在执行"
@@ -407,6 +441,8 @@ func (s *SlotSampler) runOnce(ctx context.Context, cfg SamplingConfig, opts Samp
 		if storeResult.StoreName == "" {
 			storeResult.StoreName = storeID
 		}
+		// 每家门店前复查阻塞条件：采样是批量请求，期间主流程/抢号可能被用户启动，
+		// 此时必须立刻停手，避免采样与抢号的凭证请求互相干扰。
 		if reason := samplingBlockedReason(); reason != "" {
 			if result.Snapshots == 0 && len(result.Stores) == 0 {
 				result.Skipped = true
@@ -499,6 +535,8 @@ func (s *SlotSampler) publish() {
 	bus.publish("sampling", mustJSON(s.GetState()))
 }
 
+// samplingStoreIDs 按优先级解析本轮要采样的门店列表：
+// 显式配置 StoreIDs > 偏好门店(UsePreferenceStores) > 凭证里捕获到的 StoreIDs（兜底）。
 func samplingStoreIDs(cfg SamplingConfig, tokens *CapturedTokens, prefs UserPreferences) []string {
 	if len(cfg.StoreIDs) > 0 {
 		return cfg.StoreIDs
@@ -511,6 +549,8 @@ func samplingStoreIDs(cfg SamplingConfig, tokens *CapturedTokens, prefs UserPref
 	return append([]string(nil), tokens.StoreIDs...)
 }
 
+// samplingWaitDuration 决定本周期 loop 应该睡多久：
+// 在窗口内就按 IntervalSeconds 间隔采样；不在窗口内则睡到下一个窗口起点（窗口外不采样）。
 func samplingWaitDuration(cfg SamplingConfig, now time.Time) time.Duration {
 	if !samplingInActiveWindow(cfg, now) {
 		return time.Until(nextSamplingWindowStart(cfg, now))
@@ -518,6 +558,10 @@ func samplingWaitDuration(cfg SamplingConfig, now time.Time) time.Duration {
 	return time.Duration(cfg.IntervalSeconds) * time.Second
 }
 
+// samplingInActiveWindow 判断当前时刻是否在配置的活跃窗口 [ActiveStart, ActiveEnd) 内。
+// 边界：start==end 或任一解析失败视为「全天活跃」（不限制）；start<end 是普通同日窗口；
+// start>end 是跨午夜窗口（如 22:00-04:00），此时「current>=start || current<end」即可命中。
+// 区间为左闭右开：刚好等于 end 不算在内，避免窗口边界与下一轮等待计算打架。
 func samplingInActiveWindow(cfg SamplingConfig, now time.Time) bool {
 	start := ParseTimeSeconds(cfg.ActiveStart)
 	end := ParseTimeSeconds(cfg.ActiveEnd)
@@ -531,6 +575,8 @@ func samplingInActiveWindow(cfg SamplingConfig, now time.Time) bool {
 	return current >= start || current < end
 }
 
+// nextSamplingWindowStart 算出下一个窗口起点的绝对时刻。
+// 把今天的 start 时刻构造出来，若已过（<=now）则加一天，得到下一次开窗时间。
 func nextSamplingWindowStart(cfg SamplingConfig, now time.Time) time.Time {
 	start := ParseTimeSeconds(cfg.ActiveStart)
 	if start < 0 {
@@ -560,6 +606,8 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+// isMainFlowRunning 判断本进程的抢号引擎是否正处于占用凭证的状态（捕获/订座/狙击）。
+// 这些状态会跟手机端争抢凭证，所以采样必须让路。
 func isMainFlowRunning() bool {
 	switch engine.GetState().Status {
 	case EngineCapturing, EngineBooking, EngineSniping:
@@ -569,6 +617,12 @@ func isMainFlowRunning() bool {
 	}
 }
 
+// samplingBlockedReason 返回当前不能采样的原因（空串表示可以采）。
+// 检查顺序即优先级，任一命中即返回。覆盖四类冲突：
+//  1. externalMainFlowActive：另一个 sushiro 主进程正在抢号（跨进程）。
+//  2. netTicketIssuedToday：今天已取到排队号——继续采样会顶掉手机端的排队号视图。
+//  3. 本进程引擎在抢号。
+//  4. 后台抢号守护进程在跑。
 func samplingBlockedReason() string {
 	if active, status := externalMainFlowActive(); active {
 		if status == "" {
@@ -588,6 +642,8 @@ func samplingBlockedReason() string {
 	return ""
 }
 
+// netTicketIssuedToday 判断今天是否已经成功取到排队号（success/issued_unknown 且今天触发过）。
+// 用于采样让路：取号后官方会把这条排队记录挂在账号上，继续采样会改写手机端看到的排队视图。
 func netTicketIssuedToday(now time.Time) bool {
 	if now.IsZero() {
 		now = time.Now()
@@ -599,6 +655,12 @@ func netTicketIssuedToday(now time.Time) bool {
 	return netTicketPlanFiredOn(plan, now)
 }
 
+// pauseSamplingForMainFlow 在主流程（抢号）即将启动前紧急叫停采样，三段式尽力停：
+//  1. 先停本进程的 sampler 循环；
+//  2. 再尝试停独立的采样守护进程（PID 文件指向的那个）；
+//  3. 若守护进程不在 PID 文件里、但进程锁还被别的 PID 持着，直接 kill 那个持锁进程。
+//
+// 注意最后一段的 holder != os.Getpid() 自我保护：锁若恰好被自己持有就不自杀。
 func pauseSamplingForMainFlow() {
 	sampler.Stop()
 	if stopped, _ := stopSamplingDaemon(); stopped {

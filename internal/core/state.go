@@ -10,11 +10,16 @@ import (
 	"time"
 )
 
+// State 是持久化到 ~/.sushiro/.sushiro_state.json 的运行态。
+// ActiveReservation 记录当前活跃的预约/取号，用于进程重启后恢复对「这条号还在不在」的监控。
+// SavedAt 是写入时间戳（RFC3339），便于诊断「这个状态是多久前写的」。
 type State struct {
 	ActiveReservation *ReservationRecord `json:"active_reservation,omitempty"`
 	SavedAt           string             `json:"saved_at,omitempty"`
 }
 
+// LoadState 从 path 读 State。文件不存在视为「无活跃预约」，返回零值且不报错——这是正常首次启动的情况。
+// 其它读取错误（权限/IO）才向上抛。
 func LoadState(path string) (State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -31,6 +36,9 @@ func LoadState(path string) (State, error) {
 	return state, nil
 }
 
+// SaveState 用「写临时文件 + 原子 rename」的方式落盘 State，避免写到一半进程挂掉导致状态文件损坏。
+// 约定：tempPath = path + ".tmp"，先全量写临时文件，再 rename 到目标路径——rename 在同文件系统内是原子的。
+// 因此 .tmp 必须和目标在同一目录（这里就是同目录拼接），跨文件系统 rename 会退化为非原子拷贝。
 func SaveState(path string, state State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create state directory: %w", err)
@@ -49,6 +57,7 @@ func SaveState(path string, state State) error {
 	return nil
 }
 
+// ClearState 删除状态文件（如取消预约/取号后）。文件本就不存在不算错误，幂等。
 func ClearState(path string) error {
 	err := os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -57,6 +66,7 @@ func ClearState(path string) error {
 	return nil
 }
 
+// LogMessage 以 "[RFC3339 时间] 消息" 格式打印一行到 stdout。用于运行过程的可见日志。
 func LogMessage(now time.Time, message string) {
 	fmt.Printf("[%s] %s\n", now.Format(time.RFC3339), message)
 }

@@ -20,6 +20,10 @@ type sniperTargetValidationError struct {
 	Reason string       `json:"reason"`
 }
 
+// StartSniper 启动 Web 版狙击计划：对一批「尚未开放、未来某时刻放号」的目标时段，
+// 等到放号时刻高频轮询抢约。校验链与 StartBooking 对称：互斥 → 加载凭证 → 选门店 →
+// 规整/校验目标（normalizeSniperTargetsForSettings 会过滤非法目标）→ 落盘 SniperPlan
+// → GetTimeslots 验活 → 起 goroutine 跑 runSniper。
 func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
@@ -146,6 +150,14 @@ func validateSniperTargetsForSettings(targets []SniperTarget, settings Settings)
 	return out, rejected
 }
 
+// runSniper 是 Web 版狙击主循环。按开放时间升序逐个目标处理：
+//
+//	等放号 → 开放窗口内（openAt..openAt+sniperWindow=3min）高频轮询抢约 → 成功/超时收尾。
+//
+// 相比 runBooking（100ms 节流）这里更快：开放窗口内每轮 50ms（≈20次/秒），因为放号瞬间
+// 名额秒空，必须尽快 GetTimeslots+CreateReservation。每轮状态写回 SniperPlan（UpdateSniperPlanTarget）
+// 供 UI 实时看进度；为减少写盘，只在第 1 次和每 20 次落盘一次 attempts。
+// 凭证失败（isAuthError）一票否决：立即删配置、终止整个计划（不重试）。
 func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings Settings, targets []SniperTarget) {
 	doneActivity := markMainFlowActive("sniping")
 	defer doneActivity()
@@ -164,6 +176,8 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 			t.LastError = ""
 		})
 
+		// 还没到放号时刻：睡到放号前 3s 再开始密集轮询。提前 3s 是留余量——本地时钟和服务端
+		// 可能有几秒偏差，提前醒来比错过放号稳妥；但离放号>5s 才睡（否则直接进轮询，select 兜底）。
 		if openAt.After(time.Now().In(settings.Location)) {
 			wait := time.Until(openAt)
 			e.setState(EngineSniping, fmt.Sprintf("等待开放: %s", targetLabel))
@@ -177,6 +191,8 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 			}
 		}
 
+		// 开放抢约窗口：[openAt, openAt+sniperWindow(3min)]。若 openAt 已过（目标已开放），从当下算起，
+		// 仍给满 3min 窗口，让事后补救也有机会。
 		deadline := openAt
 		now := time.Now().In(settings.Location)
 		if deadline.Before(now) {
@@ -184,11 +200,13 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 		}
 		deadline = deadline.Add(sniperWindow)
 		attempts := 0
+		// 5xx 命中时段冷却 30s（与 booking 同机制），避免对返回 500 的时段无脑重试。
 		temporarySkips := map[string]time.Time{}
 		UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 			t.Status = "running"
 		})
 
+		// 开放窗口内的高频轮询：每轮 GetTimeslots 找匹配时段 → 命中即 CreateReservation。
 		for time.Now().In(settings.Location).Before(deadline) {
 			select {
 			case <-ctx.Done():
@@ -203,6 +221,8 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 			e.state.LastCheck = time.Now().Format("15:04:05")
 			e.state.Message = fmt.Sprintf("狙击中...%s，第 %d 次", targetLabel, attempts)
 			e.mu.Unlock()
+			// 落盘节流：第 1 次和每 20 次才写 attempts 到 plan 文件，避免 50ms 一轮 ×
+			// 每轮写盘把 IO 打爆；UI 进度靠 state.Message 实时刷新即可。
 			if attempts == 1 || attempts%20 == 0 {
 				UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 					t.Status = "running"
@@ -232,6 +252,7 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					noteAuthResult(err)
 				}
 				if isOfficialServerHTTPError(err) {
+					// 5xx 用稍长的 200ms 退避，给服务端恢复时间；其他网络错误仍走 50ms 高频。
 					UpdateSniperPlanTarget(targetID, settings.Location, func(t *SniperPlanTarget) {
 						t.Status = "running"
 						t.Attempts = attempts
@@ -240,15 +261,20 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					time.Sleep(200 * time.Millisecond)
 					continue
 				}
+				// 放号窗口内常规轮询节流 50ms（≈20次/秒），兼顾抓放号瞬间与接口压力。
 				time.Sleep(50 * time.Millisecond)
 				continue
 			}
 
 			markAuthHealthy() // GetTimeslots 成功 → 凭证有效
+			// 匹配目标：同一日期 + 起始时间落在 [StartAfter, StartBefore) 半开区间，
+			// 且状态为空或 AVAILABLE。注意 Start 用半开（>=StartAfter 且 <StartBefore），
+			// 与 parseSniperArgs 校验时 StartAfter<StartBefore 配合，避免边界时段漏选/重选。
 			for _, slot := range slots {
 				if slot.Date != target.Date || slot.Start < target.StartAfter || slot.Start >= target.StartBefore {
 					continue
 				}
+				// Availability 为空（接口未返回该字段）也视作可约，避免服务端字段缺失误伤。
 				if slot.Availability != "" && strings.ToUpper(slot.Availability) != "AVAILABLE" {
 					continue
 				}
@@ -312,6 +338,8 @@ func (e *BookingEngine) runSniper(ctx context.Context, client *Client, settings 
 					t.LastError = ""
 					t.CompletedAt = time.Now().In(settings.Location).Format(time.RFC3339)
 				})
+				// 一个目标抢到即终止整轮计划：把其余 pending/open/running 目标标 stopped，
+				// 因为预约系统同一账号通常只允许一个有效预约，继续抢别的没意义。
 				StopRemainingSniperPlanTargetsAfterSuccess(targetID, settings.Location)
 				e.mu.Lock()
 				e.state.Reservation = &reservation

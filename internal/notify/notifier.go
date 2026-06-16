@@ -31,6 +31,9 @@ func NewMultiNotifier(notifiers ...Notifier) *MultiNotifier {
 	return &MultiNotifier{notifiers: notifiers}
 }
 
+// Send 把通知扇出到所有已注册渠道：先快照 notifiers（持锁时间最短），再对每个渠道起一个协程
+// 并发发送，wg.Wait() 等全部发完才返回。单个渠道失败只记日志、不影响其他渠道——所以 Send 没有
+// 返回值，调用方不需要知道哪个渠道挂了。
 func (m *MultiNotifier) Send(ctx context.Context, title, content string) {
 	m.mu.Lock()
 	snapshot := make([]Notifier, len(m.notifiers))
@@ -109,6 +112,9 @@ func SaveNotifyConfig(cfg *NotifyConfig) error {
 }
 
 // BuildNotifierFromConfig creates a MultiNotifier from saved config.
+// BuildNotifierFromConfig 按 notify.json 构造多渠道通知器：飞书/Telegram/Bark/ServerChan 各自
+// 配置齐全才加入。容错：读不到新配置文件时回退尝试旧的飞书单渠道配置（历史迁移），
+// 保证老用户升级后通知不突然哑掉。
 func BuildNotifierFromConfig() *MultiNotifier {
 	mn := &MultiNotifier{}
 

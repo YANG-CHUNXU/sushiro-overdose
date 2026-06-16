@@ -16,8 +16,13 @@ import (
 	"time"
 )
 
+// mobileAuthCaptureTTL 是一次手机凭证捕获会话的最长存活时间：超时自动停止，避免代理端口和
+// 引导页长期挂着。20 分钟覆盖"装证书+设代理+开微信点几个页面"的完整操作窗口。
 const mobileAuthCaptureTTL = 20 * time.Minute
 
+// mobileAuthCaptureManager 管理一次手机凭证捕获会话：本地起一个 MITM 代理抓手机真实请求，
+// 同时起一个引导页（带随机 token 路径）给手机下证书、看代理地址。完成后把抓到的令牌落盘。
+// 全程 mu 保护：watch 协程与 HTTP handler 会并发访问这些字段。
 type mobileAuthCaptureManager struct {
 	mu           sync.Mutex
 	proxy        *ProxyServer
@@ -70,6 +75,10 @@ func handleMobileAuthStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, mobileAuthCapture.status())
 }
 
+// start 启动一次手机凭证捕获：先停掉旧会话，再用自签 CA 起 MITM 代理、起引导页 HTTP 服务。
+// 安全/可用要点：①与主流程互斥（捕获时不能同时抢票，避免把手机会话顶掉）；
+// ②引导页路径含随机 token（newMobileUAToken），防同网段他人乱扫；
+// ③引导页监听 0.0.0.0:0（随机端口）——必须绑 0.0.0.0，手机才能通过电脑局域网 IP 访问到。
 func (m *mobileAuthCaptureManager) start() (map[string]any, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -103,6 +112,7 @@ func (m *mobileAuthCaptureManager) start() (map[string]any, error) {
 		Handler:           guideMux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	// 引导页路径带随机 token：不公开固定路径，必须拿到本次启动返回的 URL 才能访问，降低被同网段扫描到的风险。
 	pathPrefix := "/mobile-auth/" + token
 	guideMux.HandleFunc(pathPrefix, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != pathPrefix {
@@ -122,6 +132,8 @@ func (m *mobileAuthCaptureManager) start() (map[string]any, error) {
 		http.NotFound(w, r)
 	})
 
+	// 监听 0.0.0.0:0（随机端口）：必须绑 0.0.0.0 而不是 127.0.0.1，否则手机走电脑局域网 IP
+	// 访问引导页时连不上；端口交给系统分配，避免固定端口被占。
 	ln, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
 		proxy.Close()
@@ -159,6 +171,9 @@ func (m *mobileAuthCaptureManager) start() (map[string]any, error) {
 	return m.statusLocked(), nil
 }
 
+// watch 是捕获会话的后台循环：每秒轮询令牌是否抓全；到 TTL 强制超时停止；
+// ctx 取消（用户主动 stop）则退出。注意 token 入参用于"本次启动"的身份比对——
+// 若中途被新一次 start 替换（m.token 已变），本协程要自觉退出，避免误关新会话。
 func (m *mobileAuthCaptureManager) watch(ctx context.Context, token string) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -173,6 +188,7 @@ func (m *mobileAuthCaptureManager) watch(ctx context.Context, token string) {
 			m.stop("手机凭证捕获已超时，请重新启动")
 			return
 		case <-ticker.C:
+			// sameRun 比对本次启动的 token：只有仍是自己这一次会话、且 tokens 还在，才检查完成。
 			m.mu.Lock()
 			sameRun := m.token == token && m.tokens != nil
 			tokens := m.tokens
@@ -188,6 +204,9 @@ func (m *mobileAuthCaptureManager) watch(ctx context.Context, token string) {
 	}
 }
 
+// finish 在令牌抓全后落盘：先存 UA，再存全部凭证参数，然后刷新前端设置、补默认门店、
+// 标记健康并停止会话。任何一步失败都记日志并改写 message 给用户，但不抛错中断流程。
+// markAuthHealthy 是因为重新抓到有效凭证 → 此前"凭证过期"提醒应同步清除。
 func (m *mobileAuthCaptureManager) finish(tokens *CapturedTokens) {
 	prefs := LoadPreferences()
 	tokens.Lock()
@@ -227,6 +246,9 @@ func (m *mobileAuthCaptureManager) stop(message string) {
 	m.stopLocked(message)
 }
 
+// stopLocked 关闭本次会话的全部资源：取消 watch 协程的 ctx、关代理、优雅关引导页 HTTP 服务、
+// 释放主流程占用标记（doneActivity），并清空运行态字段。message 非空时覆盖给用户的提示。
+// 必须在持 mu 时调用（stop/start 内部都先锁）。
 func (m *mobileAuthCaptureManager) stopLocked(message string) {
 	if m.cancel != nil {
 		m.cancel()
@@ -289,6 +311,8 @@ func (m *mobileAuthCaptureManager) statusLocked() map[string]any {
 	return out
 }
 
+// addLog 同时写全局日志和本次会话的内存日志切片；切片封顶 120 条（丢最旧），
+// 避免长时间会话累积过多日志拖累前端轮询。
 func (m *mobileAuthCaptureManager) addLog(msg string) {
 	LogMessage(time.Now(), msg)
 	m.mu.Lock()

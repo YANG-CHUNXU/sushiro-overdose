@@ -132,7 +132,10 @@ func queuePressureScore(waitGroups, waitMinutes int) int {
 	return int(math.Round(score))
 }
 
-// queuePressureTrend 用近窗等待桌数变化 + 叫号速度判断消化趋势。
+// queuePressureTrend 用近窗（默认 15 分钟）等待桌数首尾差 + 叫号速度判断消化趋势。
+// stalled 优先级最高：监控判定叫号停滞时直接报 stalled，覆盖其它趋势（连号都不动时趋势无意义）。
+// delta>=8 桌算 worsening、<=-8 桌算 improving，中间若无有效叫号速度（rate<=0）报 unknown
+// 而非 stable——避免在没推进证据时误判「基本稳定」。
 func queuePressureTrend(recent []QueueObservation, rate float64, stalled bool) (string, string) {
 	if stalled {
 		return "stalled", "叫号停滞"
@@ -184,7 +187,8 @@ func queuePressureReason(level, trend string, waitGroups int, rate float64, call
 
 // ---------- 叫号速度（多窗口） ----------
 
-// calledRateOverWindow 复用 recentStoreObservations + calledRatePerMinute 算某窗口的叫号速度。
+// calledRateOverWindow 复用 recentStoreObservations + calledRatePerMinute 算某窗口（15/30/60min）的叫号速度。
+// 返回 nil 的两种情况：窗口内有效采样点不足 2 个，或叫号速度<=0（首尾叫号没推进/出现回退，见 calledRatePerMinute 的忽略回退逻辑）。
 func calledRateOverWindow(all []QueueObservation, storeID string, now time.Time, window time.Duration) *float64 {
 	recent := recentStoreObservations(all, storeID, now, window)
 	if len(recent) < 2 {
@@ -200,9 +204,20 @@ func calledRateOverWindow(all []QueueObservation, storeID string, now time.Time,
 
 // ---------- 预计等待区间 ----------
 
-// estimateWaitRange 预计等待分钟区间：官方 → 近窗速度 → 历史 P50/P80 → 数据不足。
+// estimateWaitRange 预计等待分钟区间，按可信度从高到低分三档回退：
+//  1. recent_speed：有叫号速度时，用 remaining/rate 推算，并让官方等待修正下界；
+//  2. official：没有叫号速度但有官方等待分钟，按官方值上下浮动（只能反映门店整体压力，无法定位到用户号码）；
+//  3. history：前两者都缺，回退到同门店同日型的历史 P50/P80；
+//  4. unknown：三者都没有，返回 nil 让上游提示数据不足。
+//
+// 为什么用 officialWait 抬高低界：官方等待是「门店整体」的等位分钟，用户号码靠后时
+// 本机 remaining/rate 算出的值可能反而比官方小（号码靠后反而算得快），但这在物理上不可能——
+// 用户不可能比门店整体更快叫到号。所以把 low 钳到 max(low, officialWait)，并同步抬高 high，
+// 避免给用户一个与门店实际压力自相矛盾的过短区间。
 func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWaitRange) (*QueueWaitRange, string) {
 	if rate > 0 && waitGroups > 0 {
+		// 档位 1：有叫号速度。base = 剩余桌数 / 每分钟叫号桌数。
+		// 下界取 0.85（偏乐观、给出发时间留余量），上界取 1.2（偏保守、覆盖叫号放慢）。
 		base := float64(waitGroups) / rate
 		low := int(math.Floor(base * 0.85))
 		high := int(math.Ceil(base * 1.2))
@@ -222,11 +237,14 @@ func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWa
 		return &QueueWaitRange{Low: max(0, low), High: max(0, high)}, "recent_speed"
 	}
 	if officialWait > 0 {
+		// 档位 2：没有叫号速度，只能用官方等待做粗估。下游会标记 source=official 并提示
+		// 这只是门店整体压力、不能可靠定位到用户号码。
 		low := int(math.Floor(float64(officialWait) * 0.9))
 		high := int(math.Ceil(float64(officialWait) * 1.15))
 		return &QueueWaitRange{Low: low, High: high}, "official"
 	}
 	if hist != nil && (hist.Low > 0 || hist.High > 0) {
+		// 档位 3：历史 P50/P80。
 		return &QueueWaitRange{Low: hist.Low, High: hist.High}, "history"
 	}
 	return nil, "unknown"
@@ -234,6 +252,9 @@ func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWa
 
 // ---------- advisor 主入口 ----------
 
+// buildQueueAdvisor 组装「排队压力 + 时间答案」的对外结构。
+// 数据来源：实时快照（snapshot，当前一次 GetStore）+ 本机历史采样（all）+ 官方等待/封顶（store）。
+// 注意 history/recent15 都把实时 snapshot 临时 append 进去（不落盘），让速率/趋势窗口能用到「当前」这一刻。
 func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinutes int, now time.Time) (QueueAdvisor, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -255,6 +276,8 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 	}
 
 	warnings := queueAlertStoreWarnings(all, snapshot.StoreID, now)
+	// stalled：告警里出现「没有推进」即认定叫号停滞。它会让 queuePressureTrend 直接判 stalled，
+	// 优先级高于速度/桌数差，避免叫号卡死时还误报「稳定/变好」。
 	stalled := false
 	for _, w := range warnings {
 		if strings.Contains(w, "没有推进") {
@@ -320,6 +343,8 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 	return advisor, nil
 }
 
+// buildQueueAdvisorEta 取今日同日型、同门店、当前半小时 bucket 的历史 P50/P80 作为 hist 兜底，
+// 再交给 computeQueueEta 做纯函数估算（近期叫号速度优先，历史兜底）。
 func buildQueueAdvisorEta(targetNo, travelMinutes int, snapshot QueueObservation, store QueueLiveStore, rate float64, now time.Time, storeID string) *QueueAdvisorEta {
 	var hist *QueueWaitRange
 	if m, _ := historicalWaitByBucket(storeID, now); m != nil {
@@ -331,7 +356,10 @@ func buildQueueAdvisorEta(targetNo, travelMinutes int, snapshot QueueObservation
 }
 
 // computeQueueEta 是 ETA 估算的纯函数核心（不读磁盘），便于单测。
+// 入参：targetNo 用户票号、calledNo 当前叫到号、travelMinutes 路程分钟、officialWait 官方等位分钟、
+// waitCap 官方等位封顶（store.WaitTimeCap，如 180）、rate 本机叫号速度（组/分）、hist 历史区间、now 当前时间。
 func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap int, rate float64, hist *QueueWaitRange, now time.Time) *QueueAdvisorEta {
+	// remaining 一定钳到 >=0；targetNo<calledNo（过号）也会落在这里，但语义不同，见下分支。
 	remaining := max(0, targetNo-calledNo)
 	eta := &QueueAdvisorEta{
 		TargetNo:        targetNo,
@@ -344,11 +372,14 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap in
 		// targetNo<calledNo 是已经过号——寿司郎过号不会自动叫到，需要补号或重新取号，
 		// 必须显式提示，不能再说“已轮到、低风险”（否则与 dashboard 路径自相矛盾）。
 		if targetNo < calledNo {
+			// 过号分支：等待区间设 0、风险置 high，并给出明确的「请补号」指引，
+			// 不走正常 ETA 计算（没有 remaining 可以推时间）。
 			eta.WaitMinutesRange = &QueueWaitRange{Low: 0, High: 0}
 			eta.Risk = "high"
 			eta.ArrivalSuggestion = "这个号可能已经过号了，请到小程序确认是否需要补号或重新取号。"
 			return eta
 		}
+		// 即将轮到分支：targetNo==calledNo，号码正好在叫。
 		eta.EstimatedCalledAt = now.Format(time.RFC3339)
 		eta.WaitMinutesRange = &QueueWaitRange{Low: 0, High: 0}
 		eta.Risk = "low"
@@ -359,17 +390,21 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap in
 	eta.SourceLabel = queueEtaSourceLabel(source)
 	eta.SourceNote = queueEtaSourceNote(source)
 	if source == "official" {
+		// 只有官方等待、没有叫号速度时：无法定位到用户号码的叫到时间，标记 high 风险并提示，
+		// 直接返回，不推具体时间区间（estimateWaitRange 虽然给了区间，但基于门店整体，不可靠）。
 		eta.Risk = "high"
 		eta.ArrivalSuggestion = "当前缺少叫号速度，官方等待只能代表门店排队压力，暂时不能可靠判断你的号码几点叫到。"
 		return eta
 	}
 	if waitRange == nil {
+		// 三档全部数据不足（recent/official/history 都拿不到）。
 		eta.ArrivalSuggestion = "实时和历史数据都不足，暂时无法预估叫到时间。"
 		return eta
 	}
 	eta.WaitMinutesRange = waitRange
 	// 用官方等位封顶值（waitTimeCap，如 180 分钟）做软上限钳制：模型算出的高位若明显
 	// 超过官方封顶，多半是异常高峰/叫号停滞，钳到 cap 并提示，避免给用户离谱的预测。
+	// 注意只钳 high 不动 low（low 已被 officialWait 抬高过），钳完若 low>high 再把 low 拉回 high。
 	if waitCap > 0 && waitRange.High > waitCap {
 		capped := &QueueWaitRange{Low: waitRange.Low, High: waitCap}
 		if capped.Low > capped.High {
@@ -379,12 +414,13 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap in
 		waitRange = capped
 		eta.SourceNote = "模型估算超过官方等位封顶 " + strconv.Itoa(waitCap) + " 分钟，已按封顶值收敛；可能为异常高峰，建议到小程序确认。"
 	}
+	// 时间区间：早=now+low，晚=now+high，中点取 (low+high)/2 作为单点估算。
 	early := now.Add(time.Duration(waitRange.Low) * time.Minute)
 	late := now.Add(time.Duration(waitRange.High) * time.Minute)
 	mid := now.Add(time.Duration((waitRange.Low+waitRange.High)/2) * time.Minute)
 	eta.EstimatedCalledAt = mid.Format(time.RFC3339)
 	eta.EstimatedCalledAtRange = &QueueTimeRange{Early: early.Format(time.RFC3339), Late: late.Format(time.RFC3339)}
-	// 建议出发：按偏早叫到时间倒减路程。
+	// 建议出发：按偏早叫到时间倒减路程（travelMinutes 钳到 >=0 防负）。
 	depart := early.Add(-time.Duration(max(0, travelMinutes)) * time.Minute)
 	if depart.Before(now) {
 		eta.ArrivalSuggestion = "建议现在就出发。"
@@ -421,6 +457,10 @@ func queueEtaSourceNote(source string) string {
 	}
 }
 
+// queueEtaRisk 按 source + 剩余桌数/官方等待给风险等级。
+// recent_speed 用剩余桌数（>200 high、>80 medium，否则 low）；
+// official 用官方等待分钟（>=120 high、>=60 medium）；history 一律 medium（历史不反映今日突变）；
+// 都没有则 unknown。
 func queueEtaRisk(source string, officialWait, remaining int, rate float64) string {
 	switch source {
 	case "recent_speed":
@@ -501,6 +541,9 @@ func buildQueuePressureCurve(ctx context.Context, storeID, date string, now time
 	remotePoints := buildRemoteQueuePressureCurvePoints(storeID, date, dateType, baseline)
 	out.RemotePoints = len(remotePoints)
 
+	// 按本机点数选择数据来源，优先级：本机足够 → 混合 → 仅远端 → 仅本机 → 无数据。
+	// queuePressureCurveLocalPreferredPoints（8）是「本机可信」的阈值；不足 8 点时混入远端基准补全，
+	// 让新用户第一次打开就能看到曲线，而不是一片空白。
 	switch {
 	case len(localPoints) >= queuePressureCurveLocalPreferredPoints:
 		out.Points = localPoints
@@ -594,6 +637,8 @@ func buildLocalQueuePressureCurvePoints(storeID, date string) []QueuePressureCur
 	return points
 }
 
+// queuePressureCurveRemoteAcc 把同一时段(bucket)的多条远端 rollup 按各自样本数加权累加，
+// 最后除以总权重得到加权均值。不同 rollup 的 SampleCount 可能差很多，等权平均会偏向小样本。
 type queuePressureCurveRemoteAcc struct {
 	samples   int
 	calledSum float64
@@ -604,6 +649,9 @@ type queuePressureCurveRemoteAcc struct {
 	waitN     int
 }
 
+// buildRemoteQueuePressureCurvePoints 把远端基准的 rollups（聚合后典型值）和 latest（当日实时快照）
+// 转成压力曲线点。rollup 按 SampleCount 加权合并到同一 bucket；latest 作为单独的高可信点追加。
+// 这样「远端基准」反映长期典型压力、「当日实时」反映今日突变，前端按 source rank 取最新覆盖。
 func buildRemoteQueuePressureCurvePoints(storeID, date, dateType string, baseline QueueBaselineExport) []QueuePressureCurvePoint {
 	storeID = strings.TrimSpace(storeID)
 	if storeID == "" || len(baseline.Rollups) == 0 && len(baseline.Latest) == 0 {
@@ -702,6 +750,9 @@ func mergeQueuePressureCurvePoints(remotePoints, localPoints []QueuePressureCurv
 	return sortAndDedupQueuePressureCurvePoints(points)
 }
 
+// sortAndDedupQueuePressureCurvePoints 按时间升序排，同一时刻只保留可信度最高的点。
+// 同 minute 的点按 source rank 降序排（local>remote_latest>remote_baseline），稳定排序后第一个即为最高优先，
+// 再用 seen map 按时间键去重，保证每个时刻只剩一个点，避免混排时双点叠加。
 func sortAndDedupQueuePressureCurvePoints(points []QueuePressureCurvePoint) []QueuePressureCurvePoint {
 	sort.SliceStable(points, func(i, j int) bool {
 		mi := queueDashboardBucketMinute(points[i].Time)
@@ -728,6 +779,8 @@ func sortAndDedupQueuePressureCurvePoints(points []QueuePressureCurvePoint) []Qu
 	return out
 }
 
+// queuePressureCurveSourceRank 给数据来源打可信度分：local(本机实际采样) 最高、
+// remote_latest(当日远端实时) 次之、remote_baseline(长期聚合) 最低。用于同时刻去重时保留更可信的点。
 func queuePressureCurveSourceRank(source string) int {
 	switch source {
 	case "local":
@@ -829,6 +882,8 @@ func liveWaitEstimate(ctx context.Context, storeID string, now time.Time) (Queue
 	if err != nil {
 		return QueueWaitRange{}, false
 	}
+	// 等待分钟优先级：ServerWaitMin(官方) > EtaMinutes(接口算的) > WaitGroups*2(粗估)。
+	// 每组约 2 分钟是经验值，只在接口完全不给等待分钟时兜底。
 	wait := panel.ServerWaitMin
 	if panel.EtaMinutes != nil && *panel.EtaMinutes > 0 {
 		wait = *panel.EtaMinutes
@@ -837,11 +892,13 @@ func liveWaitEstimate(ctx context.Context, storeID string, now time.Time) (Queue
 		wait = panel.WaitGroups * 2 // 接口没给等待分钟时按每组约 2 分钟粗估
 	}
 	if wait <= 0 {
+		// 连粗估都没有：营业且无排队就给一个 0-10 的低区间，否则放弃（返回 false）。
 		if panel.OnlineOpen && panel.WaitGroups == 0 {
 			return QueueWaitRange{Low: 0, High: 10}, true
 		}
 		return QueueWaitRange{}, false
 	}
+	// 上界 = wait*1.5，但至少 wait+10，保证 low/high 之间有足够缓冲表达不确定性。
 	high := wait + wait/2
 	if high < wait+10 {
 		high = wait + 10

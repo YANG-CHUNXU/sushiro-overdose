@@ -21,15 +21,25 @@ import (
 	"time"
 )
 
+// EngineStatus 是引擎对外暴露的运行状态，UI 据此切换按钮/文案。
+// 状态机概览：idle ←→ capturing（抓凭证） / booking（抢号） / sniping（狙击未来时段），
+// 运行结束（成功或失败）后落到 success / error，再由 finishRun/Stop 回到 idle。
+// 三个 running 态（capturing/booking/sniping）互斥，同一时刻只能有一个在跑，见 isRunningLocked。
 type EngineStatus string
 
 const (
-	EngineIdle      EngineStatus = "idle"
+	// EngineIdle 引擎空闲，可启动新任务；任何运行结束（含 Stop）后都归位到这里。
+	EngineIdle EngineStatus = "idle"
+	// EngineCapturing 正在跑 MITM 代理抓微信小程序凭证；代理起好、系统代理已设。
 	EngineCapturing EngineStatus = "capturing"
-	EngineBooking   EngineStatus = "booking"
-	EngineSniping   EngineStatus = "sniping"
-	EngineSuccess   EngineStatus = "success"
-	EngineError     EngineStatus = "error"
+	// EngineBooking 正在按偏好扫描并尝试预约当前可约时段（抢号主循环）。
+	EngineBooking EngineStatus = "booking"
+	// EngineSniping 正在等待/抢未开放的未来时段（放号时刻狙击），比 booking 更高频。
+	EngineSniping EngineStatus = "sniping"
+	// EngineSuccess 一次运行成功结束（已抢到预约），等待回到 idle。仅终态。
+	EngineSuccess EngineStatus = "success"
+	// EngineError 一次运行失败结束（凭证失效/连续失败等），等待回到 idle。仅终态。
+	EngineError EngineStatus = "error"
 )
 
 type EngineState struct {
@@ -59,7 +69,11 @@ type LogEntry struct {
 	Level   string `json:"level,omitempty"`
 }
 
-// BookingEngine manages capture and booking lifecycle, controllable from Web UI.
+// BookingEngine 管理抓凭证 / 抢号 / 狙击的完整生命周期，对外由 Web UI 驱动。
+// 并发模型：单进程内只有一个全局 engine 实例；UI 的 HTTP handler 在各自 goroutine 里
+// 调 Start*/Stop，运行循环在独立 goroutine 里跑 runCapture/runBooking/runSniper。
+// 所有对 state/cancel/done/tokens/proxy/pinnedSlot 的读写都须经 mu 保护（state 只读
+// 场景可用 RLock）。cancel+done 组合用于让 Stop 等运行循环真正退出后再回 idle。
 type BookingEngine struct {
 	mu     sync.RWMutex
 	state  EngineState
@@ -73,6 +87,7 @@ type BookingEngine struct {
 	pinnedSlot *TargetSlot
 }
 
+// engine 是全局单例：Web handler 和 CLI 都操作这一个实例，状态集中在它身上。
 var engine = &BookingEngine{
 	state: EngineState{Status: EngineIdle},
 }
@@ -110,6 +125,8 @@ func captureStatusForTokens(tokens *CapturedTokens) *CaptureStatusJSON {
 	}
 }
 
+// setState 更新状态文案并广播给 UI（经 SSE 总线）。运行循环中频繁调用，
+// 故写成「写 state + 发布快照」两步；读快照走 GetState 自带锁，避免调用方各处加锁。
 func (e *BookingEngine) setState(status EngineStatus, message string) {
 	e.mu.Lock()
 	e.state.Status = status
@@ -118,6 +135,10 @@ func (e *BookingEngine) setState(status EngineStatus, message string) {
 	bus.publish("engine", mustJSON(e.GetState()))
 }
 
+// finishRun 在一次运行（capture/booking/sniper）退出时收尾：清掉 cancel/done 句柄，
+// 释放 pinnedSlot。关键点：只有当传入的 done 仍是当前 e.done 时才清空——避免一次新
+// 运行已经把 e.done 换成新 channel 后，被旧运行的延迟 defer 误清掉。pinnedSlot 每次
+// 都清，保证「直接预约」是一次性的。
 func (e *BookingEngine) finishRun(done chan struct{}) {
 	e.mu.Lock()
 	if e.done == done {
@@ -129,6 +150,8 @@ func (e *BookingEngine) finishRun(done chan struct{}) {
 	bus.publish("engine", mustJSON(e.GetState()))
 }
 
+// abortStart 用于 Start* 入口在校验阶段就失败时的统一回滚：取消刚建的 ctx、走 finishRun
+// 回收句柄、关闭 done 通知等待者。注意 done 在这里 close，因此调用它的入口不会再 defer close。
 func (e *BookingEngine) abortStart(done chan struct{}, cancel context.CancelFunc) {
 	if cancel != nil {
 		cancel()
@@ -141,6 +164,8 @@ func (e *BookingEngine) addLog(msg string) {
 	e.addLogLevel(msg, "info")
 }
 
+// addLogLevel 追加一条日志并广播。内存里只留最近 500 条（环形截断，防止长时间运行无限增长），
+// 同时推一份给 SSE 订阅的 UI 和持久化日志（LogMessage）。level: info/warn/error。
 func (e *BookingEngine) addLogLevel(msg, level string) {
 	e.mu.Lock()
 	entry := LogEntry{
@@ -165,7 +190,10 @@ func (e *BookingEngine) GetLogs() []LogEntry {
 	return out
 }
 
-// StartCapture begins the MITM proxy to capture WeChat tokens.
+// StartCapture 启动 MITM 代理抓微信小程序凭证（X-App-Code、各 auth、UA 等）。
+// 流程：占住运行态 → 建独立 goroutine 跑 runCapture；返回 nil 表示已启动，
+// 引擎状态由 runCapture 在内部推进（装证书 → 起代理 → 设系统代理 → 轮询凭证）。
+// 若已有任务在跑（isRunningLocked）则拒绝并取消刚建的 ctx。
 func (e *BookingEngine) StartCapture() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
@@ -193,6 +221,9 @@ func (e *BookingEngine) StartCapture() error {
 	return nil
 }
 
+// runCapture 是抓凭证主流程：装 CA 证书 → 起 MITM 代理 → 设系统代理 → 每秒轮询凭证是否抓全。
+// 收到 ctx.Done（Stop/ResetCapture）即拆代理回 idle；抓全后落盘 SaveLocalConfig，自检仅作
+// 诊断不影响保存。接口发现模式（APIDiscoveryEnabled）下抓全后保持代理运行，方便用户继续点接口。
 func (e *BookingEngine) runCapture(ctx context.Context) {
 	doneActivity := markMainFlowActive("capturing")
 	defer doneActivity()
@@ -379,6 +410,10 @@ func (e *BookingEngine) StartBookingSlot(storeID, date, start, end string) error
 	return nil
 }
 
+// StartBooking 启动自动抢号循环（偏好扫描模式或 pinnedSlot 直接预约模式）。
+// 启动前的同步校验链：isRunningLocked 互斥 → 加载并校验凭证 → 拉偏好的目标门店
+// （pinnedSlot 非空时钉死单店）→ ValidateForReservation → GetTimeslots 快速验活。
+// 任一失败都走 abortStart 回滚并回 idle；全过则起 goroutine 跑 runBooking。
 func (e *BookingEngine) StartBooking() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
@@ -453,12 +488,23 @@ func (e *BookingEngine) StartBooking() error {
 	return nil
 }
 
+// isRunningLocked 判断是否正有任务在跑（三个 running 态之一）。调用方必须已持 mu。
+// 这是 StartCapture/StartBooking/StartSniper 互斥的依据：同一时刻只允许一个运行循环。
 func (e *BookingEngine) isRunningLocked() bool {
 	return e.state.Status == EngineCapturing ||
 		e.state.Status == EngineBooking ||
 		e.state.Status == EngineSniping
 }
 
+// runBooking 是抢号主循环。分两条路径：
+//  1. pinnedSlot 非空：直接预约该单个时段，最多重试 3 次，结果即终态（成功/失败均停）。
+//  2. 否则进入偏好扫描循环：每轮遍历目标门店 GetTimeslots，挑出满足偏好且可约的最佳时段尝试
+//     CreateReservation，成功即停；空轮 100ms 节流。
+//
+// 三类失败计数器协同：
+//   - authErrors：凭证类失败累计，达 3 次判定凭证失效、删配置并终止（见下方）。
+//   - errStreak：任意失败连续累计，达 5 次后额外 sleep 5s 给服务端喘口气再重试，避免被风控。
+//   - temporarySkips：5xx（isOfficialServerHTTPError）命中的时段冷却 30s 再试；booked 则永久跳过。
 func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings Settings, prefs UserPreferences) {
 	doneActivity := markMainFlowActive("booking")
 	defer doneActivity()
@@ -536,6 +582,13 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 		return
 	}
 
+	// 三个循环内状态（仅本 goroutine 访问，无需加锁）：
+	//   booked         : 已经判定「名额已满」(ErrNoReservationAvailable) 的时段，本轮永久跳过，
+	//                    避免对同一时段反复 CreateReservation 浪费配额。
+	//   temporarySkips : 5xx 命中的时段 → 冷却 30s（reservationServerErrorCooldown），到点自动恢复重试；
+	//                    区别于 booked：5xx 多是临时抖动，不应永久放弃。
+	//   errStreak      : 连续失败计数，达 5 触发一次 5s 退避再清零，防止被服务端限流/风控。
+	//   authErrors     : 凭证类失败（isAuthError）累计，达 3 判定凭证真失效，删配置并终止整个抢号。
 	var booked map[string]bool
 	temporarySkips := map[string]time.Time{}
 	errStreak := 0
@@ -559,6 +612,8 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				if isAuthError(err) {
 					noteAuthResult(err) // 凭证失败则标记 stale
 					authErrors++
+					// 凭证失败累计达 3 次才终止：单次 401 可能是偶发/代理抖动，连续 3 次
+					// 才较可靠地判定凭证真过期；避免一次抖动就清掉配置逼用户重抓。
 					if authErrors >= 3 {
 						e.addLogLevel("凭证失败，请重新捕获参数", "error")
 						sendNotification("寿司郎 - 凭证失败", "凭证参数已失效，请重新捕获")
@@ -572,10 +627,14 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 				}
 				errStreak++
 				if errStreak >= 5 {
+					// 连续 5 次失败（含非凭证类）：服务端可能在抽风或已限流，整体退避 5s 再继续，
+					// 比无脑每 100ms 重试更不容易被风控盯上。
 					e.addLog("连续失败过多，等待5秒...")
 					time.Sleep(5 * time.Second)
 					errStreak = 0
 				}
+				// 空转节流：100ms 一轮 ≈ 10 次/秒，在「还没放号、等时段刷新」时既不漏掉刚冒出来的
+				// 可约时段，又不至于把接口打爆；与狙击阶段（50ms）相比更温和。
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
@@ -617,6 +676,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			e.state.Message = fmt.Sprintf("查询中...第 %d 次，暂无目标时段", e.state.Attempts)
 			e.mu.Unlock()
 			bus.publish("engine", mustJSON(e.GetState()))
+			// 无目标空轮也节流 100ms，与上方失败分支一致，防止 CPU 空转 + 接口过载。
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
@@ -629,6 +689,7 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			if isAuthError(err) {
 				noteAuthResult(err) // 凭证失败则标记 stale
 				authErrors++
+				// CreateReservation 侧同样用 3 次门槛判定凭证失效，与 GetTimeslots 分支对称。
 				if authErrors >= 3 {
 					e.addLogLevel("凭证失败", "error")
 					sendNotification("寿司郎 - 凭证失败", "请重新捕获参数")
@@ -682,7 +743,8 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 	}
 }
 
-// Stop halts any running operation.
+// Stop 取消当前运行的任意任务（capture/booking/sniper）：cancel ctx、关代理、清系统代理，
+// 然后最多等运行 goroutine 3s 退出（done 关闭）再强制回 idle，避免状态卡在 running。
 func (e *BookingEngine) Stop() {
 	e.mu.Lock()
 	cancel := e.cancel

@@ -52,6 +52,9 @@ type NetTicketPlan struct {
 
 func netTicketPlanPath() string { return filepath.Join(AppDirPath(), netTicketPlanFile) }
 
+// LoadNetTicketPlan 从磁盘读取排队号计划。读取/解析失败都回退成一个 idle 空计划（不报错）。
+// 兼容旧数据：若状态是 error 但错误文案其实是「已发过号」，把它改判为 issued_unknown
+// （这是历史版本没区分这两种语义留下的脏数据修正）。
 func LoadNetTicketPlan() NetTicketPlan {
 	data, err := os.ReadFile(netTicketPlanPath())
 	if err != nil {
@@ -76,6 +79,8 @@ func SaveNetTicketPlan(p NetTicketPlan) error {
 	return atomicWriteFile(netTicketPlanPath(), data, 0o600)
 }
 
+// normalizeNetTicketPlan 规整排队号计划：补默认状态、以及关键的「终态自动失能」——
+// 计划已 success/error/expired 后还 Enabled 会被强行关掉，避免已结束的计划被下个 tick 当成有效计划继续触发。
 func normalizeNetTicketPlan(p NetTicketPlan, now time.Time) NetTicketPlan {
 	if now.IsZero() {
 		now = time.Now()
@@ -89,6 +94,9 @@ func normalizeNetTicketPlan(p NetTicketPlan, now time.Time) NetTicketPlan {
 	return p
 }
 
+// netTicketPlanTerminal 判断状态是否为终态（不可再推进）：
+// success/issued_unknown（已取到号）、expired（过窗口放弃）、error（失败放弃）。
+// armed/idle/retrying 都不是终态，tick 还会继续推进它们。
 func netTicketPlanTerminal(status string) bool {
 	switch strings.TrimSpace(status) {
 	case "success", "issued_unknown", "expired", "error":
@@ -98,6 +106,9 @@ func netTicketPlanTerminal(status string) bool {
 	}
 }
 
+// netTicketPlanFiredOn 判断计划在指定日期（默认今天）是否已「触发过」（成功或放弃都算）。
+// 触发的判定优先看 FiredDate 字段；老数据可能只有 FiredAt（RFC3339 时刻），则解析出日期比对，做向后兼容。
+// 用途：跨天判断「今天是否还要取号」，以及 Routine/采样的「今天是否已取到号」判断。
 func netTicketPlanFiredOn(p NetTicketPlan, day time.Time) bool {
 	if day.IsZero() {
 		day = time.Now()
@@ -147,6 +158,9 @@ func (s *NetTicketScheduler) Start(ctx context.Context) {
 	}()
 }
 
+// netTicketTick 是取号调度器每个 tick（约 20s）的入口，全程持 netTicketMu 串行化。
+// 它先推进 Routine 状态机（refreshNetTicketRoutineLocked），再处理「定时取号计划」：
+// 跨天清重试计数 -> 按 trigger_mode 分发到 time 或 on_open 触发路径。
 func netTicketTick(ctx context.Context) {
 	netTicketMu.Lock()
 	defer netTicketMu.Unlock()
@@ -328,6 +342,9 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 	sendQueueAlert(ctx, "🎫 已自动取号", DefaultString(plan.StoreName, plan.StoreID)+"：号码 "+DefaultString(ticket.Number, "(详见我的预约)"))
 }
 
+// resetNetTicketPlanAfterAuthReset 在用户重置本地凭证后调用：凭证变了，旧的自动取号计划已不可信，
+// 需要把它停掉并提示重新启用。已经成功的(success/issued_unknown)不动；armed/retrying 这类挂起中的
+// 状态转为 error，避免拿新凭证去续跑一个针对旧凭证设计的计划。
 func resetNetTicketPlanAfterAuthReset() {
 	plan := LoadNetTicketPlan()
 	if !plan.Enabled && plan.Status == "idle" && plan.LastError == "" {
@@ -356,6 +373,9 @@ func markNetTicketIssuedUnknown(plan *NetTicketPlan, message string) {
 	}
 }
 
+// recoverExistingNetTicket 处理「取号时被告知已有号」的情况：再查一次当前排队号状态，
+// 若确实有一张有效的排队号就当作成功恢复（applyNetTicketSuccess）；查不到或状态不像取号成功，
+// 则降级为 issued_unknown（号可能存在但无法确认），避免重复取号。
 func recoverExistingNetTicket(ctx context.Context, client *Client, plan *NetTicketPlan) (NetTicketPlan, bool) {
 	ticket, err := client.GetNetTicketStatus(ctx)
 	if err != nil || !netTicketLooksSuccessful(ticket) {
@@ -384,6 +404,8 @@ func applyNetTicketSuccess(ctx context.Context, client *Client, plan *NetTicketP
 	onBookingSuccess(ticket, storeName, storeAddress, "排队取号", "取号")
 }
 
+// netTicketLooksSuccessful 判断一张预约记录是否「像一张成功的排队号」：
+// 既要看起来成功，又不能是预约订座（订座记录不算排队号）。用于 recoverExistingNetTicket 的降级判断。
 func netTicketLooksSuccessful(ticket ReservationRecord) bool {
 	return reservationRecordLooksSuccessful(ticket) && !reservationRecordIsReservation(ticket)
 }
@@ -405,6 +427,9 @@ func clearNetTicketFire(date string) {
 	_ = os.Remove(filepath.Join(AppDirPath(), "netticket_fire_"+date+".lock"))
 }
 
+// netTicketTargetToday 把「HHMM」字符串解析成今天的目标时刻。
+// 左侧补零容忍简写（如 "900" -> "0900"）；小时>23 或分钟>59 视为非法。
+// 返回的 time 用 now 的 Location，保证与 tick 的 now 比较时区一致。
 func netTicketTargetToday(hhmm string, now time.Time) (time.Time, bool) {
 	hhmm = strings.TrimSpace(hhmm)
 	for len(hhmm) < 4 {

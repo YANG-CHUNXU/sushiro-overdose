@@ -9,13 +9,17 @@ import (
 	"net/http"
 )
 
+// telegramNotifier 走 Telegram Bot API。
 type telegramNotifier struct {
-	token  string
-	chatID string
+	token  string // Bot Token（由 @BotFather 颁发）
+	chatID string // 目标会话 ID（个人/群组）
 }
 
 func (t *telegramNotifier) Name() string { return "telegram" }
 
+// Send 调用 Telegram Bot sendMessage 接口 POST https://api.telegram.org/bot{token}/sendMessage，
+// 标题加粗、正文跟在后面，用 Markdown 解析。HTTP >=400 视为失败。
+// 注意：正文里若含 Markdown 特殊字符可能触发解析错误，此处未做转义。
 func (t *telegramNotifier) Send(ctx context.Context, title, content string) error {
 	text := fmt.Sprintf("*%s*\n\n%s", title, content)
 	payload := map[string]any{

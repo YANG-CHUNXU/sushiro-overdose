@@ -39,12 +39,16 @@ type queueBaselineTursoConfig struct {
 	AuthToken   string
 }
 
+// queueBaselineRemoteCacheEntry 是远端基准的内存缓存项。key 由凭证派生，loadedAt 用于 TTL 判断。
 type queueBaselineRemoteCacheEntry struct {
 	key      string
 	loadedAt time.Time
 	export   QueueBaselineExport
 }
 
+// queueBaselineRemoteCache 是进程内基准缓存。多 goroutine（趋势/曲线/dashboard）并发读远端基准，
+// 没有缓存会反复打 Turso/Cloudflare，所以用 sync.Mutex 包一个 map 缓存，TTL=15min。
+// key 区分不同凭证和不同门店，切换配置或查不同店不会串数据。
 var queueBaselineRemoteCache struct {
 	sync.Mutex
 	entries map[string]queueBaselineRemoteCacheEntry
@@ -54,6 +58,12 @@ func queueBaselineRemoteConfigPath() string {
 	return filepath.Join(AppDirPath(), queueBaselineRemoteConfigFile)
 }
 
+// LoadQueueBaselineRemoteConfig 解析远端基准凭证，优先级（高→低）：
+//  1. 专用 env：SUSHIRO_BASELINE_TURSO_URL / SUSHIRO_BASELINE_TURSO_TOKEN
+//  2. 通用 fallback env：TURSO_DATABASE_URL / TURSO_AUTH_TOKEN
+//  3. 本机配置文件 queue_baseline_remote.json
+//
+// env 覆盖文件，让 CI/容器环境不必落盘凭证。
 func LoadQueueBaselineRemoteConfig() QueueBaselineRemoteConfig {
 	var cfg QueueBaselineRemoteConfig
 	if data, err := os.ReadFile(queueBaselineRemoteConfigPath()); err == nil {
@@ -98,14 +108,20 @@ func (c queueBaselineTursoConfig) configured() bool {
 	return strings.TrimSpace(c.DatabaseURL) != "" && strings.TrimSpace(c.AuthToken) != ""
 }
 
+// cacheKey 用 DatabaseURL+AuthToken 拼成缓存键（中间用 \x00 分隔避免正常字符串碰撞）。
+// 凭证任一变化都会换键，保证切换 Turso 库/Token 后读到的是新源而非旧缓存。
 func (c queueBaselineTursoConfig) cacheKey() string {
 	return strings.TrimSpace(c.DatabaseURL) + "\x00" + strings.TrimSpace(c.AuthToken)
 }
 
+// queueBaselineStoreCacheKey 在基础键上再拼 storeID，让「按店拉取」和「全量拉取」分开缓存，
+// 避免单店结果覆盖全量结果。
 func queueBaselineStoreCacheKey(baseKey, storeID string) string {
 	return baseKey + "\x00store\x00" + strings.TrimSpace(storeID)
 }
 
+// getQueueBaselineRemoteCache 命中且未过 TTL(15min) 才返回；否则返回未命中。
+// 锁内只做 map 查找，不触发网络，保证并发读不阻塞。
 func getQueueBaselineRemoteCache(key string, now time.Time) (QueueBaselineExport, bool) {
 	queueBaselineRemoteCache.Lock()
 	defer queueBaselineRemoteCache.Unlock()
@@ -168,6 +184,9 @@ func loadRemoteQueueBaselineCached(ctx context.Context, now time.Time) (QueueBas
 	return loadRemoteQueueBaselineCloudCached(ctx, cloudCfg, now)
 }
 
+// loadRemoteQueueBaselineForStores 按门店列表拉远端基准：空列表走全量缓存，单店走按店缓存，
+// 多店则逐店拉再 mergeQueueBaselineExports 合并成一份。任一店失败立即返回错误（不部分降级），
+// 保证多店视图要么完整要么明确报错，避免半截数据误导。
 func loadRemoteQueueBaselineForStores(ctx context.Context, storeIDs []string, now time.Time) (QueueBaselineExport, QueueBaselineRemoteStatus, error) {
 	storeIDs = UniqueNonEmptyStrings(storeIDs)
 	if len(storeIDs) == 0 {
@@ -598,6 +617,9 @@ func fetchQueueBaselineStores(ctx context.Context, cfg queueBaselineTursoConfig)
 	return out, nil
 }
 
+// fetchQueueBaselineLatest 查询 store_latest（每店最新快照）。先尝试带叫号列(includeCalled=true)，
+// 若远端 schema 旧、没有 display_called_no/group_queues_json 列导致查询失败，则回退到不含叫号列的查询。
+// 这种两段式是为了兼容历史 Turso schema 迁移：旧库没有叫号列，新库才有。
 func fetchQueueBaselineLatest(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineLatest, string, error) {
 	latest, sourceUpdatedAt, err := fetchQueueBaselineLatestColumns(ctx, cfg, true)
 	if err == nil {
@@ -610,6 +632,8 @@ func fetchQueueBaselineLatest(ctx context.Context, cfg queueBaselineTursoConfig)
 	return nil, "", fmt.Errorf("查询当前门店排队失败: %w", err)
 }
 
+// fetchQueueBaselineLatestColumns 实际执行查询。includeCalled=true 时多选 display_called_no/group_queues_json 两列，
+// 对应 minColumns 从 13 变 15；列索引也随之偏移。sourceUpdatedAt 取所有行里最大的 collected_at。
 func fetchQueueBaselineLatestColumns(ctx context.Context, cfg queueBaselineTursoConfig, includeCalled bool) ([]QueueBaselineLatest, string, error) {
 	calledColumns := ""
 	if includeCalled {
@@ -727,6 +751,8 @@ func fetchQueueBaselineLatestForStoreColumns(ctx context.Context, cfg queueBasel
 	return out, sourceUpdatedAt, nil
 }
 
+// fetchQueueBaselineRollups 查询 store_bucket_rollups（聚合基准）。同样采用「先带叫号列、不行再回退」
+// 的两段式，兼容旧 schema 没有 called_sample_count/called_no_* 列的情况。
 func fetchQueueBaselineRollups(ctx context.Context, cfg queueBaselineTursoConfig) ([]QueueBaselineRollup, string, error) {
 	rollups, sourceUpdatedAt, err := fetchQueueBaselineRollupsColumns(ctx, cfg, true)
 	if err == nil {
@@ -921,6 +947,9 @@ type tursoValue struct {
 	Value json.RawMessage `json:"value,omitempty"`
 }
 
+// tursoQuery 通过 Turso 的 v2 pipeline HTTP API 执行一条只读 SELECT。
+// 鉴权用 Bearer AuthToken；所有查询都是只读 SELECT（无写入路径），凭证泄漏的最坏后果是基准数据被读。
+// 非 200 / 空 results / result.Error 都转成 Go error，让上游回退到本机/Cloudflare。
 func tursoQuery(ctx context.Context, cfg queueBaselineTursoConfig, sql string) (tursoQueryResultRaw, error) {
 	pipelineURL, host, err := tursoPipelineURL(cfg.DatabaseURL)
 	if err != nil {
@@ -975,6 +1004,9 @@ func tursoQuery(ctx context.Context, cfg queueBaselineTursoConfig, sql string) (
 	return result.Response.Result, nil
 }
 
+// tursoPipelineURL 把 libsql:// 数据库 URL 转成 https://.../v2/pipeline 的 HTTP 端点。
+// 返回完整 pipeline URL 和原始 host：后者需要作为 Host 头发出，因为 Turso 的路由基于 host。
+// 清掉 query/fragment，只接受 http/https/libsql scheme，拒绝其它 scheme 防止 SSRF。
 func tursoPipelineURL(rawURL string) (string, string, error) {
 	parsed, err := neturl.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -1044,6 +1076,8 @@ func tursoFloat(value tursoValue) float64 {
 	return 0
 }
 
+// redactQueueBaselineDatabaseURL 在对外状态里展示数据库 URL 前脱敏：去掉 user 信息、query、fragment，
+// 只留 scheme+host+path。避免把可能写在 URL 里的凭证片段回显给前端/日志。
 func redactQueueBaselineDatabaseURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

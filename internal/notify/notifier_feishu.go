@@ -10,12 +10,15 @@ import (
 	"time"
 )
 
+// feishuNotifier 走飞书自定义机器人 webhook。
 type feishuNotifier struct {
-	webhook string
+	webhook string // 飞书机器人的完整 webhook 地址（含 token）
 }
 
 func (f *feishuNotifier) Name() string { return "feishu" }
 
+// Send 向飞书 webhook POST 一张 interactive 卡片消息：标题放 header（绿色模板），
+// 正文走 lark_md 渲染 markdown，并附当前时间作为 note。HTTP >=400 视为失败。
 func (f *feishuNotifier) Send(ctx context.Context, title, content string) error {
 	card := map[string]any{
 		"config": map[string]any{"wide_screen_mode": true},
