@@ -1,11 +1,15 @@
-# 寿司郎排队助手
+# 寿司郎排队助手（Sushiro Overdose）
 
 吃寿司郎拿到号之后，告诉你大概几点叫到、几点该出门——不用一直盯着大屏自己算。
 
 一个开源的桌面工具，macOS / Windows / Linux 都能用，用 Go 写的。
 
 [![Latest Release](https://img.shields.io/github/v/release/Ryujoxys/sushiro-overdose?label=release)](https://github.com/Ryujoxys/sushiro-overdose/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/Ryujoxys/sushiro-overdose/ci.yml?branch=master&label=CI)](https://github.com/Ryujoxys/sushiro-overdose/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-supported-2d9c4a)](#下载)
+[![License](https://img.shields.io/badge/license-MIT-2d9c4a)](LICENSE)
+
+> 🔒 **安全 / 开源可审计**：全部代码公开，没有联网上传你的数据，只读寿司郎本来就公开的排队信息。MITM 抓包**只解密寿司郎域名**，其他流量原样透传。任何会动你账号的操作（取号、预约）都会先弹窗确认，不会偷偷执行。详见[数据与隐私](#数据和隐私)和 [SECURITY.md](SECURITY.md)。
 
 ---
 
@@ -67,13 +71,19 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 
 下载 [latest release](https://github.com/Ryujoxys/sushiro-overdose/releases/latest) 里的 `Sushiro-Overdose-*-macOS.dmg`，打开后拖到 Applications。
 
-> ⚠️ **首次打开会被拦**（DMG 没有付费开发者签名，这是正常的）。两种放行方式，任选其一：
+> ⚠️ **首次打开会被 macOS 拦，提示"无法验证开发者"——这不是安全问题，是没花钱买 Apple 开发者签名。**
 >
-> **方式一（推荐）**：双击 App 弹出「无法打开」后，打开 **系统设置 → 隐私与安全性**，往下滚会看到一条「已阻止使用 Sushiro Overdose」，点 **仍要打开**（可能要输密码）。之后再双击就能正常打开。
+> Apple 对未签名应用一律默认拦截（Gatekeeper），无论软件本身安不安全。本项目是开源的，代码全部可审计（见 [SECURITY.md](SECURITY.md)），不收集不上传任何个人数据。不放 App Store、不做公证签名是因为：① Apple 开发者账号要 $99/年，② 这个工具非商用、没收入。**所以需要你手动放行一次**，之后永久可用。三种放行方式任选其一：
 >
-> **方式二**：在「访达 → 应用程序」里 **右键** Sushiro Overdose → 选 **打开** → 弹窗里再点 **打开**。只需做一次，之后双击即可。
+> **方式一（推荐，最简单）**：双击 App 弹出「无法打开」后，打开 **系统设置 → 隐私与安全性**，往下滚会看到一条「已阻止使用 "Sushiro Overdose"」，点 **仍要打开**（可能要输密码）。之后再双击就能正常打开。
 >
-> 如果连「仍要打开」按钮都没有，在终端跑一次 `xattr -dr com.apple.quarantine "/Applications/Sushiro Overdose.app"` 彻底去掉隔离标记。
+> **方式二**：在「访达 → 应用程序」里 **按住 Control 点按**（或右键）Sushiro Overdose → 选 **打开** → 弹窗里再点 **打开**。只需做一次，之后双击即可。
+>
+> **方式三（终端，最彻底）**：如果上面两种都没出现「仍要打开」按钮（新版 macOS 有时会），打开「终端」粘贴回车，直接去掉隔离标记：
+>
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/Sushiro Overdose.app"
+> ```
 
 </details>
 
@@ -89,7 +99,9 @@ curl -fsSL https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/in
 </details>
 
 <details>
-<summary>从源码构建</summary>
+<summary>从源码构建 / 本地部署（详细）</summary>
+
+**前置要求**：Go 1.23+（[下载](https://go.dev/dl/)，或 `brew install go` / `choco install golang`）。本项目零外部依赖，纯标准库，不需要装任何第三方库。
 
 ```bash
 git clone https://github.com/Ryujoxys/sushiro-overdose.git
@@ -97,6 +109,43 @@ cd sushiro-overdose
 go build -o sushiro .
 ./sushiro
 ```
+
+运行后会自动打开浏览器（或弹独立窗口），地址默认是 `http://127.0.0.1:39871`。
+
+**各平台运行**：
+
+- **macOS / Linux**：`./sushiro`（如提示"无法验证开发者"，见上方的 macOS 放行说明）
+- **Windows**（PowerShell / CMD）：`go build -o sushiro.exe .` 然后 `.\sushiro.exe`；想后台无控制台窗口，加 `-ldflags "-H windowsgui"`
+
+**命令行参数**：
+
+```bash
+./sushiro              # 默认启动 Web UI（最常用）
+./sushiro web          # 同上，显式指定
+./sushiro --sampler-daemon-child   # 采样守护进程（一般不用手动跑，UI 里开）
+```
+
+**改端口**：默认从 `39871` 起，被占会自动递增。想固定端口或排查冲突：
+
+```bash
+# 先确认 39871 没被占
+lsof -i :39871        # macOS/Linux
+netstat -ano | findstr 39871   # Windows
+```
+
+程序只会绑定 `127.0.0.1`（本机回环），不会对外网监听，所以**别的设备访问不了**，这是刻意的安全设计。
+
+**数据存哪**：配置、本地采样历史、凭证都在用户目录下（`~/.sushiro/`，Windows 是 `%USERPROFILE%\.sushiro\`），删这个目录等于重置。日志在同目录的 `sushiro-log.txt`。
+
+**验证构建是否正常**：
+
+```bash
+go test ./...     # 跑全部测试
+go vet ./...      # 静态检查
+gofmt -l .        # 格式（无输出=OK）
+```
+
+**更新到最新版**：`git pull && go build -o sushiro .` 即可，数据目录不受影响。
 
 </details>
 
