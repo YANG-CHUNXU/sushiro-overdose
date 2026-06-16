@@ -327,11 +327,11 @@ func buildQueueAdvisorEta(targetNo, travelMinutes int, snapshot QueueObservation
 			hist = &r
 		}
 	}
-	return computeQueueEta(targetNo, snapshot.DisplayCalledNo, travelMinutes, store.Wait, rate, hist, now)
+	return computeQueueEta(targetNo, snapshot.DisplayCalledNo, travelMinutes, store.Wait, store.WaitTimeCap, rate, hist, now)
 }
 
 // computeQueueEta 是 ETA 估算的纯函数核心（不读磁盘），便于单测。
-func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait int, rate float64, hist *QueueWaitRange, now time.Time) *QueueAdvisorEta {
+func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap int, rate float64, hist *QueueWaitRange, now time.Time) *QueueAdvisorEta {
 	remaining := max(0, targetNo-calledNo)
 	eta := &QueueAdvisorEta{
 		TargetNo:        targetNo,
@@ -368,6 +368,17 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait int, rate f
 		return eta
 	}
 	eta.WaitMinutesRange = waitRange
+	// 用官方等位封顶值（waitTimeCap，如 180 分钟）做软上限钳制：模型算出的高位若明显
+	// 超过官方封顶，多半是异常高峰/叫号停滞，钳到 cap 并提示，避免给用户离谱的预测。
+	if waitCap > 0 && waitRange.High > waitCap {
+		capped := &QueueWaitRange{Low: waitRange.Low, High: waitCap}
+		if capped.Low > capped.High {
+			capped.Low = capped.High
+		}
+		eta.WaitMinutesRange = capped
+		waitRange = capped
+		eta.SourceNote = "模型估算超过官方等位封顶 " + strconv.Itoa(waitCap) + " 分钟，已按封顶值收敛；可能为异常高峰，建议到小程序确认。"
+	}
 	early := now.Add(time.Duration(waitRange.Low) * time.Minute)
 	late := now.Add(time.Duration(waitRange.High) * time.Minute)
 	mid := now.Add(time.Duration((waitRange.Low+waitRange.High)/2) * time.Minute)

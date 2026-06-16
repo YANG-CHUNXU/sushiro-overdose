@@ -281,24 +281,24 @@ func TestComputeQueueEta(t *testing.T) {
 	now := time.Date(2026, 6, 8, 12, 30, 0, 0, time.Local)
 
 	// 已轮到：targetNo==calledNo 是真的即将轮到。
-	done := computeQueueEta(950, 950, 0, 90, 2.0, nil, now)
+	done := computeQueueEta(950, 950, 0, 90, 0, 2.0, nil, now)
 	if done.RemainingGroups != 0 || done.Risk != "low" {
 		t.Errorf("done eta=%+v", done)
 	}
 
 	// 过号：targetNo<calledNo（哪怕只差一个号）也不能再说“已轮到、低风险”，
 	// 寿司郎过号不会自动叫到，需补号或重新取号，与 dashboard 路径口径一致。
-	passed := computeQueueEta(900, 950, 0, 90, 2.0, nil, now)
+	passed := computeQueueEta(900, 950, 0, 90, 0, 2.0, nil, now)
 	if passed.Risk != "high" || !strings.Contains(passed.ArrivalSuggestion, "过号") {
 		t.Errorf("passed eta should be high risk + 过号 hint, got %+v", passed)
 	}
-	passedBy1 := computeQueueEta(949, 950, 0, 90, 2.0, nil, now)
+	passedBy1 := computeQueueEta(949, 950, 0, 90, 0, 2.0, nil, now)
 	if passedBy1.Risk != "high" || !strings.Contains(passedBy1.ArrivalSuggestion, "过号") {
 		t.Errorf("passed-by-1 eta should be high risk + 过号 hint, got %+v", passedBy1)
 	}
 
 	// 正常：还差 178，速度 2/分 → ~89 分钟，带区间与出发建议。
-	eta := computeQueueEta(1078, 900, 25, 90, 2.0, nil, now)
+	eta := computeQueueEta(1078, 900, 25, 90, 0, 2.0, nil, now)
 	if eta.RemainingGroups != 178 {
 		t.Errorf("remaining=%d want 178", eta.RemainingGroups)
 	}
@@ -313,15 +313,36 @@ func TestComputeQueueEta(t *testing.T) {
 	}
 
 	// 数据不足：无速度、无官方、无历史 → 无法预估。
-	none := computeQueueEta(1078, 900, 0, 0, 0, nil, now)
+	none := computeQueueEta(1078, 900, 0, 0, 0, 0, nil, now)
 	if none.EstimatedCalledAt != "" || none.WaitMinutesRange != nil {
 		t.Errorf("insufficient data should not estimate: %+v", none)
 	}
 
 	// 只有官方等待：只能作为门店压力参考，不能包装成到号码的 ETA。
-	officialOnly := computeQueueEta(1078, 900, 0, 90, 0, nil, now)
+	officialOnly := computeQueueEta(1078, 900, 0, 90, 0, 0, nil, now)
 	if officialOnly.WaitMinutesRange != nil || officialOnly.Source != "official" || officialOnly.Risk != "high" {
 		t.Fatalf("official-only ETA should not estimate target number: %+v", officialOnly)
+	}
+}
+
+// TestComputeQueueEtaWaitCapGuard 验证官方等位封顶值（waitTimeCap）钳制离谱的高位估算。
+func TestComputeQueueEtaWaitCapGuard(t *testing.T) {
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.Local)
+	// 剩 200 桌、近窗速度偏慢 → 模型可能算出很高的高位；waitCap=180 应把高位钳到 180。
+	eta := computeQueueEta(1100, 900, 0, 0, 180, 1.0, &QueueWaitRange{Low: 150, High: 320}, now)
+	if eta.WaitMinutesRange == nil {
+		t.Fatalf("应有等待区间")
+	}
+	if eta.WaitMinutesRange.High > 180 {
+		t.Fatalf("高位 %d 超过官方封顶 180，应被钳制", eta.WaitMinutesRange.High)
+	}
+	if eta.SourceNote == "" {
+		t.Fatalf("超过封顶时应给出 SourceNote 提示")
+	}
+	// waitCap=0 表示无封顶信息，不应触发钳制（SourceNote 不含封顶提示）。
+	noCap := computeQueueEta(1100, 900, 0, 0, 0, 1.0, &QueueWaitRange{Low: 150, High: 320}, now)
+	if strings.Contains(noCap.SourceNote, "官方等位封顶") {
+		t.Fatalf("无封顶信息时不应给出封顶提示，实际 %q", noCap.SourceNote)
 	}
 }
 

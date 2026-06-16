@@ -268,7 +268,7 @@ func TestEmbeddedAdvancedOnlyMutationMarkers(t *testing.T) {
 		`id="p-sn" class="hid advanced-page"`,
 		`id="p-re" class="hid advanced-page"`,
 		`id="qdSamplingFold" class="card adv mt16 advanced-only"`,
-		`<details class="adv mt16 advanced-only">`,
+		`<details class="adv mt16 advanced-only" open>`,
 		`<details class="cd setting-fold settings-wide advanced-only" id="fold-sm"`,
 		`<details class="cd setting-fold settings-wide advanced-only" id="fold-in"`,
 		`<details class="cd setting-fold settings-wide advanced-only" id="fold-lo"`,
@@ -385,7 +385,7 @@ func TestEmbeddedCloudAuthVerifiesBaselineAfterLogin(t *testing.T) {
 		"toast('云端 GitHub 登录已完成')",
 		"const verifyCloud=cloudVerifyOnLoad;cloudVerifyOnLoad=false;await loadCloudAuth(verifyCloud)",
 		"catch(e){await loadCloudAuth(true);toast('云端连接失败：'",
-		"chip('Turso 基准'",
+		"chip('线上数据库'",
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少云端基准验证片段：%s", needle)
@@ -402,7 +402,7 @@ func TestEmbeddedDashboardExplainsCloudBaselineUse(t *testing.T) {
 		"const b=(d&&d.baseline)||{}",
 		"used=!!b.used",
 		"图表数据来源",
-		"线上 Turso 基准",
+		"线上数据库基准",
 		"rollup_count",
 		"latest_count",
 		"d.warnings",
@@ -419,21 +419,16 @@ func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
 		"(d&&d.trend)||[]",
 		"legend-turso-trend",
 		"trendMax=Math.max(1,...trend.map",
-		"queueTrendSourceLabel(trend[0]&&trend[0].source)",
 		"trendPts.length>1",
 		"历史排队趋势：绿色虚线是",
-		"独立归一化",
-		"线上 Turso 基准",
+		"线上数据库基准",
 		"total_queue_groups",
 		"sample_count",
 		"if(!points.length&&!hist.length&&!trend.length)",
 		"renderPressureChart(pc,{points:[],message:'选门店后",
-		// scope 对象的 JSON 字段是 mode（QueueDashboardScope.Mode），不是 scope；
-		// 写成 scope.scope 会是死分支，"全国"前缀永不显示。
-		"qdDashboardData.scope.mode==='all'",
 	} {
 		if !strings.Contains(indexHTML, needle) {
-			t.Errorf("indexHTML 缺少主图融合 Turso 历史趋势片段：%s", needle)
+			t.Errorf("indexHTML 缺少主图融合历史趋势片段：%s", needle)
 		}
 	}
 
@@ -442,13 +437,15 @@ func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
 		"归一化到右侧压力轴",
 		"未选门店时为全国，选门店后为本机",
 		"qdDashboardData.scope.scope==='all'",
+		"独立归一化", // 图例文案已精简，不再出现
+		"开店数",   // 用户不需要开店数，已从 tooltip/趋势条移除
 	} {
 		if strings.Contains(indexHTML, stale) {
 			t.Errorf("indexHTML 仍含应已删除的旧片段：%s", stale)
 		}
 	}
 
-	// 图例里的 Turso 趋势项必须按数据条件渲染：图例块内 legend-turso-trend 出现且其前缀
+	// 图例里的趋势项必须按数据条件渲染：图例块内 legend-turso-trend 出现且其前缀
 	// 必须紧跟 trendPts.length>1?，避免有人改回无条件渲染而测试漏过。
 	legendBlock := regexp.MustCompile(`<div class="chart-legend">[\s\S]*?</div>`).FindString(indexHTML)
 	if legendBlock == "" {
@@ -458,7 +455,7 @@ func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
 		t.Fatalf("chart-legend 块应恰好包含 1 个 legend-turso-trend，实际 %d", strings.Count(legendBlock, "legend-turso-trend"))
 	}
 	if !strings.Contains(legendBlock, `trendPts.length>1?'<span class="legend-turso-trend"`) {
-		t.Fatalf("Turso 趋势图例项必须由 trendPts.length>1? 条件包裹，避免无数据时误导")
+		t.Fatalf("趋势图例项必须由 trendPts.length>1? 条件包裹，避免无数据时误导")
 	}
 
 	noStore := regexp.MustCompile(`if\(!store\)\{[\s\S]*?return\}`).FindString(indexHTML)
@@ -466,7 +463,7 @@ func TestEmbeddedDashboardFusesTursoTrendIntoMainChart(t *testing.T) {
 		t.Fatalf("找不到 loadQueueAdvisorCard 的未选门店分支")
 	}
 	if strings.Contains(noStore, "qdDashboardData={}") {
-		t.Fatalf("未选门店时不应清空 qdDashboardData，否则会把已加载的 Turso 全局历史趋势覆盖成空态")
+		t.Fatalf("未选门店时不应清空 qdDashboardData，否则会把已加载的全局历史趋势覆盖成空态")
 	}
 }
 
@@ -488,9 +485,9 @@ func TestEmbeddedDashboardMainChartReadableOnMobile(t *testing.T) {
 func TestEmbeddedSettingsDoesNotOverstateCloudBaseline(t *testing.T) {
 	for _, needle := range []string{
 		"const cloudBaseOK=!!cloudAuth.baseline_connected",
-		"GitHub 已登录，Turso 基准已验证",
-		"GitHub 已登录，Turso 基准待验证",
-		"Turso 基准没有验证前，图表会继续优先用本机数据",
+		"GitHub 已登录，线上数据库已验证",
+		"GitHub 已登录，线上数据库待验证",
+		"验证前图表会继续优先用本机数据",
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少设置页云端基准状态片段：%s", needle)
@@ -499,6 +496,10 @@ func TestEmbeddedSettingsDoesNotOverstateCloudBaseline(t *testing.T) {
 	if strings.Contains(indexHTML, "全国排队基准已接入") {
 		t.Fatalf("设置页不应在只登录 GitHub 时宣称全国排队基准已接入")
 	}
+	// 不应再向用户暴露 Turso 字样。
+	if strings.Contains(indexHTML, "Turso") {
+		t.Errorf("indexHTML 不应再向用户暴露 Turso 字样")
+	}
 }
 
 func TestEmbeddedDashboardDataSourceDoesNotTreatConfiguredCloudAsLoggedIn(t *testing.T) {
@@ -506,7 +507,7 @@ func TestEmbeddedDashboardDataSourceDoesNotTreatConfiguredCloudAsLoggedIn(t *tes
 		"const configured=!!b.configured,authenticated=!!b.authenticated",
 		"else if(authenticated)",
 		"else if(configured)",
-		"云端服务已配置；登录 GitHub 后可验证 Turso 基准并叠加线上参考。",
+		"云端服务已配置；登录 GitHub 后可验证线上基准并叠加参考。",
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少图表数据源云端登录状态区分片段：%s", needle)
@@ -541,11 +542,11 @@ func TestEmbeddedDashboardCloudChartsDoNotRequireSushiroAuth(t *testing.T) {
 		"await loadCloudAuth(false);await loadSampling();",
 		"const cloudReady=!!(cloudAuth.baseline_connected||(qdDashboardData.baseline&&qdDashboardData.baseline.used))",
 		"const cloudLoggedIn=!!cloudAuth.connected",
-		"chip('图表',cloudReady?'GitHub 线上基准可用':cloudLoggedIn?'GitHub 已登录，基准待验证':'登录 GitHub 获取线上基准'",
+		"chip('图表',cloudReady?'线上基准可用':cloudLoggedIn?'GitHub 已登录，基准待验证':'登录 GitHub 获取线上基准'",
 		"const localNeedsAuth=!hc||q.needs_auth||q.auth_ok===false",
 		"const cloudButton=cloudReady||cloudLoggedIn?'<button class=\"bt bt-w bt-s\" onclick=\"loadQueueDashboard()\">刷新图表</button>':'<button class=\"bt bt-w bt-s\" onclick=\"startCloudLogin()\">登录 GitHub 获取线上基准</button>'",
 		"const actions=localNeedsAuth?cloudButton+'<button class=\"bt bt-o bt-s\" onclick=\"startAuth()\">小程序采集补强</button>'",
-		"图表走 GitHub/Turso；小程序通行证只用于本机采集补强。",
+		"图表走 GitHub + 线上数据库；小程序通行证只用于本机采集补强。",
 	} {
 		if !strings.Contains(indexHTML, needle) {
 			t.Errorf("indexHTML 缺少 GitHub 图表与小程序采集解耦片段：%s", needle)
