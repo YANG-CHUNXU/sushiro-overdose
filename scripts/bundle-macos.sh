@@ -21,6 +21,16 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 cp "${BINARY}" "${APP_DIR}/Contents/MacOS/sushiro"
 chmod +x "${APP_DIR}/Contents/MacOS/sushiro"
 
+# 应用图标：仓库里的 sushiro.icns 嵌进 .app，让 DMG 和安装后的 App 都显示 sushiro 图标。
+ICON_SRC="$(cd "$(dirname "$0")/.." && pwd)/assets/icons/sushiro.icns"
+if [ -f "${ICON_SRC}" ]; then
+  cp "${ICON_SRC}" "${APP_DIR}/Contents/Resources/sushiro.icns"
+  APP_ICON_KEY="<key>CFBundleIconFile</key><string>sushiro.icns</string>"
+else
+  echo "Warning: ${ICON_SRC} not found; .app will use default icon."
+  APP_ICON_KEY=""
+fi
+
 cat > "${APP_DIR}/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -52,6 +62,7 @@ cat > "${APP_DIR}/Contents/Info.plist" << PLIST
     <true/>
     <key>LSUIElement</key>
     <false/>
+    ${APP_ICON_KEY}
 </dict>
 </plist>
 PLIST

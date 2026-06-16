@@ -1,14 +1,15 @@
-sushiro
-sushiro.exe
-sushiro-linux
 # 旧命令名产物（重命名为 sushiro 前遗留）
-sushiro-overdose
-sushiro-overdose.exe
-sushiro-overdose-linux
-.sushiro_local.json
-.sushiro_state.json
-.sushiro_sniper.json
 .DS_Store
-dist/
 .claude/
+.sushiro_local.json
+.sushiro_sniper.json
+.sushiro_state.json
 .wrangler/
+/build/
+dist/
+sushiro
+sushiro-linux
+sushiro-overdose
+sushiro-overdose-linux
+sushiro-overdose.exe
+sushiro.exe

@@ -58,7 +58,7 @@
 irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/install.ps1 | iex
 ```
 
-首次运行如果遇到 SmartScreen，点「更多信息」再选「仍要运行」。
+首次运行如果遇到 SmartScreen 蓝屏，点 **「更多信息」** → 再点 **「仍要运行」**。
 
 </details>
 
@@ -67,7 +67,13 @@ irm https://raw.githubusercontent.com/Ryujoxys/sushiro-overdose/master/install/i
 
 下载 [latest release](https://github.com/Ryujoxys/sushiro-overdose/releases/latest) 里的 `Sushiro-Overdose-*-macOS.dmg`，打开后拖到 Applications。
 
-DMG 默认没签名。首次打开提示无法验证开发者时，到「系统设置 → 隐私与安全性」允许打开，或右键 App 选「打开」。
+> ⚠️ **首次打开会被拦**（DMG 没有付费开发者签名，这是正常的）。两种放行方式，任选其一：
+>
+> **方式一（推荐）**：双击 App 弹出「无法打开」后，打开 **系统设置 → 隐私与安全性**，往下滚会看到一条「已阻止使用 Sushiro Overdose」，点 **仍要打开**（可能要输密码）。之后再双击就能正常打开。
+>
+> **方式二**：在「访达 → 应用程序」里 **右键** Sushiro Overdose → 选 **打开** → 弹窗里再点 **打开**。只需做一次，之后双击即可。
+>
+> 如果连「仍要打开」按钮都没有，在终端跑一次 `xattr -dr com.apple.quarantine "/Applications/Sushiro Overdose.app"` 彻底去掉隔离标记。
 
 </details>
 
@@ -149,8 +155,8 @@ sushiro help            # 更多命令
 | 系统代理异常 | 运行 `sushiro repair-proxy`，或设置页点代理修复 |
 | 通知收不到 | 设置页点「测试通知」，确认 Webhook / Token 正确 |
 | 取号失败 E010 | 先重置认证，再重新获取通行证 |
-| macOS 打不开 App | 「系统设置 → 隐私与安全性」允许打开 |
-| Windows 被拦截 | 选「仍要运行」，或把 exe 加进杀毒白名单 |
+| macOS 打不开 App | 右键 App → 打开；或「系统设置 → 隐私与安全性 → 仍要打开」；还不行跑 `xattr -dr com.apple.quarantine "/Applications/Sushiro Overdose.app"` |
+| Windows 被拦截 | SmartScreen 点「更多信息」→「仍要运行」；或把 exe 加进杀毒白名单 |
 
 更详细的诊断跑 `sushiro doctor`。
 
