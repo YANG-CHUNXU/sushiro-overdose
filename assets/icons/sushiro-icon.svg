@@ -1,13 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- 简约品牌符号：正红圆角方底 + 白色握寿司剪影（三文鱼橙红 + 白米），无表情、扁平、强对比。
+  <!-- 简约品牌符号：正红方底填满画布（不画圆角，由系统加圆角掩码）+ 白色握寿司剪影。
        自己绘制的几何图形，非任何官方 logo。 -->
-  <defs>
-    <clipPath id="r"><rect width="1024" height="1024" rx="228" ry="228"/></clipPath>
-  </defs>
   <rect width="1024" height="1024" fill="#E60012"/>
-  <g clip-path="url(#r)">
-    <rect width="1024" height="1024" fill="#E60012"/>
-  </g>
 
   <!-- 米团底座（白色椭圆，侧视握寿司的饭） -->
   <ellipse cx="512" cy="640" rx="300" ry="150" fill="#FFFFFF"/>
@@ -15,7 +9,7 @@
   <!-- 顶部三文鱼料（橙红，圆弧拱形覆盖在米上） -->
   <path d="M212 600 Q 232 360 512 360 Q 792 360 812 600 Q 760 560 700 548 Q 608 524 512 524 Q 416 524 324 548 Q 264 560 212 600 Z" fill="#F26A3C"/>
 
-  <!-- 三文鱼纹理（浅色细斜线，表现鱼肉质感） -->
+  <!-- 三文鱼纹理 -->
   <path d="M300 500 Q 380 470 460 472" stroke="#FFB59A" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.85"/>
   <path d="M564 472 Q 644 470 724 500" stroke="#FFB59A" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.85"/>
   <path d="M420 432 Q 512 416 604 432" stroke="#FFB59A" stroke-width="9" fill="none" stroke-linecap="round" opacity="0.8"/>
