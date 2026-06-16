@@ -13,10 +13,9 @@ import (
 
 const sniperWindow = 3 * time.Minute
 
-// sniperPlanMu 串行化「读-改-写」整段操作：engine runSniper goroutine 每 50ms
+// sniperPlanMu 串行化所有狙击计划写入：engine runSniper goroutine 每 50ms
 // 调 UpdateSniperPlanTarget，UI 保存/handleSniperPlan 也写 plan，并发时会出现
-// lost-update（刚写 done 的 target 被 UI 的旧 plan 覆盖）。只保护 Update/Stop
-// 这两个复合操作；单独的 Load/Save 不持锁，Save 用 atomicWriteFile 保证写原子。
+// lost-update（刚写 done 的 target 被 UI 的旧 plan 覆盖）。
 var sniperPlanMu sync.Mutex
 
 type SniperPlanState struct {
@@ -104,6 +103,12 @@ func LoadSniperPlan(loc *time.Location) (SniperPlanState, error) {
 }
 
 func SaveSniperPlan(state SniperPlanState, loc *time.Location) error {
+	sniperPlanMu.Lock()
+	defer sniperPlanMu.Unlock()
+	return saveSniperPlanUnlocked(state, loc)
+}
+
+func saveSniperPlanUnlocked(state SniperPlanState, loc *time.Location) error {
 	state.UpdatedAt = time.Now().In(loc).Format(time.RFC3339)
 	state.Targets = normalizeLoadedPlanTargets(state.Targets, loc)
 	sortSniperPlanTargets(state.Targets)
@@ -114,6 +119,57 @@ func SaveSniperPlan(state SniperPlanState, loc *time.Location) error {
 	_ = os.MkdirAll(AppDirPath(), 0o755)
 	// 原子写：避免并发读读到半截 JSON。
 	return atomicWriteFile(sniperConfigPath(), data, 0o600)
+}
+
+func SaveSniperPlanReplacingTargets(targets []SniperTarget, loc *time.Location) (SniperPlanState, error) {
+	sniperPlanMu.Lock()
+	defer sniperPlanMu.Unlock()
+
+	current, err := LoadSniperPlan(loc)
+	if err != nil {
+		return SniperPlanState{}, err
+	}
+	runtimeByID := map[string]SniperPlanTarget{}
+	for _, target := range current.Targets {
+		if target.ID != "" && sniperPlanTargetHasRuntimeState(target) {
+			runtimeByID[target.ID] = target
+		}
+	}
+
+	next := NormalizeSniperPlan(targets, loc)
+	for i := range next.Targets {
+		if runtime, ok := runtimeByID[next.Targets[i].ID]; ok {
+			mergeSniperPlanRuntimeState(&next.Targets[i], runtime)
+		}
+	}
+	if err := saveSniperPlanUnlocked(next, loc); err != nil {
+		return SniperPlanState{}, err
+	}
+	return RefreshSniperPlan(next, time.Now().In(loc), loc), nil
+}
+
+func sniperPlanTargetHasRuntimeState(target SniperPlanTarget) bool {
+	if target.Attempts > 0 || target.LastError != "" || target.LastAttemptAt != "" || target.CompletedAt != "" {
+		return true
+	}
+	switch strings.TrimSpace(target.Status) {
+	case "running", "done", "error", "stopped", "expired":
+		return true
+	default:
+		return false
+	}
+}
+
+func mergeSniperPlanRuntimeState(target *SniperPlanTarget, runtime SniperPlanTarget) {
+	target.Status = runtime.Status
+	target.CountdownSeconds = runtime.CountdownSeconds
+	target.Attempts = runtime.Attempts
+	target.LastError = runtime.LastError
+	target.LastAttemptAt = runtime.LastAttemptAt
+	target.CompletedAt = runtime.CompletedAt
+	if runtime.OpenAt != "" {
+		target.OpenAt = runtime.OpenAt
+	}
 }
 
 func RefreshSniperPlan(state SniperPlanState, now time.Time, loc *time.Location) SniperPlanState {
@@ -189,7 +245,7 @@ func UpdateSniperPlanTarget(targetID string, loc *time.Location, update func(*Sn
 			break
 		}
 	}
-	_ = SaveSniperPlan(state, loc)
+	_ = saveSniperPlanUnlocked(state, loc)
 }
 
 func StopRemainingSniperPlanTargetsAfterSuccess(doneTargetID string, loc *time.Location) {
@@ -216,7 +272,7 @@ func StopRemainingSniperPlanTargetsAfterSuccess(doneTargetID string, loc *time.L
 		}
 	}
 	if changed {
-		_ = SaveSniperPlan(state, loc)
+		_ = saveSniperPlanUnlocked(state, loc)
 	}
 }
 

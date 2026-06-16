@@ -522,6 +522,8 @@ func handleNetTicketPlan(w http.ResponseWriter, r *http.Request) {
 		plan.Number = ""
 		plan.TicketID = 0
 		plan.LastError = ""
+		plan.ServerRetryCount = 0
+		plan.RetryDate = ""
 		if body.Enabled {
 			plan.Status = "armed"
 		} else {

@@ -565,6 +565,58 @@ func TestEmbeddedQueueDashboardRefreshesSamplingCardAfterBaselineLoad(t *testing
 	}
 }
 
+func TestEmbeddedQueueDashboardInvalidatesAdvisorOnReloadStart(t *testing.T) {
+	block := regexp.MustCompile(`async function loadQueueDashboard\(\)\{[\s\S]*?\n?function loadQueueAdvisorCard`).FindString(indexHTML)
+	if block == "" {
+		t.Fatalf("找不到 loadQueueDashboard 函数")
+	}
+	for _, needle := range []string{
+		"const token=++qdDashToken;qdRefreshToken++;",
+		"if(token!==qdDashToken)return",
+		"if(token===qdDashToken)loadQueueAdvisorCard()",
+	} {
+		if !strings.Contains(block, needle) {
+			t.Errorf("loadQueueDashboard 缺少防旧请求覆盖片段：%s\n%s", needle, block)
+		}
+	}
+	if strings.Contains(block, "const token=++qdDashToken;try") {
+		t.Fatalf("loadQueueDashboard 应在发起 dashboard 请求时同步递增 qdRefreshToken，让旧 advisor/curve 回包失效")
+	}
+}
+
+func TestEmbeddedQueueDashboardKeepsBaselineWhenTargetHasNoStore(t *testing.T) {
+	block := regexp.MustCompile(`async function loadQueueDashboard\(\)\{[\s\S]*?\n?function loadQueueAdvisorCard`).FindString(indexHTML)
+	if block == "" {
+		t.Fatalf("找不到 loadQueueDashboard 函数")
+	}
+	for _, stale := range []string{
+		"if(target>0&&!qdSelected.length){qdDashboardData={}",
+		"选择门店后才能判断你的号码，避免用其他门店曲线误判。</div>';renderDashboardSamplingCard();loadQueueAdvisorCard();return",
+	} {
+		if strings.Contains(block, stale) {
+			t.Fatalf("填号码但未选门店时不应提前清空/返回，否则 GitHub/全局基准图会被置空：%s\n%s", stale, block)
+		}
+	}
+}
+
+func TestEmbeddedMobileMediaQueriesDoNotOverrideNarrowPhones(t *testing.T) {
+	if !strings.Contains(indexHTML, "@media(min-width:601px) and (max-width:768px)") {
+		t.Fatalf("600-768px 双列规则必须带 min-width:601px，避免覆盖 max-width:600px 的单列手机布局")
+	}
+	if strings.Contains(indexHTML, "/* 中等宽度（平板竖屏 / 大手机 600-768px）：多列网格降为 2 列，避免拥挤 */\n@media(max-width:768px)") {
+		t.Fatalf("中等宽度媒体查询不应是裸 max-width:768px，否则 600px 以下也会被改回两列")
+	}
+}
+
+func TestEmbeddedQueueEtaLabelsUseNumberUnits(t *testing.T) {
+	if !strings.Contains(indexHTML, "预计 '+shortTime(er.early)+'-'+shortTime(er.late)+' 叫到你'+(adv.eta.remaining_groups>0?('（还差 '+fmtN(adv.eta.remaining_groups)+' 号）'):'')") {
+		t.Fatalf("ETA 区间带应把 remaining_groups 展示为还差 N 号")
+	}
+	if strings.Contains(indexHTML, "adv.eta.remaining_groups)+' 桌") {
+		t.Fatalf("ETA remaining_groups 代表叫号差值，不应展示为“桌”")
+	}
+}
+
 // TestEmbeddedJavaScriptSyntax 用 node --check 校验内嵌 JS 语法；环境没有 node 时跳过，
 // 因此不引入硬依赖。CI 的 runner 自带 node，可作为语法门禁。
 func TestEmbeddedJavaScriptSyntax(t *testing.T) {

@@ -75,8 +75,8 @@ func handleSniperPlan(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		plan := NormalizeSniperPlan(targets, loc)
-		if err := SaveSniperPlan(plan, loc); err != nil {
+		plan, err := SaveSniperPlanReplacingTargets(targets, loc)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

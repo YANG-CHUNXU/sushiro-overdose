@@ -290,8 +290,8 @@ func fireNetTicket(ctx context.Context, plan NetTicketPlan, now time.Time, today
 			plan.ServerRetryCount++
 			plan.RetryDate = today
 			plan.LastError = friendlyNetTicketError(err)
-			// 超过重试上限：放弃当天取号，保留 FiredDate 占位避免再次触发，转 error 并通知。
-			if plan.ServerRetryCount > netTicketMaxServerRetries {
+			// 达到重试上限：放弃当天取号，保留 FiredDate 占位避免再次触发，转 error 并通知。
+			if plan.ServerRetryCount >= netTicketMaxServerRetries {
 				plan.Enabled = false
 				plan.Status = "error"
 				plan.FiredDate = today

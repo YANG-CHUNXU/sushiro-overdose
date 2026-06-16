@@ -1,16 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- 简约品牌符号：正红方底填满画布（不画圆角，由系统加圆角掩码）+ 白色握寿司剪影。
-       自己绘制的几何图形，非任何官方 logo。 -->
-  <rect width="1024" height="1024" fill="#E60012"/>
+  <!-- App icon source: transparent canvas + native-sized rounded square.
+       The icon is intentionally inset so it matches nearby macOS/Windows app icons. -->
+  <defs>
+    <linearGradient id="badge" x1="512" y1="76" x2="512" y2="908" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F20B18"/>
+      <stop offset="1" stop-color="#C91620"/>
+    </linearGradient>
+    <filter id="shadow" x="44" y="44" width="936" height="936" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity=".18"/>
+    </filter>
+  </defs>
+
+  <rect x="88" y="76" width="848" height="848" rx="198" fill="url(#badge)" filter="url(#shadow)"/>
 
   <!-- 米团底座（白色椭圆，侧视握寿司的饭） -->
-  <ellipse cx="512" cy="640" rx="300" ry="150" fill="#FFFFFF"/>
+  <ellipse cx="512" cy="584" rx="248" ry="116" fill="#FFFFFF"/>
+  <ellipse cx="512" cy="618" rx="224" ry="82" fill="#F7F7F2" opacity=".62"/>
 
   <!-- 顶部三文鱼料（橙红，圆弧拱形覆盖在米上） -->
-  <path d="M212 600 Q 232 360 512 360 Q 792 360 812 600 Q 760 560 700 548 Q 608 524 512 524 Q 416 524 324 548 Q 264 560 212 600 Z" fill="#F26A3C"/>
+  <path d="M264 546 Q 284 356 512 356 Q 740 356 760 546 Q 714 514 662 504 Q 584 488 512 488 Q 440 488 362 504 Q 310 514 264 546 Z" fill="#F26A3C"/>
 
   <!-- 三文鱼纹理 -->
-  <path d="M300 500 Q 380 470 460 472" stroke="#FFB59A" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.85"/>
-  <path d="M564 472 Q 644 470 724 500" stroke="#FFB59A" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.85"/>
-  <path d="M420 432 Q 512 416 604 432" stroke="#FFB59A" stroke-width="9" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M334 458 Q 398 434 462 436" stroke="#FFBEA6" stroke-width="10" fill="none" stroke-linecap="round" opacity=".88"/>
+  <path d="M562 436 Q 626 434 690 458" stroke="#FFBEA6" stroke-width="10" fill="none" stroke-linecap="round" opacity=".88"/>
+  <path d="M420 402 Q 512 384 604 402" stroke="#FFBEA6" stroke-width="9" fill="none" stroke-linecap="round" opacity=".82"/>
 </svg>

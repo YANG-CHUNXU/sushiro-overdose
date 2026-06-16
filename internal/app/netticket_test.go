@@ -3,6 +3,10 @@ package app
 import . "github.com/Ryujoxys/sushiro-overdose/internal/notify"
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -163,6 +167,55 @@ func TestNetTicketServerRetryNotResetSameDay(t *testing.T) {
 	}
 	if plan.ServerRetryCount != 3 {
 		t.Fatalf("同一天重试计数应保持 3，实际 %d", plan.ServerRetryCount)
+	}
+}
+
+func TestHandleNetTicketPlanResetsServerRetryState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := SaveNetTicketPlan(NetTicketPlan{
+		Enabled:          true,
+		StoreID:          "3006",
+		StoreName:        "旧门店",
+		Status:           "retrying",
+		TargetTime:       "1800",
+		ServerRetryCount: netTicketMaxServerRetries,
+		RetryDate:        time.Now().Format("2006-01-02"),
+		LastError:        "官方服务临时繁忙",
+	}); err != nil {
+		t.Fatalf("SaveNetTicketPlan() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/queue/ticket/plan", strings.NewReader(`{
+		"enabled": true,
+		"store": "3015",
+		"store_name": "新门店",
+		"trigger_mode": "time",
+		"target_time": "1900"
+	}`))
+	rr := httptest.NewRecorder()
+	handleNetTicketPlan(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	got := LoadNetTicketPlan()
+	if got.ServerRetryCount != 0 || got.RetryDate != "" {
+		t.Fatalf("重新设定计划应清空旧服务端重试状态，got count=%d retryDate=%q plan=%+v", got.ServerRetryCount, got.RetryDate, got)
+	}
+	if got.Status != "armed" || got.StoreID != "3015" || got.TargetTime != "1900" {
+		t.Fatalf("重新设定后的计划异常: %+v", got)
+	}
+}
+
+func TestNetTicketServerRetryLimitStopsAtConfiguredLimit(t *testing.T) {
+	src, err := os.ReadFile("netticket.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "if plan.ServerRetryCount >= netTicketMaxServerRetries") {
+		t.Fatalf("服务端重试计数达到 netTicketMaxServerRetries 时就应停止；不要等到超过上限后才停止")
 	}
 }
 

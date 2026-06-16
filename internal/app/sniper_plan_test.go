@@ -115,6 +115,40 @@ func TestStopRemainingSniperPlanTargetsAfterSuccess(t *testing.T) {
 	}
 }
 
+func TestSaveSniperPlanReplacingTargetsPreservesRuntimeState(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	loc := testLocation(t)
+	future := time.Now().In(loc).Add(60 * 24 * time.Hour).Format("20060102")
+	target := SniperTarget{Date: future, StartAfter: "193000", StartBefore: "203000", StoreID: "001"}
+	plan := NormalizeSniperPlan([]SniperTarget{target}, loc)
+	if len(plan.Targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(plan.Targets))
+	}
+	completedAt := time.Now().In(loc).Format(time.RFC3339)
+	plan.Targets[0].Status = "done"
+	plan.Targets[0].Attempts = 17
+	plan.Targets[0].LastAttemptAt = completedAt
+	plan.Targets[0].CompletedAt = completedAt
+	if err := SaveSniperPlan(plan, loc); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := SaveSniperPlanReplacingTargets([]SniperTarget{target}, loc); err != nil {
+		t.Fatalf("SaveSniperPlanReplacingTargets() error = %v", err)
+	}
+
+	got, err := LoadSniperPlan(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(got.Targets))
+	}
+	if got.Targets[0].Status != "done" || got.Targets[0].Attempts != 17 || got.Targets[0].CompletedAt != completedAt {
+		t.Fatalf("运行中/已完成状态不应被 UI 保存覆盖: %#v", got.Targets[0])
+	}
+}
+
 func TestValidateSniperTargetsAcceptsWebDateAndTime(t *testing.T) {
 	loc := testLocation(t)
 	settings := Settings{StoreIDs: []string{"001"}, Location: loc}
