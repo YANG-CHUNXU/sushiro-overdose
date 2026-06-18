@@ -569,7 +569,7 @@ func TestCalledRateWeightedPrefersRecent(t *testing.T) {
 	obs2 := []QueueObservation{
 		obsAt(store, 100, 50, 60, now.Add(-50*time.Minute)),
 		obsAt(store, 140, 45, 55, now.Add(-10*time.Minute)), // 40min 推 40 → 1.0
-		obsAt(store, 170, 40, 50, now),                       // 10min 推 30 → 3.0
+		obsAt(store, 170, 40, 50, now),                      // 10min 推 30 → 3.0
 	}
 	rate, _, _, _, ok := calledRatePerMinuteWeighted(obs2, now, 60*time.Minute)
 	if !ok {
@@ -588,7 +588,7 @@ func TestCalledRateWeightedDenseConvergesToEqual(t *testing.T) {
 	obs := []QueueObservation{
 		obsAt(store, 100, 50, 60, now.Add(-2*time.Minute)),
 		obsAt(store, 110, 45, 55, now.Add(-1*time.Minute)), // 1min 推 10 → 10
-		obsAt(store, 120, 40, 50, now),                      // 1min 推 10 → 10
+		obsAt(store, 120, 40, 50, now),                     // 1min 推 10 → 10
 	}
 	rate, _, _, _, ok := calledRatePerMinuteWeighted(obs, now, 15*time.Minute)
 	if !ok {

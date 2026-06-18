@@ -305,7 +305,7 @@ func rateTrendRatio(ivs []callRateInterval, halfLife float64) float64 {
 	if third < 1 {
 		third = 1
 	}
-	nearCutoff := mids[third]      // 最近 1/3 的边界
+	nearCutoff := mids[third]          // 最近 1/3 的边界
 	farCutoff := mids[len(mids)-third] // 最远 1/3 的边界
 
 	var nearW, nearR, farW, farR float64

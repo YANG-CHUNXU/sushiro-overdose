@@ -65,9 +65,9 @@ type QueueAlertConfig struct {
 
 // queueAlertRuleState 是单条规则的去重状态。
 type queueAlertRuleState struct {
-	Armed            bool   `json:"armed"`              // wait_below 是否已武装（等待曾高于阈值）
-	FiredAt          string `json:"fired_at"`           // 上次推送时间
-	FiredOnce        bool   `json:"fired_once"`         // called_reach 是否已推送过
+	Armed            bool   `json:"armed"`               // wait_below 是否已武装（等待曾高于阈值）
+	FiredAt          string `json:"fired_at"`            // 上次推送时间
+	FiredOnce        bool   `json:"fired_once"`          // called_reach 是否已推送过
 	LastSeenCalledNo int    `json:"last_seen_called_no"` // called_reach：上一轮观测到的叫号，用于检测回退
 }
 

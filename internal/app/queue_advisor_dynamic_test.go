@@ -221,7 +221,7 @@ func TestDynamicUnevenSampling(t *testing.T) {
 	no := 1000
 	prevMin := -27
 	for _, m := range offs {
-		no = 1000 + (27 + m) * 2 // 严格按匀速 2组/分 的叫号
+		no = 1000 + (27+m)*2 // 严格按匀速 2组/分 的叫号
 		_ = prevMin
 		allSamples = append(allSamples, dynSample(store, now, m, no))
 	}
@@ -283,9 +283,9 @@ func TestDynamicRollingStability(t *testing.T) {
 	// 从 -40min 开始，每采一次（t 推进1min）就重新预测。
 	no := 1000
 	type snap struct {
-		tMin     int
-		predMin  float64 // 预测的等待中点分钟
-		trueMin  float64 // 真实剩余等待
+		tMin    int
+		predMin float64 // 预测的等待中点分钟
+		trueMin float64 // 真实剩余等待
 	}
 	var snaps []snap
 
@@ -461,6 +461,3 @@ func TestDynamicLongWindowTrend(t *testing.T) {
 		t.Errorf("长窗趋势应降低偏移：A=%.0f B=%.0f（B 更差）", math.Abs(midA-trueWait), math.Abs(midB-trueWait))
 	}
 }
-
-
-

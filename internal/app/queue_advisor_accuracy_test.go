@@ -58,8 +58,18 @@ func reportScenario(t *testing.T, name string, rate float64, cv float64, n int, 
 	}
 }
 
-func lowOr(wr *QueueWaitRange) int  { if wr == nil { return -1 }; return wr.Low }
-func highOr(wr *QueueWaitRange) int { if wr == nil { return -1 }; return wr.High }
+func lowOr(wr *QueueWaitRange) int {
+	if wr == nil {
+		return -1
+	}
+	return wr.Low
+}
+func highOr(wr *QueueWaitRange) int {
+	if wr == nil {
+		return -1
+	}
+	return wr.High
+}
 
 // TestAccuracyOverall 对比新算法 vs 等权基线，验证各优化整体上让预测更准。
 func TestAccuracyOverall(t *testing.T) {
@@ -71,7 +81,7 @@ func TestAccuracyOverall(t *testing.T) {
 	{
 		pts := []struct{ min, no int }{}
 		for m := -27; m <= 0; m += 3 { // 每3分钟一个点（30min窗内）
-			pts = append(pts, struct{ min, no int }{m, 1000 + (27 + m) * 2})
+			pts = append(pts, struct{ min, no int }{m, 1000 + (27+m)*2})
 		}
 		obs := scenarioObs(store, now, pts)
 		obs = recentStoreObservations(obs, store, now, window)
@@ -92,10 +102,10 @@ func TestAccuracyOverall(t *testing.T) {
 	{
 		pts := []struct{ min, no int }{}
 		for m := -25; m <= -10; m += 5 { // 前15min: 15min叫15号 → 1组/分
-			pts = append(pts, struct{ min, no int }{m, 1000 + (25 + m) * 1})
+			pts = append(pts, struct{ min, no int }{m, 1000 + (25+m)*1})
 		}
 		for m := -9; m <= 0; m++ { // 近10min: 10min叫40号 → 4组/分
-			pts = append(pts, struct{ min, no int }{m, 1015 + (10 + m) * 4})
+			pts = append(pts, struct{ min, no int }{m, 1015 + (10+m)*4})
 		}
 		obs := scenarioObs(store, now, pts)
 		obs = recentStoreObservations(obs, store, now, window) // 按窗过滤（真实路径）
@@ -116,7 +126,7 @@ func TestAccuracyOverall(t *testing.T) {
 	{
 		pts := []struct{ min, no int }{}
 		for m := -27; m <= 0; m += 3 {
-			no := 1000 + (27 + m) * 2
+			no := 1000 + (27+m)*2
 			pts = append(pts, struct{ min, no int }{m, no})
 		}
 		// 在 -15min 处插入一次跳变 +50（模拟补号）。
@@ -148,7 +158,7 @@ func TestAccuracyOverall(t *testing.T) {
 		pts := []struct{ min, no int }{}
 		// [-27,-15]: 12min叫24号 → 2组/分，叫到 1024
 		for m := -27; m <= -15; m += 3 {
-			pts = append(pts, struct{ min, no int }{m, 1000 + (27 + m) * 2})
+			pts = append(pts, struct{ min, no int }{m, 1000 + (27+m)*2})
 		}
 		// [-15,-3]: 停滞12min，叫号卡在 1024
 		for m := -12; m <= -3; m += 3 {
@@ -156,7 +166,7 @@ func TestAccuracyOverall(t *testing.T) {
 		}
 		// [-3,0]: 恢复叫号 2组/分
 		for m := -2; m <= 0; m++ {
-			pts = append(pts, struct{ min, no int }{m, 1024 + (2 + m) * 2})
+			pts = append(pts, struct{ min, no int }{m, 1024 + (2+m)*2})
 		}
 		obs := scenarioObs(store, now, pts)
 		obs = recentStoreObservations(obs, store, now, window)
@@ -235,4 +245,9 @@ func TestAccuracyWeightedVsEqual(t *testing.T) {
 	}
 }
 
-func abs(x float64) float64 { if x < 0 { return -x }; return x }
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
