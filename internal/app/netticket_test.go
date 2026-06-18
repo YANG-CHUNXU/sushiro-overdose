@@ -223,9 +223,13 @@ func TestNetTicketRoutinePlansReminderFromHistoricalMealPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	// 用门店时区(UTC+8)构造时刻，与餐时/取号窗口同时区：餐时是北京时间，parseHHMM 也按 +8 解析，
+	// now 必须是 +8 的「早9点」才能正确比较先后。否则 UTC CI 上 time.Local=UTC，9点 UTC=17点北京，
+	// 已过中午取号窗口，会被误判 missed。
+	cst := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 6, 9, 9, 0, 0, 0, cst)
 	saveRoutineNotifyForTest(t)
-	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, cst))
 
 	resp := saveNetTicketRoutineConfigLocked(NetTicketRoutine{
 		Enabled:             true,
@@ -273,9 +277,10 @@ func TestNetTicketRoutineDoesNotOverwriteManualPlan(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	now := time.Date(2026, 6, 9, 9, 0, 0, 0, time.Local)
+	cst := time.FixedZone("CST", 8*3600) // 同上：用门店时区构造，跨 TZ 一致。
+	now := time.Date(2026, 6, 9, 9, 0, 0, 0, cst)
 	saveRoutineNotifyForTest(t)
-	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, time.Local))
+	appendRoutineHistoryForTest(t, time.Date(2026, 6, 2, 12, 0, 0, 0, cst))
 	if err := SaveNetTicketPlan(NetTicketPlan{
 		Enabled:    true,
 		StoreID:    "manual",
