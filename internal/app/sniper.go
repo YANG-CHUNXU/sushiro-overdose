@@ -267,7 +267,12 @@ func sniperOpenTime(target SniperTarget, loc *time.Location) time.Time {
 	if err != nil {
 		return time.Time{}
 	}
-	hour, minute, _, _ := ParseCompactTime(target.StartAfter)
+	hour, minute, _, err := ParseCompactTime(target.StartAfter)
+	if err != nil {
+		// 非法 StartAfter（畸形时间串）必须返回零值，否则下游会用 hour=0/minute=0
+		// 构造出「目标日期前 30 天 00:00」的非零时间，让无效目标伪装成有效、永久挂 pending/open。
+		return time.Time{}
+	}
 
 	// Open time = target date - 30 days, at the target time
 	openDay := day.AddDate(0, 0, -30)

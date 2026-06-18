@@ -126,7 +126,7 @@ func MigrateOldConfig() {
 		return
 	}
 	os.MkdirAll(AppDirPath(), 0o755)
-	if os.WriteFile(newPath, data, 0o600) == nil {
+	if AtomicWriteFile(newPath, data, 0o600) == nil {
 		os.Remove(oldPath)
 		LogMessage(time.Now(), "配置已迁移到 "+newPath)
 	}
@@ -167,7 +167,8 @@ func SaveLocalConfig(tokens *CapturedTokens) error {
 		return err
 	}
 	os.MkdirAll(AppDirPath(), 0o755)
-	return os.WriteFile(LocalConfigPath(), raw, 0o600)
+	// 凭证是核心配置，原子写避免并发读读到半截 JSON 被判为「无配置」。
+	return AtomicWriteFile(LocalConfigPath(), raw, 0o600)
 }
 
 // LoadLocalConfig 从 ~/.sushiro/config.json 还原 CapturedTokens。
@@ -288,7 +289,7 @@ func SaveFeishuConfig(webhook string) {
 		Webhook string `json:"webhook"`
 	}{Webhook: strings.TrimSpace(webhook)}
 	data, _ := json.MarshalIndent(cfg, "", "  ")
-	_ = os.WriteFile(FeishuConfigPath(), data, 0o600)
+	_ = AtomicWriteFile(FeishuConfigPath(), data, 0o600)
 }
 
 // ToSettings 把抓包凭证转成可跑预约的 Settings，偏好从默认存储加载。

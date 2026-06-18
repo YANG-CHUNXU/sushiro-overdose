@@ -640,6 +640,9 @@ func addQueueObservationsToTrend(series map[string]*queueTrendAccumulator, summa
 			if !ok {
 				continue
 			}
+			// 归一化到寿司郎门店时区（UTC+8）再切 dateKey/日型/桶，避免机器本地时区与
+			// 远端基准（按 +08 存）错位，导致同一时刻样本劈到不同日期桶。
+			at = at.In(SushiroTimezone)
 			calledNo := queueObservationCalledNo(observation)
 			if calledNo <= 0 {
 				continue
@@ -749,6 +752,9 @@ func filterQueueBaselineLatest(latest []QueueBaselineLatest, storeFilter map[str
 }
 
 func normalizeQueueTrendQuery(query QueueTrendQuery, now time.Time) QueueTrendQuery {
+	// 归一化到寿司郎门店时区：from/to 的默认日期窗口（最近14天）必须按门店当地日期切，
+	// 否则机器在非 +08 时区时默认窗口会偏移半天。
+	now = now.In(SushiroTimezone)
 	query.StoreIDs = UniqueNonEmptyStrings(query.StoreIDs)
 	query.DateType = strings.ToLower(strings.TrimSpace(query.DateType))
 	if query.DateType == "" {
@@ -1279,7 +1285,7 @@ func loadQueueHolidayDates() (map[string]bool, map[string]bool, bool) {
 func normalizedDateSet(values []string) map[string]bool {
 	out := map[string]bool{}
 	for _, value := range values {
-		if day, ok := parseTrendDateParam(value, time.Local); ok {
+		if day, ok := parseTrendDateParam(value, SushiroTimezone); ok {
 			out[day.Format("2006-01-02")] = true
 		}
 	}
@@ -1488,7 +1494,7 @@ func parseRFC3339Local(raw string) (time.Time, bool) {
 func parseTrendDateParam(raw string, loc *time.Location) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	if loc == nil {
-		loc = time.Local
+		loc = SushiroTimezone
 	}
 	if raw == "" {
 		return time.Time{}, false

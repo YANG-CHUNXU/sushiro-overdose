@@ -309,6 +309,10 @@ func (s *SlotSampler) stopAndWait(timeout time.Duration) bool {
 // done 在最后 close，通知 stopAndWait 等待者循环已退出。
 func (s *SlotSampler) loop(ctx context.Context, cfg SamplingConfig, generation int, lock *processLock, done chan struct{}) {
 	defer func() {
+		if r := recover(); r != nil {
+			// 后台采样循环崩溃不能拖垮整个进程；记日志后仍走下面的收尾（释放锁、回 idle、广播），避免泄漏。
+			LogMessage(time.Now(), "后台采样循环发生 panic 已恢复："+fmt.Sprint(r))
+		}
 		lock.Release()
 		s.mu.Lock()
 		if s.generation == generation {

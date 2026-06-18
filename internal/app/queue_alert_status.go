@@ -47,6 +47,12 @@ func BuildQueueAlertStatus(now time.Time) QueueAlertStatusResponse {
 	if now.IsZero() {
 		now = time.Now()
 	}
+	// 加读锁与 evaluateQueueAlerts/SaveQueueAlertConfig 的写互斥：状态接口被 HTTP 调用时
+	// 后台采样可能正并发写 config/state。无锁 + 非原子写并发可能读到「新 config + 旧 state」
+	// 中间态，甚至两个写者并发写同一文件产生损坏 JSON（下一轮 loadQueueAlertState 解析失败
+	// 返回空 map → 全部 FiredOnce 丢失 → 所有阈值一次性重新触发）。
+	queueAlertMu.Lock()
+	defer queueAlertMu.Unlock()
 	cfg := LoadQueueAlertConfig()
 	observations := loadQueueObservations()
 	latestByStore := latestQueueObservationsByStore(observations)

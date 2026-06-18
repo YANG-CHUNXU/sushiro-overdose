@@ -150,6 +150,16 @@ func (e *BookingEngine) finishRun(done chan struct{}) {
 	bus.publish("engine", mustJSON(e.GetState()))
 }
 
+// recoverEngineRun 在运行循环 goroutine 的 defer 里捕获 panic，避免单个循环崩溃
+// 把整个进程拖垮（抓号/取号中断、错过放号窗口）。捕获后记日志并把引擎置 error 态，
+// 随后由调用方的 finishRun 正常收尾、回 idle 并广播。r 通过 recover() 获取。
+func (e *BookingEngine) recoverEngineRun(runName string) {
+	if r := recover(); r != nil {
+		LogMessage(time.Now(), runName+" 运行发生 panic 已恢复："+fmt.Sprint(r))
+		e.setState(EngineError, runName+" 内部异常，已停止，请重试或查看日志")
+	}
+}
+
 // abortStart 用于 Start* 入口在校验阶段就失败时的统一回滚：取消刚建的 ctx、走 finishRun
 // 回收句柄、关闭 done 通知等待者。注意 done 在这里 close，因此调用它的入口不会再 defer close。
 func (e *BookingEngine) abortStart(done chan struct{}, cancel context.CancelFunc) {
@@ -196,6 +206,12 @@ func (e *BookingEngine) GetLogs() []LogEntry {
 // 若已有任务在跑（isRunningLocked）则拒绝并取消刚建的 ctx。
 func (e *BookingEngine) StartCapture() error {
 	ctx, cancel := context.WithCancel(context.Background())
+	// 跨进程互斥：另一个 sushiro 主进程（如 daemon）正在抢号时拒绝启动，避免双进程同时
+	// 打官方接口、争抢同一账号预约（请求翻倍、风控升级）。本进程自己的 marker 不算。
+	if active, status := externalMainFlowActive(); active {
+		cancel()
+		return fmt.Errorf("另一个实例正在运行中（%s），请先停止它", status)
+	}
 	e.mu.Lock()
 	if e.isRunningLocked() {
 		e.mu.Unlock()
@@ -213,6 +229,7 @@ func (e *BookingEngine) StartCapture() error {
 
 	go func() {
 		defer func() {
+			e.recoverEngineRun("抓取凭证")
 			e.finishRun(done)
 			close(done)
 		}()
@@ -416,6 +433,10 @@ func (e *BookingEngine) StartBookingSlot(storeID, date, start, end string) error
 // 任一失败都走 abortStart 回滚并回 idle；全过则起 goroutine 跑 runBooking。
 func (e *BookingEngine) StartBooking() error {
 	ctx, cancel := context.WithCancel(context.Background())
+	if active, status := externalMainFlowActive(); active {
+		cancel()
+		return fmt.Errorf("另一个实例正在运行中（%s），请先停止它", status)
+	}
 	e.mu.Lock()
 	if e.isRunningLocked() {
 		e.mu.Unlock()
@@ -480,6 +501,7 @@ func (e *BookingEngine) StartBooking() error {
 
 	go func() {
 		defer func() {
+			e.recoverEngineRun("抢预约")
 			e.finishRun(done)
 			close(done)
 		}()
@@ -570,7 +592,9 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			}
 			if isOfficialServerHTTPError(err) {
 				e.addLog(bookingServerErrorLog(slotLabel, err))
-				time.Sleep(400 * time.Millisecond)
+				if !sleepContext(ctx, 400*time.Millisecond) {
+					return
+				}
 				continue
 			}
 			e.addLogLevel(fmt.Sprintf("%s — 预约失败: %s", slotLabel, err), "error")
@@ -630,12 +654,16 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 					// 连续 5 次失败（含非凭证类）：服务端可能在抽风或已限流，整体退避 5s 再继续，
 					// 比无脑每 100ms 重试更不容易被风控盯上。
 					e.addLog("连续失败过多，等待5秒...")
-					time.Sleep(5 * time.Second)
+					if !sleepContext(ctx, 5*time.Second) {
+						return
+					}
 					errStreak = 0
 				}
 				// 空转节流：100ms 一轮 ≈ 10 次/秒，在「还没放号、等时段刷新」时既不漏掉刚冒出来的
 				// 可约时段，又不至于把接口打爆；与狙击阶段（50ms）相比更温和。
-				time.Sleep(100 * time.Millisecond)
+				if !sleepContext(ctx, 100*time.Millisecond) {
+					return
+				}
 				continue
 			}
 			errStreak = 0
@@ -677,7 +705,9 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			e.mu.Unlock()
 			bus.publish("engine", mustJSON(e.GetState()))
 			// 无目标空轮也节流 100ms，与上方失败分支一致，防止 CPU 空转 + 接口过载。
-			time.Sleep(100 * time.Millisecond)
+			if !sleepContext(ctx, 100*time.Millisecond) {
+				return
+			}
 			continue
 		}
 
@@ -720,7 +750,9 @@ func (e *BookingEngine) runBooking(ctx context.Context, client *Client, settings
 			} else {
 				e.addLog(fmt.Sprintf("%s — 预约失败: %s", slotLabel, err))
 			}
-			time.Sleep(100 * time.Millisecond)
+			if !sleepContext(ctx, 100*time.Millisecond) {
+				return
+			}
 			continue
 		}
 

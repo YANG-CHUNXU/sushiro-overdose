@@ -105,5 +105,6 @@ func (r *StoreRegistry) save() {
 	}
 	data, _ := json.MarshalIndent(entries, "", "  ")
 	os.MkdirAll(AppDirPath(), 0o755)
-	_ = os.WriteFile(r.path, data, 0o600)
+	// 原子写：避免并发读（采样循环、UI 状态）在截断窗口读到半截 JSON。
+	_ = AtomicWriteFile(r.path, data, 0o600)
 }

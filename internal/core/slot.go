@@ -219,6 +219,12 @@ func BeginningOfDay(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
+// SushiroTimezone 是寿司郎门店所在时区：中国大陆门店统一用中国标准时间 UTC+8。
+// 排队趋势、ETA、节假日、日型（工作日/周末）等所有按「日期」聚合的计算都应先把时刻
+// .In(SushiroTimezone) 再切片，避免依赖运行机器的本地时区——机器若在海外或容器 TZ=UTC，
+// dateKey / 周末窗口会错位，导致本机观测与远端基准（按 +08 存）劈到不同日期桶。
+var SushiroTimezone = time.FixedZone("CST", 8*60*60)
+
 // SlotDateTime 把 Slot 的紧凑日期+开始时间组合成完整 time.Time，用于排序、过期判断等。
 // 时区按传入的 loc 解释（一般用 Settings.Location）。
 func SlotDateTime(slot Slot, loc *time.Location) (time.Time, error) {

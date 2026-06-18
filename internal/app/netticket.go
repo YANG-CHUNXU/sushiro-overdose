@@ -7,6 +7,7 @@ import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -152,7 +153,16 @@ func (s *NetTicketScheduler) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				netTicketTick(ctx)
+				func() {
+					// 每个 tick 单独 recover：某次取号逻辑 panic 不能让调度器整个循环退出，
+					// 否则后续到点的取号计划再也不会触发。
+					defer func() {
+						if r := recover(); r != nil {
+							LogMessage(time.Now(), "定时取号 tick 发生 panic 已恢复："+fmt.Sprint(r))
+						}
+					}()
+					netTicketTick(ctx)
+				}()
 			}
 		}
 	}()

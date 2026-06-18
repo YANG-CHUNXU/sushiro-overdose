@@ -137,7 +137,8 @@ func SavePreferences(prefs UserPreferences) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(PreferencesPath(), data, 0o600)
+	// 原子写：并发读期间不会读到半截 JSON 被静默重置为默认值。
+	return AtomicWriteFile(PreferencesPath(), data, 0o600)
 }
 
 func (p UserPreferences) ShouldTarget(slot Slot, loc *time.Location) bool {

@@ -93,12 +93,18 @@ func cmdRecommend() {
 		return
 	}
 
-	// Sort by availability rate desc, then observations desc
-	sort.Slice(validRecs, func(i, j int) bool {
+	// 确定性排序：可预约率降序 → 观测数降序 → 最后用 Date+Start+StoreID 做 tie-breaker。
+	// 否则同分同观测数时顺序由 map 迭代决定，每次刷新推荐顺序都会变（像随机推荐）。
+	sort.SliceStable(validRecs, func(i, j int) bool {
 		if validRecs[i].AvailRate != validRecs[j].AvailRate {
 			return validRecs[i].AvailRate > validRecs[j].AvailRate
 		}
-		return validRecs[i].Observations > validRecs[j].Observations
+		if validRecs[i].Observations != validRecs[j].Observations {
+			return validRecs[i].Observations > validRecs[j].Observations
+		}
+		ki := validRecs[i].Date + validRecs[i].Start + validRecs[i].StoreID
+		kj := validRecs[j].Date + validRecs[j].Start + validRecs[j].StoreID
+		return ki < kj
 	})
 
 	// Display recommendations

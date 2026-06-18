@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -254,46 +255,144 @@ func (c *Client) BaseHeaders(authorization, contentType string) map[string]strin
 //   - 响应体非合法 JSON → 返回普通 error（官方偶尔返回 HTML 错误页，必须兜住）；
 //   - 空响应体 → 返回 (nil, nil)，调用方自行处理。
 //
-// 所有请求都带 ctx，超时由 httpClient.Timeout（15s）和 ctx 双重约束。
+// 重试：只对 GET（查询）的瞬时错误（429/408/5xx）做指数退避重试（尊重 Retry-After，带 jitter，
+// 上限 3 次）。写操作（创建预约/取号）不自动重试——即使服务端 5xx 也可能已落库，重试有重复提交
+// 风险，交给上层业务兜底（ErrActiveReservationExists / isTicketAlreadyIssuedError）。这避免
+// 高频轮询时对接口的无退避轰炸触发风控。所有请求都带 ctx，超时由 httpClient.Timeout（15s）
+// 和 ctx 双重约束；重试等待也响应 ctx 取消。
 func (c *Client) doJSON(ctx context.Context, method, target string, headers map[string]string, payload any) ([]byte, error) {
-	var body io.Reader
+	// payload 仅 marshal 一次，保存 data 供重试时重建可读 Reader。
+	var data []byte
 	if payload != nil {
-		data, err := json.Marshal(payload)
+		var err error
+		data, err = json.Marshal(payload)
 		if err != nil {
 			return nil, fmt.Errorf("marshal request payload: %w", err)
 		}
-		body = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, target, body)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
+	const maxRetries = 3
+	var lastErr error
+	for attempt := 0; ; attempt++ {
+		// 每次迭代重建 Reader：bytes.NewReader 从 data 起点读，重试也能发送完整请求体。
+		var body io.Reader
+		if data != nil {
+			body = bytes.NewReader(data)
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, method, target, body)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
 
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			// 网络层错误（连接重置/超时）对 GET 也按瞬时错误退避重试。
+			lastErr = fmt.Errorf("request failed: %w", err)
+			if method == http.MethodGet && attempt < maxRetries && ctx.Err() == nil {
+				if waitErr := sleepForRetry(ctx, attempt, 0); waitErr == nil {
+					continue
+				}
+			}
+			return nil, lastErr
+		}
+
+		responseBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = fmt.Errorf("read response: %w", readErr)
+			if method == http.MethodGet && attempt < maxRetries && ctx.Err() == nil {
+				if waitErr := sleepForRetry(ctx, attempt, 0); waitErr == nil {
+					continue
+				}
+			}
+			return nil, lastErr
+		}
+
+		if resp.StatusCode >= 400 {
+			apiErr := &APIError{StatusCode: resp.StatusCode, Body: NormalizeErrorBody(responseBody)}
+			// 只对 GET 的瞬时错误（429/408/5xx）重试；尊重 Retry-After（秒）。
+			if method == http.MethodGet && IsTransientHTTPStatus(resp.StatusCode) && attempt < maxRetries && ctx.Err() == nil {
+				retryAfter := parseRetryAfterSeconds(resp.Header.Get("Retry-After"))
+				if waitErr := sleepForRetry(ctx, attempt, retryAfter); waitErr == nil {
+					lastErr = apiErr
+					continue
+				}
+			}
+			return nil, apiErr
+		}
+
+		if len(responseBody) == 0 {
+			return nil, nil
+		}
+		if !json.Valid(responseBody) {
+			return nil, fmt.Errorf("response is not JSON: %s", string(responseBody))
+		}
+		return responseBody, nil
 	}
-	if resp.StatusCode >= 400 {
-		return nil, &APIError{StatusCode: resp.StatusCode, Body: NormalizeErrorBody(responseBody)}
-	}
-	if len(responseBody) == 0 {
-		return nil, nil
-	}
-	if !json.Valid(responseBody) {
-		return nil, fmt.Errorf("response is not JSON: %s", string(responseBody))
-	}
-	return responseBody, nil
 }
+
+// IsTransientHTTPStatus 判断 HTTP 状态码是否属于「瞬时错误」值得重试：429（限流）、
+// 408（请求超时）、5xx（服务端临时故障）。4xx 业务错误（404/409 等）不重试。
+func IsTransientHTTPStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusRequestTimeout || status >= 500
+}
+
+// IsTransient 判断一个 doJSON 返回的错误是否是值得上层退避/降速的瞬时错误。
+func IsTransient(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return IsTransientHTTPStatus(apiErr.StatusCode)
+	}
+	// 网络层错误（request failed / read response）也视为瞬时。
+	return err != nil
+}
+
+// parseRetryAfterSeconds 解析 Retry-After 头（仅支持 delta-seconds 形式，HTTP-date 不解析返回 0）。
+func parseRetryAfterSeconds(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		return 0
+	}
+	if n > 30 {
+		n = 30 // 封顶 30s，避免单次重试等太久拖垮取号窗口。
+	}
+	return n
+}
+
+// sleepForRetry 在重试前等待：基础指数退避（500ms / 1s / 2s）叠加 ±25% jitter，
+// 或在 Retry-After 指定时取较大者。响应 ctx 取消（被取消时返回 ctx.Err()）。
+func sleepForRetry(ctx context.Context, attempt, retryAfter int) error {
+	base := 500 * time.Millisecond
+	for i := 0; i < attempt && i < 4; i++ {
+		base *= 2
+	}
+	jitter := time.Duration(rand.Int63n(int64(base) / 2)) // 0..base/2
+	wait := base + jitter
+	if ra := time.Duration(retryAfter) * time.Second; ra > wait {
+		wait = ra
+	}
+	if wait > 30*time.Second {
+		wait = 30 * time.Second
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// dataReaderReset 已废弃：doJSON 现在在循环外 marshal 一次、循环内用 bytes.NewReader(data) 重建。
 
 // reservationLooksSuccessful 判断一条记录是否代表「真的拿到了号」：
 // 要么有官方票据 ID，要么有排队号字符串。两者都空视为没成功。

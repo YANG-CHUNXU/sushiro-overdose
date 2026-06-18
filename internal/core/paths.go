@@ -14,6 +14,40 @@ const (
 	logFileName = "sushiro.log"
 )
 
+// AtomicWriteFile 原子地写入文件：先写同目录的随机临时文件，再用 os.Rename 原子替换目标。
+// os.Rename 在同一目录内是原子的；临时文件必须与目标同目录，否则跨文件系统会退化为非原子 copy。
+// 相比裸 os.WriteFile（O_TRUNC+write）的截断窗口：并发读在截断期间会读到半截 JSON 解析失败
+// （例如采样循环读到 Enabled=false 后静默停止，或 preferences 被静默重置为默认值）。
+// 用 os.CreateTemp 生成唯一临时名，避免并发写同一目标时多个写者争抢固定的 path+".tmp"。
+func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	cleanup := func() { _ = os.Remove(tmp) }
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		cleanup()
+		return err
+	}
+	if err := f.Chmod(perm); err != nil {
+		f.Close()
+		cleanup()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
+}
+
 // AppDirPath 返回本应用的数据目录（~/.sushiro）。os.UserHomeDir 失败时 home 为空，
 // 会退化成相对路径 ".sushiro"（极少见，主要在 HOME 没设置的环境）。
 func AppDirPath() string {

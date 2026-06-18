@@ -161,7 +161,7 @@ func TestQueueAlertCalledReachIncludesLabelAndTravel(t *testing.T) {
 	}
 }
 
-func TestEvaluateQueueAlertsBurnsCalledReachRuleAfterFire(t *testing.T) {
+func TestEvaluateQueueAlertsKeepsRuleAndDedupsAfterFire(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	cfg := normalizeQueueAlertConfig(QueueAlertConfig{Rules: []QueueAlertRule{
 		{StoreID: "3006", StoreName: "太阳宫凯德店", Type: queueAlertCalledReach, TargetNo: 1078, NotifyAtNo: 1050, Enabled: true},
@@ -173,15 +173,24 @@ func TestEvaluateQueueAlertsBurnsCalledReachRuleAfterFire(t *testing.T) {
 
 	evaluateQueueAlerts(context.Background(), QueueObservation{StoreID: "3006", DisplayCalledNo: 1051}, "太阳宫凯德店")
 
+	// S7 修复：触发后规则不再被物理删除——用户原始 notify_at_nos 配置必须保留，
+	// 去重完全交给 state 的 FiredOnce。
 	got := LoadQueueAlertConfig()
-	if len(got.Rules) != 1 {
-		t.Fatalf("rules len after fire = %d, want 1: %#v", len(got.Rules), got.Rules)
+	if len(got.Rules) != len(cfg.Rules) {
+		t.Fatalf("rules len after fire = %d, want %d（规则不应被删除）: %#v", len(got.Rules), len(cfg.Rules), got.Rules)
 	}
-	if got.Rules[0].NotifyAtNo != 1070 {
-		t.Fatalf("remaining rule = %#v, want 1070 threshold", got.Rules[0])
+	// 已触发的那条规则，state 里 FiredOnce 应为 true。
+	state := loadQueueAlertState()
+	st, ok := state[cfg.Rules[0].key()]
+	if !ok || !st.FiredOnce {
+		t.Fatalf("fired rule %q 应记录 FiredOnce=true，实际 %#v", cfg.Rules[0].key(), st)
 	}
-	if _, exists := loadQueueAlertState()[cfg.Rules[0].key()]; exists {
-		t.Fatal("fired called_reach state should be burned with the rule")
+
+	// 再次 evaluate 同一观测：FiredOnce 已置位，不应重复触发（state 不变即视为未重发）。
+	evaluateQueueAlerts(context.Background(), QueueObservation{StoreID: "3006", DisplayCalledNo: 1052}, "太阳宫凯德店")
+	st2 := loadQueueAlertState()[cfg.Rules[0].key()]
+	if !st2.FiredOnce {
+		t.Fatal("FiredOnce 应保持 true，不应被重置导致重复触发")
 	}
 }
 

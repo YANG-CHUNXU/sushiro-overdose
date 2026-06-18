@@ -1,5 +1,10 @@
 version: 2
 
+# 固定发布产物归档名前缀为 sushiro-overdose，与仓库同名、与 install/install.sh、
+# install/install.ps1 下载的 URL 前缀一致；不设时 goreleaser 会用仓库目录名 sushiro，
+# 导致 install 脚本拼出的下载链接 404（安装全部失败）。
+project_name: sushiro-overdose
+
 builds:
   - main: .
     binary: sushiro

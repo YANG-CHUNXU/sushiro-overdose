@@ -231,7 +231,15 @@ func refreshSniperPlanTarget(target SniperPlanTarget, now time.Time, loc *time.L
 		return target
 	}
 	if target.Status == "running" {
-		if !openAt.IsZero() && !now.Before(openAt.Add(sniperWindow)) {
+		// openAt 为零值（StartAfter 非法/未解析）时，绝不能落到下面的倒计时计算
+		// （零值 Sub 出巨大负数被截 0，target 会永远卡 running、倒计时 0）。先标 error。
+		if openAt.IsZero() {
+			target.Status = "error"
+			target.LastError = "无效开放时间"
+			target.CountdownSeconds = 0
+			return target
+		}
+		if !now.Before(openAt.Add(sniperWindow)) {
 			target.Status = "expired"
 			target.CountdownSeconds = 0
 			if target.LastError == "" {

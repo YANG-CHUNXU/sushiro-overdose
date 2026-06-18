@@ -49,17 +49,10 @@ func loadSlotHistoryInsightsCache(topN int, info os.FileInfo) (SlotHistoryAnalys
 // atomicWriteFile 先写同目录临时文件再用 os.Rename 原子替换目标。
 // os.Rename 在同一目录内是原子的；tmp 必须与目标同目录，否则跨文件系统会退化为非原子 copy。
 // 避免 O_TRUNC+write 的截断窗口：同进程并发读会读到半截 JSON 解析失败（如采样循环读到
-// Enabled=false 后静默停止）。
+// Enabled=false 后静默停止）。统一委托给 core.AtomicWriteFile（用 os.CreateTemp 生成唯一
+// 临时名，避免并发写同一目标时多个写者争抢固定 tmp 名）。
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return AtomicWriteFile(path, data, perm)
 }
 
 func saveSlotHistoryInsightsCache(topN int, info os.FileInfo, analysis SlotHistoryAnalysis) {

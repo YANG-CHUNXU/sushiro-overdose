@@ -65,9 +65,10 @@ type QueueAlertConfig struct {
 
 // queueAlertRuleState 是单条规则的去重状态。
 type queueAlertRuleState struct {
-	Armed     bool   `json:"armed"`      // wait_below 是否已武装（等待曾高于阈值）
-	FiredAt   string `json:"fired_at"`   // 上次推送时间
-	FiredOnce bool   `json:"fired_once"` // called_reach 是否已推送过
+	Armed            bool   `json:"armed"`              // wait_below 是否已武装（等待曾高于阈值）
+	FiredAt          string `json:"fired_at"`           // 上次推送时间
+	FiredOnce        bool   `json:"fired_once"`         // called_reach 是否已推送过
+	LastSeenCalledNo int    `json:"last_seen_called_no"` // called_reach：上一轮观测到的叫号，用于检测回退
 }
 
 var queueAlertMu sync.Mutex
@@ -100,7 +101,7 @@ func saveQueueAlertConfigLocked(cfg QueueAlertConfig) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(queueAlertConfigPath(), data, 0o600); err != nil {
+	if err := atomicWriteFile(queueAlertConfigPath(), data, 0o600); err != nil {
 		return err
 	}
 	pruneQueueAlertStateLocked(cfg)
@@ -226,15 +227,25 @@ func loadQueueAlertState() map[string]queueAlertRuleState {
 	return out
 }
 
-func saveQueueAlertState(state map[string]queueAlertRuleState) {
+// saveQueueAlertState 落盘提醒已触发状态。返回 error：写盘失败（磁盘满/权限/目录被清）时
+// 调用方据此决定是否回滚内存 state——否则 FiredOnce 没落盘但通知已发，下一轮采样重读会
+// 把同一条规则再触发一次（重复推送）。改用原子写避免并发读读到半截 JSON。
+func saveQueueAlertState(state map[string]queueAlertRuleState) error {
 	os.MkdirAll(AppDirPath(), 0o755)
-	if data, err := json.MarshalIndent(state, "", "  "); err == nil {
-		_ = os.WriteFile(queueAlertStatePath(), data, 0o600)
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
 	}
+	return atomicWriteFile(queueAlertStatePath(), data, 0o600)
 }
 
 // evaluateQueueAlerts 在每轮采样写入一条排队观测后调用，评估该门店的提醒规则并推送。
 // obs 是 getStoreById 解析出的观测（含当前叫号/预估等待/在等组数）。
+//
+// 顺序约定：必须先把 state 成功落盘（FiredOnce/Armed 写入磁盘），再发送通知。
+// 否则写盘失败但通知已发，下一轮采样重读无 FiredOnce 的 state 会把同一条规则再触发一次（重复推送）。
+// 不再「物理删除已触发规则」：用户原始的 notify_at_nos:[1000,1025,1050] 数组配置会被破坏，
+// 去重完全交给 state 的 FiredOnce 字段。
 func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName string) {
 	storeID := strings.TrimSpace(obs.StoreID)
 
@@ -247,7 +258,6 @@ func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName st
 		}
 		state := loadQueueAlertState()
 		changed := false
-		burnedKeys := map[string]bool{}
 		out := []queueAlertNotification{}
 
 		for _, rule := range cfg.Rules {
@@ -267,27 +277,14 @@ func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName st
 				name = storeID
 			}
 			out = append(out, queueAlertNotification{Title: title, Content: name + "：" + body})
-			if rule.Type == queueAlertCalledReach {
-				burnedKeys[rule.key()] = true
-			}
-		}
-		if len(burnedKeys) > 0 {
-			rules := make([]QueueAlertRule, 0, len(cfg.Rules)-len(burnedKeys))
-			for _, rule := range cfg.Rules {
-				key := rule.key()
-				if burnedKeys[key] {
-					delete(state, key)
-					continue
-				}
-				rules = append(rules, rule)
-			}
-			cfg.Rules = rules
-			if err := saveQueueAlertConfigLocked(cfg); err != nil {
-				LogMessage(time.Now(), "[排队提醒] 清理已触发提醒失败: "+err.Error())
-			}
 		}
 		if changed {
-			saveQueueAlertState(state)
+			// 先落盘 state：失败则丢弃本次通知（不更新内存 state、不发通知），
+			// 保证「已发通知」与「FiredOnce 已持久化」一致，杜绝写盘失败导致的重复推送。
+			if err := saveQueueAlertState(state); err != nil {
+				LogMessage(time.Now(), "[排队提醒] 状态落盘失败，本次提醒未发送以防重复: "+err.Error())
+				return nil
+			}
 		}
 		return out
 	}()
@@ -333,6 +330,14 @@ func queueAlertEvaluateRule(rule QueueAlertRule, obs QueueObservation, state map
 		if st.FiredOnce || calledNo <= 0 {
 			return "", "", false
 		}
+		// M4 回退防护：寿司郎叫号系统偶发重置/跨日导致 calledNo 回退。记录上一轮观测值，
+		// 若本次明显小于上一次（回退），跳过本轮评估，避免误触发。只前进、不后退。
+		if st.LastSeenCalledNo > 0 && calledNo < st.LastSeenCalledNo-50 {
+			return "", "", false
+		}
+		st.LastSeenCalledNo = calledNo
+		state[key] = st
+
 		threshold := rule.calledReachThreshold()
 		if threshold > 0 && calledNo >= threshold {
 			st.FiredOnce = true
@@ -346,6 +351,12 @@ func queueAlertEvaluateRule(rule QueueAlertRule, obs QueueObservation, state map
 			travel := ""
 			if rule.TravelMin > 0 {
 				travel = fmt.Sprintf(" 你填写路程约 %d 分钟，建议现在出发或尽快回店。", rule.TravelMin)
+			}
+			// M5 过号文案：当前叫号已超过用户手里的号（过号），不再说「还差 0 桌」误导。
+			if calledNo > rule.TargetNo {
+				return "⚠️ 可能已经过号",
+					fmt.Sprintf("%s当前叫号 %d，已超过你的号码 %d。可能已过号，请尽快回店确认。%s", prefix, calledNo, rule.TargetNo, travel),
+					true
 			}
 			return "🔔 快叫到你了",
 				fmt.Sprintf("%s当前叫号 %d，已达到提醒点 %d；号码 %d，还差 %d 桌。%s", prefix, calledNo, threshold, rule.TargetNo, max(0, rule.TargetNo-calledNo), travel),

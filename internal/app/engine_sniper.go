@@ -26,6 +26,10 @@ type sniperTargetValidationError struct {
 // → GetTimeslots 验活 → 起 goroutine 跑 runSniper。
 func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	ctx, cancel := context.WithCancel(context.Background())
+	if active, status := externalMainFlowActive(); active {
+		cancel()
+		return fmt.Errorf("另一个实例正在运行中（%s），请先停止它", status)
+	}
 	e.mu.Lock()
 	if e.isRunningLocked() {
 		e.mu.Unlock()
@@ -89,6 +93,7 @@ func (e *BookingEngine) StartSniper(targets []SniperTarget) error {
 	setNotifier(BuildNotifierFromConfig())
 	go func() {
 		defer func() {
+			e.recoverEngineRun("蹲预约")
 			e.finishRun(done)
 			close(done)
 		}()

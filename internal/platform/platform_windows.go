@@ -575,8 +575,27 @@ func installSamplingAutoStart() error {
 func removeSamplingAutoStart() error {
 	cmd := exec.Command("reg", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseSampler", "/f")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	// reg delete 在键/值不存在时也会非零退出（exit code 1）。
+	// 这里把「值不存在」视为已移除成功（幂等），其余真实失败原样上抛，
+	// 避免用户被告知「已移除」但注册表项还在、开机仍拉起旧进程。
 	if err := cmd.Run(); err != nil {
-		return nil
+		if isRegMissingValue(cmd, err) {
+			return nil
+		}
+		return err
 	}
 	return nil
+}
+
+// isRegMissingValue 判断 reg delete 的失败是不是「值/键本身就不存在」。
+// reg.exe 这类失败通常输出含 "Unable to find" 或 "was not found"。
+func isRegMissingValue(_ *exec.Cmd, err error) bool {
+	if ee, ok := err.(*exec.ExitError); ok {
+		msg := string(ee.Stderr)
+		if strings.Contains(msg, "not find") || strings.Contains(msg, "was not found") ||
+			strings.Contains(msg, "找不到") || strings.Contains(msg, "不存在") {
+			return true
+		}
+	}
+	return false
 }

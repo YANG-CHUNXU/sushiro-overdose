@@ -1,5 +1,7 @@
 package app
 
+import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
+
 import (
 	"context"
 	"fmt"
@@ -214,16 +216,63 @@ func calledRateOverWindow(all []QueueObservation, storeID string, now time.Time,
 // 本机 remaining/rate 算出的值可能反而比官方小（号码靠后反而算得快），但这在物理上不可能——
 // 用户不可能比门店整体更快叫到号。所以把 low 钳到 max(low, officialWait)，并同步抬高 high，
 // 避免给用户一个与门店实际压力自相矛盾的过短区间。
-func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWaitRange) (*QueueWaitRange, string) {
+func estimateWaitRange(waitGroups, officialWait int, rate, cv float64, realtimeN int, trend float64, hist *QueueWaitRange) (*QueueWaitRange, string) {
 	if rate > 0 && waitGroups > 0 {
-		// 档位 1：有叫号速度。base = 剩余桌数 / 每分钟叫号桌数。
-		// 下界取 0.85（偏乐观、给出发时间留余量），上界取 1.2（偏保守、覆盖叫号放慢）。
-		base := float64(waitGroups) / rate
-		low := int(math.Floor(base * 0.85))
-		high := int(math.Ceil(base * 1.2))
+		// 档位 1：有叫号速度。base = 剩余桌数 / 叫号速度（组/分）。
+		//
+		// 【C 实时/历史融合】把历史等待分钟转成隐含速率做先验，与实时加权。
+		// 单位统一：历史是分钟、实时是组/分，把历史按 waitGroups 锚成 rateHist=waitGroups/histMid。
+		effRate := rate
+		source := "recent_speed"
+		hasHist := hist != nil && (hist.Low > 0 || hist.High > 0)
+		if hasHist {
+			histMid := float64(hist.Low+hist.High) / 2.0
+			if histMid > 0 {
+				w := realtimeBlendWeight(realtimeN, cv, true)
+				rateHist := float64(waitGroups) / histMid
+				effRate = w*rate + (1-w)*rateHist
+				if effRate <= 0 {
+					effRate = rate
+				}
+				// source：w>=0.5 实时为主(recent_speed)；0<w<0.5 历史为主(blended)；
+				// w==0 完全历史(history，走下面 base 计算仍用 effRate=rateHist)。
+				if w == 0 {
+					source = "history"
+				} else if w < 0.5 {
+					source = "blended"
+				}
+			}
+		}
+
+		// 【趋势前瞻校正】叫号节奏在加速(trend>1)时，未来会比过去更快，纯用历史速度外推
+		// 会系统性高估等待（用户看到的「预计时间」偏晚）。用 sqrt(trend) 温和校正：
+		// 加速2倍只让预测速度×1.41（而非×2），平衡「修正渐变高峰高估」与「不过拟合噪声/不过校正」。
+		// trend=1（稳定/低峰）sqrt(1)=1，预测不受影响——满足「低峰期基本不偏移」。
+		// 仅在有足够样本体现可信趋势（trend 已在 rateTrendRatio 里要求 n>=4 且钳到[0.5,2.0]）时生效。
+		if source != "history" && trend != 1.0 {
+			effRate = effRate * math.Sqrt(trend)
+		}
+
+		// base = 剩余桌数 / 融合后速度。
+		base := float64(waitGroups) / effRate
+		// soft floor 仅在融合路径（历史参与）时生效：防止 histMid 极小（历史说该时段 2min）
+		// 导致 rateHist 爆炸、算出「2 分钟叫到 200 桌」的离谱值。纯实时路径（无历史）不该触发——
+		// 实时叫号速度本身就反映真实节奏，高峰门店能到 4~5 组/分，硬性 2 组/分上限会误伤。
+		// floor 取 0.25min/组（4 组/分上限），覆盖真实门店高峰，同时仍兜住离谱值。
+		if hasHist {
+			if floorBase := float64(waitGroups) * 0.25; base < floorBase {
+				base = floorBase
+			}
+		}
+
+		// 【B 动态区间宽度】用 CV 决定下界/上界系数：速度稳定收窄、波动大加宽。
+		lowMul, highMul := waitRangeMultipliers(cv)
+		low := int(math.Floor(base * lowMul))
+		high := int(math.Ceil(base * highMul))
 		if officialWait > 0 {
 			// 官方等待是门店整体等待分钟数，用户号码靠后时本机 remaining/rate 可能远大于它；
 			// 但用户不可能比门店整体更快叫到，所以用它抬高下界（max），并校正上界，避免区间与门店压力矛盾。
+			// 这是物理硬约束，统计融合(B/C)无权推翻。
 			if officialWait > low {
 				low = officialWait
 			}
@@ -234,7 +283,7 @@ func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWa
 		if high < low {
 			high = low
 		}
-		return &QueueWaitRange{Low: max(0, low), High: max(0, high)}, "recent_speed"
+		return &QueueWaitRange{Low: max(0, low), High: max(0, high)}, source
 	}
 	if officialWait > 0 {
 		// 档位 2：没有叫号速度，只能用官方等待做粗估。下游会标记 source=official 并提示
@@ -244,8 +293,13 @@ func estimateWaitRange(waitGroups, officialWait int, rate float64, hist *QueueWa
 		return &QueueWaitRange{Low: low, High: high}, "official"
 	}
 	if hist != nil && (hist.Low > 0 || hist.High > 0) {
-		// 档位 3：历史 P50/P80。
-		return &QueueWaitRange{Low: hist.Low, High: hist.High}, "history"
+		// 档位 3：历史 P50/P80。防御区间反序：脏基准可能 safe<typical 导致 P80<P50，
+		// 这时把 high 钳到 low，避免上界小于下界（下游出发时间计算会出错）。
+		low, high := hist.Low, hist.High
+		if high < low {
+			high = low
+		}
+		return &QueueWaitRange{Low: max(0, low), High: max(0, high)}, "history"
 	}
 	return nil, "unknown"
 }
@@ -286,9 +340,33 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 	}
 
 	rate60 := calledRateOverWindow(all, snapshot.StoreID, now, queueAdvisorWindow60)
+	// ETA 速度用近 30 分钟窗：门店叫号是短期节奏，近窗更能反映「当前多快」，
+	// 不会被窗口边缘的旧慢速稀释（2h 窗下即使时间加权，几十分钟前的慢段仍会拖低速度）。
+	// 仍顺带取 cv 和有效间隔数 n，供 ETA 的区间宽度(B)与实时/历史融合(C)使用。
+	recent30obs := recentStoreObservations(all, snapshot.StoreID, now, queueAdvisorWindow30)
+	if snapshot.DisplayCalledNo > 0 {
+		recent30obs = append(recent30obs, snapshot)
+	}
 	rate := 0.0
-	if r, ok := calledRatePerMinute(history); ok && r > 0 {
+	etaCV := -1.0
+	etaN := 0
+	etaTrend := 1.0
+	if r, cv, n, trend, ok := calledRatePerMinuteWeighted(recent30obs, now, queueAdvisorWindow30); ok && r > 0 {
 		rate = r
+		etaCV = cv
+		etaN = n
+		etaTrend = trend
+	}
+	// 趋势用更长的 2h 窗单独检测：30min 短窗对全窗渐变不敏感（如午高峰临近，整窗都在缓慢加速，
+	// 短窗内近/远差别小），2h 长窗能捕捉到「持续加速/减速」的长期趋势，修正早期高估。
+	// 仅当长窗样本充足时才覆盖短窗趋势，避免数据不足时的噪声趋势。
+	if _, _, _, longTrend, ok := calledRatePerMinuteWeighted(history, now, queuePanelRateWindow); ok && len(history) >= 8 {
+		if longTrend > etaTrend {
+			etaTrend = longTrend // 取更明显的加速信号（保守：只在长窗趋势更强时采用，减速同理需处理）
+		}
+		if longTrend < 1.0 && longTrend < etaTrend {
+			etaTrend = longTrend // 减速也用长窗的更强信号
+		}
 	}
 
 	var called15 *int
@@ -329,7 +407,7 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 	}
 
 	if targetNo > 0 {
-		advisor.Eta = buildQueueAdvisorEta(targetNo, travelMinutes, snapshot, store, rate, now, storeID)
+		advisor.Eta = buildQueueAdvisorEta(targetNo, travelMinutes, snapshot, store, rate, etaCV, etaN, etaTrend, now, storeID)
 		// 合理性检查：号码小于当前叫号即为过号（寿司郎过号不会自动叫到，需补号或重新取号）。
 		// 这里和 computeQueueEta 内部的过号分支互为兜底，任何 targetNo < called 都给出显式警告。
 		if called := snapshot.DisplayCalledNo; called > 0 && targetNo < called {
@@ -344,21 +422,23 @@ func buildQueueAdvisor(ctx context.Context, storeID string, targetNo, travelMinu
 }
 
 // buildQueueAdvisorEta 取今日同日型、同门店、当前半小时 bucket 的历史 P50/P80 作为 hist 兜底，
-// 再交给 computeQueueEta 做纯函数估算（近期叫号速度优先，历史兜底）。
-func buildQueueAdvisorEta(targetNo, travelMinutes int, snapshot QueueObservation, store QueueLiveStore, rate float64, now time.Time, storeID string) *QueueAdvisorEta {
+// 再交给 computeQueueEta 做纯函数估算（实时速度+历史融合、CV 动态区间）。
+func buildQueueAdvisorEta(targetNo, travelMinutes int, snapshot QueueObservation, store QueueLiveStore, rate, cv float64, realtimeN int, trend float64, now time.Time, storeID string) *QueueAdvisorEta {
 	var hist *QueueWaitRange
 	if m, _ := historicalWaitByBucket(storeID, now); m != nil {
 		if r, ok := m[queueTrendBucket(now, 30)]; ok {
 			hist = &r
 		}
 	}
-	return computeQueueEta(targetNo, snapshot.DisplayCalledNo, travelMinutes, store.Wait, store.WaitTimeCap, rate, hist, now)
+	return computeQueueEta(targetNo, snapshot.DisplayCalledNo, travelMinutes, store.Wait, store.WaitTimeCap, rate, cv, realtimeN, trend, hist, now)
 }
 
 // computeQueueEta 是 ETA 估算的纯函数核心（不读磁盘），便于单测。
 // 入参：targetNo 用户票号、calledNo 当前叫到号、travelMinutes 路程分钟、officialWait 官方等位分钟、
-// waitCap 官方等位封顶（store.WaitTimeCap，如 180）、rate 本机叫号速度（组/分）、hist 历史区间、now 当前时间。
-func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap int, rate float64, hist *QueueWaitRange, now time.Time) *QueueAdvisorEta {
+// waitCap 官方等位封顶（store.WaitTimeCap，如 180）、rate 本机叫号速度（组/分）、
+// cv 速度变异系数（<0 表示样本不足）、realtimeN 有效叫号间隔数（用于实时/历史融合权重）、
+// trend 速度趋势比（>1=加速、<1=减速，用于前瞻校正）、hist 历史区间、now 当前时间。
+func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap int, rate, cv float64, realtimeN int, trend float64, hist *QueueWaitRange, now time.Time) *QueueAdvisorEta {
 	// remaining 一定钳到 >=0；targetNo<calledNo（过号）也会落在这里，但语义不同，见下分支。
 	remaining := max(0, targetNo-calledNo)
 	eta := &QueueAdvisorEta{
@@ -366,7 +446,7 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap in
 		RemainingGroups: remaining,
 		Risk:            "unknown",
 	}
-	waitRange, source := estimateWaitRange(remaining, officialWait, rate, hist)
+	waitRange, source := estimateWaitRange(remaining, officialWait, rate, cv, realtimeN, trend, hist)
 	if remaining <= 0 {
 		// remaining==0 有两种含义：targetNo==calledNo 是真的即将轮到；
 		// targetNo<calledNo 是已经过号——寿司郎过号不会自动叫到，需要补号或重新取号，
@@ -405,6 +485,7 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap in
 	// 用官方等位封顶值（waitTimeCap，如 180 分钟）做软上限钳制：模型算出的高位若明显
 	// 超过官方封顶，多半是异常高峰/叫号停滞，钳到 cap 并提示，避免给用户离谱的预测。
 	// 注意只钳 high 不动 low（low 已被 officialWait 抬高过），钳完若 low>high 再把 low 拉回 high。
+	note := eta.SourceNote
 	if waitCap > 0 && waitRange.High > waitCap {
 		capped := &QueueWaitRange{Low: waitRange.Low, High: waitCap}
 		if capped.Low > capped.High {
@@ -412,8 +493,18 @@ func computeQueueEta(targetNo, calledNo, travelMinutes, officialWait, waitCap in
 		}
 		eta.WaitMinutesRange = capped
 		waitRange = capped
-		eta.SourceNote = "模型估算超过官方等位封顶 " + strconv.Itoa(waitCap) + " 分钟，已按封顶值收敛；可能为异常高峰，建议到小程序确认。"
+		note = "模型估算超过官方等位封顶 " + strconv.Itoa(waitCap) + " 分钟，已按封顶值收敛；可能为异常高峰，建议到小程序确认。"
 	}
+	// CV 大（叫号忽快忽慢）时追加节奏不稳提示（与封顶提示拼接，不互相覆盖）。
+	if cv >= 0.5 {
+		volatileNote := "近期叫号节奏不稳，区间已加宽覆盖不确定性。"
+		if note == "" {
+			note = volatileNote
+		} else {
+			note = note + " " + volatileNote
+		}
+	}
+	eta.SourceNote = note
 	// 时间区间：早=now+low，晚=now+high，中点取 (low+high)/2 作为单点估算。
 	early := now.Add(time.Duration(waitRange.Low) * time.Minute)
 	late := now.Add(time.Duration(waitRange.High) * time.Minute)
@@ -435,6 +526,8 @@ func queueEtaSourceLabel(source string) string {
 	switch source {
 	case "recent_speed":
 		return "近实时叫号速度"
+	case "blended":
+		return "综合近期与历史"
 	case "history":
 		return "同门店历史"
 	case "official":
@@ -448,6 +541,8 @@ func queueEtaSourceNote(source string) string {
 	switch source {
 	case "recent_speed":
 		return "按本机近期采样的叫号推进速度估算，适合判断你手里号码的大概叫到时间。"
+	case "blended":
+		return "综合近期叫号速度与同门店历史规律估算；实时样本尚少，已用历史做参照加权。"
 	case "history":
 		return "按同门店同日型历史等待估算，适合作参考，建议配合实时叫号一起看。"
 	case "official":
@@ -459,11 +554,12 @@ func queueEtaSourceNote(source string) string {
 
 // queueEtaRisk 按 source + 剩余桌数/官方等待给风险等级。
 // recent_speed 用剩余桌数（>200 high、>80 medium，否则 low）；
+// blended 复用 recent_speed 规则（含实时成分，按剩余桌数判档）；
 // official 用官方等待分钟（>=120 high、>=60 medium）；history 一律 medium（历史不反映今日突变）；
 // 都没有则 unknown。
 func queueEtaRisk(source string, officialWait, remaining int, rate float64) string {
 	switch source {
-	case "recent_speed":
+	case "recent_speed", "blended":
 		if remaining > 200 {
 			return "high"
 		}
@@ -585,10 +681,9 @@ func queuePressureCurveDate(raw string, now time.Time) (string, time.Time) {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	loc := now.Location()
-	if loc == nil {
-		loc = time.Local
-	}
+	// 用寿司郎门店时区（UTC+8）解释日期，不依赖机器本地时区。
+	now = now.In(SushiroTimezone)
+	loc := SushiroTimezone
 	if day, ok := parseTrendDateParam(raw, loc); ok {
 		return day.Format("2006-01-02"), day
 	}
@@ -856,7 +951,9 @@ func parseHHMM(raw string, now time.Time) (time.Time, bool) {
 	if !ok1 || !ok2 || hh > 23 || mm > 59 {
 		return time.Time{}, false
 	}
-	return time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location()), true
+	// 用门店时区构造时刻，避免机器本地时区偏移导致叫号时间范围判定错位。
+	now = now.In(SushiroTimezone)
+	return time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, SushiroTimezone), true
 }
 
 func atoiStrict(s string) (int, bool) {
@@ -985,7 +1082,9 @@ func buildQueueMealPlan(ctx context.Context, storeID, mealRaw string, travelMinu
 	var best, latest time.Time
 	var bestWR QueueWaitRange
 	bestGap := math.MaxFloat64
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, now.Location())
+	// 从门店当地 10:00 起按 10 分钟步进找最接近 meal 的历史桶，时区必须用门店时区。
+	nowS := now.In(SushiroTimezone)
+	dayStart := time.Date(nowS.Year(), nowS.Month(), nowS.Day(), 10, 0, 0, 0, SushiroTimezone)
 	for t := dayStart; !t.After(meal); t = t.Add(10 * time.Minute) {
 		wr, found := hist[queueTrendBucket(t, 30)]
 		if !found {

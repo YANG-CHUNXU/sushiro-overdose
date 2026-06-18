@@ -139,6 +139,11 @@ func cmdWeb() {
 	server := &http.Server{
 		Addr:    addr,
 		Handler: webSecurityMiddleware(mux),
+		// 超时设置：抵御慢速攻击/异常连接挂死导致的 goroutine 泄漏。
+		// 注意不设 WriteTimeout —— SSE (/api/events) 是长连接，WriteTimeout 会掐断它；
+		// ReadHeaderTimeout 是安全相关的底线（慢速 header 让连接挂死），必须设。
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
