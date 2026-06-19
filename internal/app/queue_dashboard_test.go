@@ -309,3 +309,89 @@ func TestQueueDashboardHTTPContractIncludesAdvisor(t *testing.T) {
 		t.Fatalf("unexpected advisor contract: %+v", got.Advisor)
 	}
 }
+
+// TestBuildQueueDashboardCalledCurveProjectsFuture 验证「推测未来叫号」：
+// 今天采集到几个叫号点（形成速度），now 在其后，则未来 bucket 应有 today_projected_no
+// 且 ≈ 锚点号 + rate×分钟；过去 bucket 不填。
+func TestBuildQueueDashboardCalledCurveProjectsFuture(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
+		t.Fatalf("mkdir app dir: %v", err)
+	}
+	cst := time.FixedZone("CST", 8*3600)
+	// 10:00-10:20，每 5 分钟叫 5 号 → 1 号/分钟。锚点(最新)=10:20 叫 120。
+	data := `{"collected_at":"2026-06-04T10:00:00+08:00","store_id":"3006","display_called_no":100,"wait_minutes":10,"group_queues_count":1}` + "\n" +
+		`{"collected_at":"2026-06-04T10:05:00+08:00","store_id":"3006","display_called_no":105,"wait_minutes":10,"group_queues_count":1}` + "\n" +
+		`{"collected_at":"2026-06-04T10:10:00+08:00","store_id":"3006","display_called_no":110,"wait_minutes":10,"group_queues_count":1}` + "\n" +
+		`{"collected_at":"2026-06-04T10:15:00+08:00","store_id":"3006","display_called_no":115,"wait_minutes":10,"group_queues_count":1}` + "\n" +
+		`{"collected_at":"2026-06-04T10:20:00+08:00","store_id":"3006","display_called_no":120,"wait_minutes":10,"group_queues_count":1}` + "\n"
+	if err := os.WriteFile(queueObservationPath(), []byte(data), 0o600); err != nil {
+		t.Fatalf("write observations: %v", err)
+	}
+	now := time.Date(2026, 6, 4, 10, 30, 0, 0, cst) // now 在锚点 10:20 之后 → 10:40 起是未来
+	got := BuildQueueDashboardWithContext(context.Background(), QueueDashboardQuery{
+		StoreIDs:      []string{"3006"},
+		Scope:         "local",
+		BucketMinutes: 10,
+	}, now)
+
+	// 找未来 bucket（10:40）的外推值。锚点 120 + rate(1/分)×20min = 140。
+	var proj40, projPast *int
+	for i := range got.CalledCurve {
+		p := got.CalledCurve[i]
+		if p.Bucket == "10:40" {
+			proj40 = &got.CalledCurve[i].TodayProjectedNo
+		}
+		if p.Bucket == "10:20" {
+			projPast = &got.CalledCurve[i].TodayProjectedNo
+		}
+	}
+	if proj40 == nil {
+		t.Fatalf("未来 bucket 10:40 未生成外推点；curve=%+v", got.CalledCurve)
+	}
+	if *proj40 < 130 || *proj40 > 150 {
+		t.Errorf("10:40 外推号=%d，期望 ≈140（锚点120+1/分×20min）", *proj40)
+	}
+	// 过去的 bucket 不该有外推（latest 那个点 today_projected_no 应为 0）。
+	if projPast != nil && *projPast != 0 {
+		t.Errorf("过去 bucket 10:20 不该有外推号，got %d", *projPast)
+	}
+	// 应有多个未来外推点延伸到关店。
+	projCount := 0
+	for _, p := range got.CalledCurve {
+		if p.TodayProjectedNo > 0 {
+			projCount++
+		}
+	}
+	if projCount < 3 {
+		t.Errorf("未来外推点数=%d，应至少延伸到关店（多个点）", projCount)
+	}
+}
+
+// TestBuildQueueDashboardCalledCurveNoProjectionWithoutRate 无速度（叫号没推进）时不外推。
+func TestBuildQueueDashboardCalledCurveNoProjectionWithoutRate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(AppDirPath(), 0o755); err != nil {
+		t.Fatalf("mkdir app dir: %v", err)
+	}
+	cst := time.FixedZone("CST", 8*3600)
+	// 叫号卡住不动（都 100），rate=0 → 不该外推。
+	data := `{"collected_at":"2026-06-04T10:00:00+08:00","store_id":"3006","display_called_no":100,"wait_minutes":10,"group_queues_count":1}` + "\n" +
+		`{"collected_at":"2026-06-04T10:10:00+08:00","store_id":"3006","display_called_no":100,"wait_minutes":10,"group_queues_count":1}` + "\n"
+	if err := os.WriteFile(queueObservationPath(), []byte(data), 0o600); err != nil {
+		t.Fatalf("write observations: %v", err)
+	}
+	now := time.Date(2026, 6, 4, 10, 30, 0, 0, cst)
+	got := BuildQueueDashboardWithContext(context.Background(), QueueDashboardQuery{
+		StoreIDs: []string{"3006"}, Scope: "local", BucketMinutes: 10,
+	}, now)
+	for _, p := range got.CalledCurve {
+		if p.TodayProjectedNo != 0 {
+			t.Errorf("rate=0（叫号停滞）时不应外推，但 %s 有 today_projected_no=%d", p.Bucket, p.TodayProjectedNo)
+		}
+	}
+}

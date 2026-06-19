@@ -229,6 +229,14 @@ func estimateWaitRange(waitGroups, officialWait int, rate, cv float64, realtimeN
 			histMid := float64(hist.Low+hist.High) / 2.0
 			if histMid > 0 {
 				w := realtimeBlendWeight(realtimeN, cv, true)
+				// 实时保底权重：只要本机已采到有效叫号间隔(realtimeN>=2)，实时速度对「当前这刻
+				// 还剩多少号、多快叫」是物理直接测量（remaining/rate），远比历史平均分钟可信——
+				// 历史会被脏数据/异常日污染（如某时段历史 p50 几百分钟）。故实时权重不低于 0.6，
+				// 防止脏历史在样本少时喧宾夺主，把准确的实时估算拉偏（曾导致实时剩29桌/2.4每分
+				// →真实12min，却被脏历史280min拖成180min封顶）。
+				if realtimeN >= 2 && w < 0.6 {
+					w = 0.6
+				}
 				rateHist := float64(waitGroups) / histMid
 				effRate = w*rate + (1-w)*rateHist
 				if effRate <= 0 {
@@ -287,16 +295,14 @@ func estimateWaitRange(waitGroups, officialWait int, rate, cv float64, realtimeN
 			low = int(math.Floor(base * lowMul))
 			high = int(math.Ceil(base * highMul))
 		}
-		if officialWait > 0 {
-			// 官方等待是门店整体等待分钟数，用户号码靠后时本机 remaining/rate 可能远大于它；
-			// 但用户不可能比门店整体更快叫到，所以用它抬高下界（max），并校正上界，避免区间与门店压力矛盾。
-			// 这是物理硬约束，统计融合(B/C)无权推翻。
-			if officialWait > low {
-				low = officialWait
-			}
-			if officialWait > high {
-				high = officialWait
-			}
+		// officialWait（官方等待）是「门店整体 / 队尾新取号者」的等待分钟，不是「你这个号码」
+		// 的等待。号码靠前（前面剩几桌）时，你必然比队尾快得多——用 officialWait 抬高个人下界
+		// 是错的（曾导致剩29桌/2.4每分→真实12min，被 officialWait=295 抬到 low=295 再被 cap
+		// 钳成180，区间塌缩成单点）。故 recent_speed/blended 档完全不拿 officialWait 抬 low；
+		// 仅在算出的 high 异常小于 officialWait 时（本机明显低估了门店压力）把 high 拉到
+		// officialWait 做上界兜底，且不触及 low。低界完全由实时速度决定。
+		if officialWait > 0 && high < officialWait {
+			high = officialWait
 		}
 		if high < low {
 			high = low

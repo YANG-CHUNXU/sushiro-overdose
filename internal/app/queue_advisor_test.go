@@ -250,13 +250,16 @@ func TestEstimateWaitRange(t *testing.T) {
 	if wr, src := estimateWaitRange(100, 0, 2.0, cvDefault, 0, 1.0, nil, nil); wr == nil || src != "recent_speed" {
 		t.Fatalf("speed range nil/src=%q", src)
 	}
-	// 速度 + 官方等待：用户不可能比门店整体更快叫到，官方等待抬低下界而非压缩。
-	// remaining=178/rate=2 → base≈89，low=floor(89*0.85)=75，high=ceil(89*1.2)=107。
-	// officialWait=120 高于本机估算区间 → low/high 都被抬到 120。
+	// 速度 + 官方等待：officialWait 是「门店整体/队尾」的等待，不是个人号码的等待。
+	// 号码靠前（前面剩桌少）时个人必然比队尾快——officialWait 不该抬高 low。
+	// remaining=178/rate=2 → base≈89，low≈75（由实时速度决定，不被 officialWait 抬）。
+	// 但算出的 high≈107 < officialWait=120 时，high 被拉到 120 做上界兜底。
 	if wr, src := estimateWaitRange(178, 120, 2.0, cvDefault, 0, 1.0, nil, nil); wr == nil || src != "recent_speed" {
 		t.Fatalf("official+speed range nil/src=%q", src)
-	} else if wr.Low < 120 || wr.High < 120 {
-		t.Errorf("officialWait should raise floor (max), got Low=%d High=%d want >=120", wr.Low, wr.High)
+	} else if wr.High < 120 {
+		t.Errorf("officialWait should raise high when high<officialWait, got High=%d want >=120", wr.High)
+	} else if wr.Low > 90 {
+		t.Errorf("officialWait must NOT raise low (号码靠前应快), got Low=%d want <=90", wr.Low)
 	}
 	// officialWait 远小于本机估算（号码靠后）时不应压缩 low。
 	if wr, _ := estimateWaitRange(178, 30, 2.0, cvDefault, 0, 1.0, nil, nil); wr == nil || wr.Low < 75 {
@@ -511,19 +514,32 @@ func TestEstimateWaitRangeBlendedHistoryDominant(t *testing.T) {
 	}
 }
 
-func TestEstimateWaitRangeBlendedMiddle(t *testing.T) {
-	// realtimeN 中等 → 0<w<0.5 → source=blended。
+func TestEstimateWaitRangeRealtimeDominantWithHistory(t *testing.T) {
+	// realtimeN>=2（已采到有效叫号间隔）时，实时速度对「当前这刻」是物理直接测量，
+	// 远比历史平均可信（历史可能脏）。故实时权重保底 0.6，source=recent_speed。
 	wr, src := estimateWaitRange(100, 0, 2.0, 0.3, 4, 1.0, nil, &QueueWaitRange{Low: 40, High: 80})
-	if wr == nil || src != "blended" {
-		t.Fatalf("middle blend should be blended, got src=%q wr=%+v", src, wr)
+	if wr == nil || src != "recent_speed" {
+		t.Fatalf("realtimeN>=2 with hist should be recent_speed (实时保底权重), got src=%q wr=%+v", src, wr)
+	}
+	// base=100/2=50，实时主导→low 不被历史(40/80)拉偏，应在 50 附近而非 40。
+	if wr.Low > 60 {
+		t.Errorf("realtime-dominant low should stay near base 50, Low=%d", wr.Low)
 	}
 }
 
-func TestEstimateWaitRangeOfficialFloorStillApplies(t *testing.T) {
-	// 融合后 base 可能 < officialWait，但 low 仍被 officialWait 抬高（物理约束不破）。
+func TestEstimateWaitRangeOfficialDoesNotRaiseLow(t *testing.T) {
+	// officialWait（门店整体/队尾等待）不该抬高个人号码的 low——号码靠前就该比队尾快。
+	// 100桌/2.0每分=50min 是个人估算；officialWait=120 不应把 low 抬到 120。
+	// 但算出的 high 若 < officialWait，会被拉到 officialWait 做上界兜底。
 	wr, _ := estimateWaitRange(100, 120, 2.0, 0.1, 10, 1.0, nil, &QueueWaitRange{Low: 40, High: 80})
-	if wr == nil || wr.Low < 120 {
-		t.Errorf("officialWait floor must still apply after blend, Low=%d want >=120", wr.Low)
+	if wr == nil {
+		t.Fatal("nil range")
+	}
+	if wr.Low > 80 {
+		t.Errorf("officialWait must NOT raise low (号码靠前应快), Low=%d want <=80", wr.Low)
+	}
+	if wr.High < 120 {
+		t.Errorf("officialWait should raise high as ceiling when high<officialWait, High=%d want >=120", wr.High)
 	}
 }
 

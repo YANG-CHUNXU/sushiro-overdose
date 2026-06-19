@@ -107,8 +107,12 @@ type QueueDashboardCalledPoint struct {
 	LatestCalledNo    int    `json:"latest_called_no,omitempty"`
 	LatestQueueGroups int    `json:"latest_queue_groups,omitempty"`
 	LatestWaitMinutes int    `json:"latest_wait_minutes,omitempty"`
-	Confidence        string `json:"confidence"`
-	Source            string `json:"source"`
+	// TodayProjectedNo 是「推测未来叫号」：按今天当前叫号速度，从今天最近一个观测点外推到
+	// 该 bucket 时刻大概叫到几号。只对「当前时刻之后」的 bucket 填，今天就能看到接下来叫到哪，
+	// 不依赖多天历史。前端画橙色虚线。0/省略=无法外推。
+	TodayProjectedNo int    `json:"today_projected_no,omitempty"`
+	Confidence       string `json:"confidence"`
+	Source           string `json:"source"`
 }
 
 type QueueDashboardTrendPoint struct {
@@ -274,7 +278,11 @@ func BuildQueueDashboardWithContext(ctx context.Context, query QueueDashboardQue
 	}
 	calledSummary, calledCurve := buildQueueDashboardCalledCurve(query, localBaseline, localObservations, storeNames, storeFilter, now)
 	remoteCalledSummary, remoteCalledCurve := buildQueueDashboardRemoteCalledCurve(query, baseline, storeNames, storeFilter, latest)
-	if len(remoteCalledCurve) > 0 && (len(calledCurve) == 0 || query.Scope == "all" && len(query.StoreIDs) == 0) {
+	// 历史叫号曲线优先用线上基准(remote)：它是跨多天、覆盖全天各时段的「几点叫到几号」规律，
+	// 远比本机今天刚采的几个点（常只有当前一两小时、sample_count=1）有价值。
+	// 旧逻辑只在「本地为空 或 全国汇总」时才用 remote——单店查询时本地哪怕只有 2 个点也会盖掉
+	// remote 全天曲线，导致用户看不到历史叫号规律。改为：remote 可用且点数不少于本地时优先 remote。
+	if len(remoteCalledCurve) > 0 && len(remoteCalledCurve) >= len(calledCurve) {
 		calledSummary, calledCurve = remoteCalledSummary, remoteCalledCurve
 	}
 	advisor := buildQueueDashboardAdvisor(query, calledSummary, calledCurve, latest, now)
@@ -697,6 +705,9 @@ func buildQueueDashboardCalledCurve(query QueueDashboardQuery, baselineRecords [
 			Source:            "local",
 		})
 	}
+	// 【推测未来叫号】对「当前时刻之后」的 bucket，按今天叫号速度从今天最近一个观测点外推。
+	// 不依赖多天历史——只要有今天的叫号速度就能算，让用户今天就能看到「接下来几点叫到几号」。
+	points = projectTodayCalledNo(points, observations, storeID, latest, query.BucketMinutes, now)
 	summary.StoreID = storeID
 	summary.StoreName = dashboardStoreName(names, storeID, latest.storeName)
 	summary.SampleCount = len(byDayBucket)
@@ -710,6 +721,79 @@ func buildQueueDashboardCalledCurve(query QueueDashboardQuery, baselineRecords [
 	summary.Confidence = queueDashboardConfidence(summary.SampleCount)
 	summary.Message = "按本机选定门店采集记录聚合：同一天同一时间桶只取最后一条，避免高频采样把某个时间点放大。"
 	return summary, points
+}
+
+// projectTodayCalledNo 给 called_curve 的「当前时刻之后」bucket 填 TodayProjectedNo（推测未来叫号），
+// 并在已有 points 之后追加未来 bucket 点（now→关店），让外推线能延伸到未来。
+// 算法：取今天最新叫号观测点作锚点（latest），用本机近 30 分钟叫号速度 rate 外推——
+//
+//	projected = 锚点号 + rate × (bucket时刻 - 锚点时刻的分钟数)
+//
+// 守卫：无锚点/锚点不是今天/rate<=0 不填不追加；外推上限防速度异常吹飞。
+// 不依赖多天历史：只要有今天的速度，今天就能看到「接下来几点叫到几号」。
+func projectTodayCalledNo(points []QueueDashboardCalledPoint, observations []QueueObservation, storeID string, latest queueDashboardCalledSample, bucketMinutes int, now time.Time) []QueueDashboardCalledPoint {
+	if now.IsZero() || latest.calledNo <= 0 {
+		return points
+	}
+	nowS := now.In(SushiroTimezone)
+	today := nowS.Format("2006-01-02")
+	anchorAt := latest.collectedAt.In(SushiroTimezone)
+	if anchorAt.Format("2006-01-02") != today {
+		return points // 锚点不是今天，没法基于今天进度外推
+	}
+	rate, _, _, _, _, ok := calledRatePerMinuteWeighted(recentStoreObservations(observations, storeID, now, queueAdvisorWindow30), now, queueAdvisorWindow30)
+	if !ok || rate <= 0 {
+		return points
+	}
+	if bucketMinutes <= 0 {
+		bucketMinutes = 10
+	}
+	storeName := ""
+	if len(points) > 0 {
+		storeName = points[0].StoreName
+	}
+	anchorMinute := anchorAt.Hour()*60 + anchorAt.Minute()
+	nowMinute := nowS.Hour()*60 + nowS.Minute()
+	endMinute := queueDashboardBucketMinute(queueDashboardDayEnd) // 关店 22:00
+	capExtra := rate * 180                                        // 软上限：最多外推 3 小时号数，防速度异常吹飞
+	// 已有 points 里落在未来的，填外推值。
+	for i := range points {
+		bucketMinute := queueDashboardBucketMinute(points[i].Bucket)
+		if bucketMinute < 0 || bucketMinute <= nowMinute {
+			continue
+		}
+		extra := rate * float64(bucketMinute-anchorMinute)
+		if extra < 0 || extra > capExtra {
+			if extra > capExtra {
+				extra = capExtra
+			}
+			if extra < 0 {
+				continue
+			}
+		}
+		if projected := latest.calledNo + int(extra); projected > latest.calledNo {
+			points[i].TodayProjectedNo = projected
+		}
+	}
+	// 追加未来 bucket 点（now 之后到关店，每个 bucketMinutes 一个），只带 TodayProjectedNo。
+	for bm := ((nowMinute / bucketMinutes) + 1) * bucketMinutes; bm <= endMinute; bm += bucketMinutes {
+		extra := rate * float64(bm-anchorMinute)
+		if extra > capExtra {
+			extra = capExtra
+		}
+		projected := latest.calledNo + int(extra)
+		if projected <= latest.calledNo {
+			continue
+		}
+		points = append(points, QueueDashboardCalledPoint{
+			StoreID:          storeID,
+			StoreName:        storeName,
+			Bucket:           queueDashboardMinuteBucket(bm),
+			TodayProjectedNo: projected,
+			Source:           "projected",
+		})
+	}
+	return points
 }
 
 func buildQueueDashboardRemoteCalledCurve(query QueueDashboardQuery, baseline QueueBaselineExport, names map[string]string, storeFilter map[string]bool, latestRows []QueueDashboardStoreRow) (QueueDashboardCalledSummary, []QueueDashboardCalledPoint) {
