@@ -13,3 +13,13 @@ sushiro-overdose
 sushiro-overdose-linux
 sushiro-overdose.exe
 sushiro.exe
+
+# collector（Python 采集器）—— 真实凭证与本地环境绝不进 git
+collector/config.json
+collector/.env
+collector/venv/
+__pycache__/
+*.pyc
+collector/*.log
+collector/*.sqlite*
+

@@ -1,0 +1,3 @@
+# 采集器优先用 Python 标准库 urllib，零外部依赖也能跑。
+# requests 仅作为可选便利层（若有则用，无则回退 urllib）。
+requests>=2.28

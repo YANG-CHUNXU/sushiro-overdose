@@ -1,0 +1,41 @@
+# sushiro 采集器 systemd 服务模板
+#
+# 部署：把 collector/ 目录拷到服务器（如 /opt/sushiro-collector），改下面的路径，
+# 然后：sudo cp collector.service /etc/systemd/system/ && sudo systemctl enable --now collector
+#
+# 日志：journalctl -u collector -f
+
+[Unit]
+Description=Sushiro Queue Collector (Turso)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# 改成你服务器上的实际路径
+WorkingDirectory=/opt/sushiro-collector
+
+# 用 venv 的 python；config.json 放在 WorkingDirectory 下
+ExecStart=/opt/sushiro-collector/venv/bin/python -m collector.main run
+
+# 也可以用环境变量文件替代 config.json（二选一）：
+# EnvironmentFile=/opt/sushiro-collector/.env
+
+# 崩溃自动重启，30s 间隔避免疯狂重连
+Restart=always
+RestartSec=30
+
+# 优雅退出：SIGTERM 后给 60s 完成当前采集轮
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+# 日志走 journald
+StandardOutput=journal
+StandardError=journal
+
+# 安全加固（按需）
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

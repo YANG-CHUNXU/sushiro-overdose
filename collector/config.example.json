@@ -1,0 +1,35 @@
+{
+  "_comment": "复制本文件为 config.json 并填入真实凭证。config.json 已在 .gitignore，不会上传。真实凭证也可用环境变量覆盖（见 .env.example），优先级 env > config.json > 本文件占位。",
+  "sushiro": {
+    "base_url": "https://crm-cn-prd.sushiro.com.cn/wechat/api/2.0",
+    "token": "PUT_YOUR_SUSHIRO_TOKEN_HERE_OR_USE_ENV",
+    "referer": "https://servicewechat.com/wx7ac31ef6c073a7ed/159/page-frame.html",
+    "user_agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 MicroMessenger/8.0"
+  },
+  "turso": {
+    "url": "libsql://YOUR_DB.turso.io",
+    "auth_token": "PUT_YOUR_TURSO_TOKEN_HERE_OR_USE_ENV"
+  },
+  "old_turso": {
+    "_comment": "仅 migrate-old 命令用到：从旧库读压力历史导入新库。不用可留空。",
+    "url": "",
+    "auth_token": ""
+  },
+  "collect": {
+    "interval_seconds": 900,
+    "_comment_interval": "线上中频 15 分钟一轮；本机桌面端才是高频采集，不要调高数据库写入频率",
+    "store_ids": [],
+    "_comment_store_ids": "空数组 = 全国全采；填门店 id 列表则只采这些店，例如 [1, 1001]",
+    "active_hours": [10, 22],
+    "_comment_active_hours": "只在 [10, 22) 点采集（门店营业时段），打烊时段跳过省调用",
+    "concurrency": 8,
+    "per_call_timeout_seconds": 15,
+    "list_latitude": 23.13,
+    "list_longitude": 113.26,
+    "_comment_list_coords": "列表接口 stores? 要求经纬度参数，随便给一个国内坐标即可（只是触发全量返回）"
+  },
+  "archive": {
+    "retention_days": 60,
+    "_comment": "原始 queue_snapshots 保留 60 天，超过的聚合后删除"
+  }
+}
