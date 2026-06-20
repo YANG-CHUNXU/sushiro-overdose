@@ -54,7 +54,7 @@ def aggregate_all(turso: TursoClient, days: Optional[int] = None) -> Dict[str, i
 
     sql = (
         f"SELECT collected_at, store_id, wait_minutes, group_queues_count, "
-        f"store_status, net_ticket_status, online_open, "
+        f"store_status, net_ticket_status, online_open, wait_time_cap, "
         f"display_called_no, dq_source, dq_anomaly FROM queue_snapshots {where} "
         f"ORDER BY store_id, collected_at"
     )
@@ -79,16 +79,30 @@ def aggregate_all(turso: TursoClient, days: Optional[int] = None) -> Dict[str, i
     return {"rollups": len(rollups), "daily": len(daily), "intervals": len(intervals)}
 
 
+# 寿司郎 wait_time_cap 恒为 180（系统硬封顶），wait 超过它就是接口异常脏数据。
+# 物理上不可能让人等超过封顶值，聚合算分位数时一律丢弃。默认兜底 180。
+WAIT_DIRTY_THRESHOLD = 180
+
+# group_queues_count（在等桌数）的脏值上限。寿司郎单店同时排队超过这个数极不正常
+# （实测脏值到 529，真实高峰一般 <100）。保守取 200，宁错杀少量真实高峰也不让脏值污染分位数。
+GROUPS_DIRTY_THRESHOLD = 200
+
+
 def _parse_row(r: Dict[str, Any]) -> Optional[dict]:
     try:
         dt = parse_iso_cst(r["collected_at"])
     except (KeyError, ValueError):
         return None
     called_raw = r.get("display_called_no")
+    wait = as_int(r.get("wait_minutes"))
+    cap = as_int(r.get("wait_time_cap"))
+    if cap <= 0:
+        cap = WAIT_DIRTY_THRESHOLD
     return {
         "dt": dt,
         "store_id": as_int(r.get("store_id")),
-        "wait": as_int(r.get("wait_minutes")),
+        "wait": wait,
+        "wait_cap": cap,
         "groups": as_int(r.get("group_queues_count")),
         "store_status": (r.get("store_status") or "").upper(),
         "online_open": as_int(r.get("online_open")),
@@ -131,11 +145,21 @@ def _build_bucket_rollups(
     updated_at = (now_iso or "")[:19] + "+08:00" if now_iso else ""
     for (store_id, date_type, weekday, bucket), frames in grouped.items():
         n = len(frames)
-        waits = [f["wait"] for f in frames if f["wait"] > 0]
-        groups_vals = [f["groups"] for f in frames if f["groups"] > 0]
+        # wait 过滤：>0 且不超过门店 cap（wait_time_cap，恒 180）。超过 cap 的是接口脏数据
+        # （寿司郎不可能让人等超过封顶值），算分位数/最大值/busy 时一律丢弃。
+        waits = [f["wait"] for f in frames if 0 < f["wait"] <= f["wait_cap"]]
+        # groups 过滤：>0 且不超过脏值上限（实测脏值到 529，单店不可能排这么多桌）
+        groups_vals = [
+            f["groups"] for f in frames if 0 < f["groups"] <= GROUPS_DIRTY_THRESHOLD
+        ]
         open_count = sum(1 for f in frames if f["store_status"] == "OPEN")
         online_count = sum(1 for f in frames if f["online_open"])
-        busy_count = sum(1 for f in frames if f["wait"] > 0 or f["groups"] > 0)
+        # busy 用"合理 wait 或合理 groups"判断，脏值（wait>cap 或 groups>上限）不计入在排队
+        busy_count = sum(
+            1
+            for f in frames
+            if 0 < f["wait"] <= f["wait_cap"] or 0 < f["groups"] <= GROUPS_DIRTY_THRESHOLD
+        )
         anomaly_count = sum(1 for f in frames if f["dq_anomaly"])
 
         # 叫号：只取 has_called 且 >0 的帧

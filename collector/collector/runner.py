@@ -78,7 +78,9 @@ def run_loop(cfg: Dict[str, Any]) -> None:
                     require_credential(cfg, "turso", "url"),
                     require_credential(cfg, "turso", "auth_token"),
                 )
-                aggregate_all(turso)
+                # 只聚合最近 30 天：恒定读量，不随历史快照增长而爆炸（全量重算会触及 Turso 额度）。
+                # rollups 行覆盖所有历史桶（upsert 合并），所以 30 天样本足够算分位数且覆盖全天各时段。
+                aggregate_all(turso, days=30)
                 last_aggregate_date = today
             except Exception as e:
                 log.error("聚合失败: %s", e)
