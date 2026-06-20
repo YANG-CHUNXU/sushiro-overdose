@@ -207,6 +207,10 @@ def _build_daily_rollups(
     for (sdate, store_id, bucket), f in day_bucket_latest.items():
         date_type, weekday = date_type_for(f["dt"], holidays, workdays)
         called = f["called_no"] if f["has_called"] and (f["called_no"] or 0) > 0 else None
+        # 脏值过滤（与 _build_bucket_rollups 一致）：wait>cap 或 groups>上限视为无效
+        wait_ok = 0 < f["wait"] <= f["wait_cap"]
+        groups_ok = 0 < f["groups"] <= GROUPS_DIRTY_THRESHOLD
+        busy = wait_ok or groups_ok
         out.append({
             "snapshot_date": sdate,
             "store_id": store_id,
@@ -216,15 +220,15 @@ def _build_daily_rollups(
             "sample_count": 1,
             "open_count": 1 if f["store_status"] == "OPEN" else 0,
             "online_open_count": 1 if f["online_open"] else 0,
-            "busy_count": 1 if (f["wait"] > 0 or f["groups"] > 0) else 0,
+            "busy_count": 1 if busy else 0,
             "open_rate": 1.0 if f["store_status"] == "OPEN" else 0.0,
             "online_open_rate": 1.0 if f["online_open"] else 0.0,
-            "busy_rate": 1.0 if (f["wait"] > 0 or f["groups"] > 0) else 0.0,
-            "wait_typical_minutes": float(f["wait"]) if f["wait"] > 0 else None,
-            "wait_safe_minutes": float(f["wait"]) if f["wait"] > 0 else None,
-            "wait_max_minutes": f["wait"],
-            "queue_groups_typical": float(f["groups"]) if f["groups"] > 0 else None,
-            "queue_groups_safe": float(f["groups"]) if f["groups"] > 0 else None,
+            "busy_rate": 1.0 if busy else 0.0,
+            "wait_typical_minutes": float(f["wait"]) if wait_ok else None,
+            "wait_safe_minutes": float(f["wait"]) if wait_ok else None,
+            "wait_max_minutes": f["wait"] if wait_ok else 0,
+            "queue_groups_typical": float(f["groups"]) if groups_ok else None,
+            "queue_groups_safe": float(f["groups"]) if groups_ok else None,
             "called_sample_count": 1 if called is not None else 0,
             "called_no_slow": called,
             "called_no_typical": called,

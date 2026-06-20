@@ -18,6 +18,8 @@ from typing import Any, Dict
 from .aggregator import aggregate_all
 from .archive import archive_old
 from .collector import collect_once
+from .config import require_credential
+from .turso import TursoClient
 
 log = logging.getLogger("collector.run")
 
@@ -50,30 +52,13 @@ def run_loop(cfg: Dict[str, Any]) -> None:
 
     while not _STOP.is_set():
         now = datetime.now(CST)
-
-        # 营业时段判断（active_hours=[10,22] 表示 10≤hour<22 才采）
-        if active_hours and len(active_hours) == 2:
-            lo, hi = active_hours
-            if not (lo <= now.hour < hi):
-                log.debug("非营业时段 %s，跳过采集", now.strftime("%H:%M"))
-                # 睡到下一个采集点或退出
-                _STOP.wait(interval)
-                continue
-
-        # 跑一轮采集
-        try:
-            collect_once(cfg)
-        except Exception as e:
-            log.error("采集轮失败（下轮重试）: %s", e)
-
-        # 每日聚合（02:00 之后、且今天还没聚合过）
         today = now.strftime("%Y-%m-%d")
+
+        # 每日聚合（02:00 之后、且今天还没聚合过）。
+        # 放在营业时段判断之前——聚合/归档不受 active_hours 限制，凌晨照常跑。
         if now.hour >= 2 and last_aggregate_date != today:
             log.info("每日聚合 %s", today)
             try:
-                from .turso import TursoClient
-                from .config import require_credential
-
                 turso = TursoClient(
                     require_credential(cfg, "turso", "url"),
                     require_credential(cfg, "turso", "auth_token"),
@@ -89,9 +74,6 @@ def run_loop(cfg: Dict[str, Any]) -> None:
         if now.hour >= 3 and last_archive_date != today:
             log.info("每日归档 %s", today)
             try:
-                from .turso import TursoClient
-                from .config import require_credential
-
                 turso = TursoClient(
                     require_credential(cfg, "turso", "url"),
                     require_credential(cfg, "turso", "auth_token"),
@@ -100,6 +82,25 @@ def run_loop(cfg: Dict[str, Any]) -> None:
                 last_archive_date = today
             except Exception as e:
                 log.error("归档失败: %s", e)
+
+        # 营业时段判断（active_hours=[10,22] 表示 10≤hour<22 才采）。
+        # 只作用于采集，不影响上面的聚合/归档。
+        if active_hours and len(active_hours) == 2:
+            lo, hi = active_hours
+            if lo >= hi:
+                log.error("active_hours 配置错误 lo>=hi: %s，跳过采集", active_hours)
+                _STOP.wait(interval)
+                continue
+            if not (lo <= now.hour < hi):
+                log.debug("非营业时段 %s，跳过采集", now.strftime("%H:%M"))
+                _STOP.wait(interval)
+                continue
+
+        # 跑一轮采集
+        try:
+            collect_once(cfg)
+        except Exception as e:
+            log.error("采集轮失败（下轮重试）: %s", e)
 
         # 等下一轮（可被信号中断）
         _STOP.wait(interval)

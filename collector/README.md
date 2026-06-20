@@ -22,6 +22,8 @@
 
 ## 快速开始（本机）
 
+**前置**：Python ≥ 3.9（开发/测试于 3.9.6）。采集器零外部依赖（纯标准库 urllib）。
+
 ```bash
 cd collector
 
@@ -57,13 +59,16 @@ venv/bin/python -m collector.main run
 
 ## 部署到服务器（systemd）
 
+**前置**：服务器需 Python ≥ 3.9。采集器零外部依赖。
+
 ```bash
-# 拷贝 collector/ 到服务器
-scp -r collector/ user@server:/opt/sushiro-collector
+# 拷贝 collector/ 到服务器（不要带本机的 venv——它是 macOS 二进制，Linux 上不可用）
+rsync -av --exclude venv --exclude config.json --exclude '__pycache__' collector/ user@server:/opt/sushiro-collector/
 
 # 服务器上：
 cd /opt/sushiro-collector
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
+python3 -m venv venv          # 服务器上重建 venv（Linux 二进制）
+venv/bin/pip install -r requirements.txt   # 零依赖，仅建立 venv 环境
 cp config.example.json config.json && vi config.json   # 填凭证
 
 venv/bin/python -m collector.main init-schema
