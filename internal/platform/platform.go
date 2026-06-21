@@ -9,6 +9,7 @@ package platform
 import . "github.com/Ryujoxys/sushiro-overdose/internal/core"
 
 import (
+	"sync"
 	"syscall"
 )
 
@@ -20,6 +21,29 @@ func DesktopNotification(title, message string) {
 // SetSystemProxy configures the system HTTP/HTTPS proxy to localhost:port.
 func SetSystemProxy(port int) error {
 	return setSystemProxy(port)
+}
+
+// proxyWarnings 收集设代理过程中的非致命提示（如 Windows QUIC 屏蔽失败可能抓不到包）。
+// engine 在 SetSystemProxy 后读它，把提示推给前端（不中断采集）。
+var (
+	proxyWarningsMu sync.Mutex
+	proxyWarnings   []string
+)
+
+// RecordProxyWarning 记录一条非致命代理提示（平台层调用）。
+func RecordProxyWarning(msg string) {
+	proxyWarningsMu.Lock()
+	proxyWarnings = append(proxyWarnings, msg)
+	proxyWarningsMu.Unlock()
+}
+
+// DrainProxyWarnings 取出并清空已记录的代理提示（engine 在 SetSystemProxy 后调用）。
+func DrainProxyWarnings() []string {
+	proxyWarningsMu.Lock()
+	defer proxyWarningsMu.Unlock()
+	out := proxyWarnings
+	proxyWarnings = nil
+	return out
 }
 
 // ClearSystemProxy removes the system proxy configuration.

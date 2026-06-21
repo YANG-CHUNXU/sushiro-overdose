@@ -351,32 +351,69 @@ func writeMobileAuthGuide(w http.ResponseWriter, data mobileAuthGuideData) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// 引导页复用主应用设计语言（red/green-soft/yellow-soft 配色体系），iPhone/安卓分 tab 各自一套清晰步骤，
+	// 消除原来"手机页说安卓改用电脑、电脑页又说安卓装 Reqable"的矛盾。iPhone 加"信任验证回环"提示。
 	_, _ = w.Write([]byte(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>寿司郎手机凭证捕获</title>
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f7f1ef;color:#1f1b18;margin:0;padding:24px;line-height:1.6}
-.card{max-width:720px;margin:auto;background:#fff;border-radius:18px;padding:22px;box-shadow:0 12px 40px rgba(120,30,30,.12)}
-h1{font-size:22px;margin:0 0 12px;color:#b81c22}.muted{color:#666}.warn{background:#fff6d8;border:1px solid #f2cf6a;border-radius:12px;padding:12px}
-code{background:#f4f4f4;border-radius:6px;padding:2px 6px;word-break:break-all}.btn{display:inline-block;background:#b81c22;color:#fff;text-decoration:none;border-radius:999px;padding:10px 18px;font-weight:700}
-li{margin:8px 0}
+:root{--red:#B81C22;--red-soft:#FFF1F1;--green-soft:#ECF7EF;--yellow-soft:#FFF5D8;--ink:#1f1b18;--sub:#666;--line:#eee}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f7f1ef;color:var(--ink);margin:0;padding:20px;line-height:1.65}
+.card{max-width:680px;margin:auto;background:#fff;border-radius:18px;padding:24px;box-shadow:0 12px 40px rgba(120,30,30,.12)}
+h1{font-size:21px;margin:0 0 6px;color:var(--red)}
+.muted{color:var(--sub);font-size:13px}
+.btn{display:inline-block;background:var(--red);color:#fff;text-decoration:none;border-radius:999px;padding:12px 22px;font-weight:700;font-size:15px;margin:14px 0}
+code{background:#f4f4f4;border-radius:6px;padding:3px 7px;word-break:break-all;font-size:13px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+.steps li{position:relative;padding:12px 14px 12px 48px;margin:8px 0;background:#FBFAF8;border:1px solid var(--line);border-radius:10px;counter-increment:s;font-size:14px}
+.steps li::before{content:counter(s);position:absolute;left:12px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.warn{background:var(--yellow-soft);border:1px solid #ECD681;border-radius:10px;padding:12px 14px;font-size:13px;color:#6F4B00;margin:12px 0}
+.ok{background:var(--green-soft);border:1px solid #BFE3C9;border-radius:10px;padding:12px 14px;font-size:13px;color:#2d7a4f;margin:12px 0}
+.tabs{display:flex;gap:8px;margin:16px 0}
+.tab{flex:1;text-align:center;padding:10px;border-radius:10px;background:#F2F0EC;font-size:14px;font-weight:600;color:var(--sub);cursor:pointer;border:none}
+.tab.on{background:var(--red);color:#fff}
+.panel{display:none}.panel.on{display:block}
+h2{font-size:15px;margin:18px 0 6px;color:var(--ink)}
+li code{display:inline-block;margin:2px 0}
+ul{padding-left:20px}
 </style><div class="card">
 <h1>寿司郎手机凭证捕获</h1>
-<p class="muted">这一步让手机真实微信产生凭证请求，电脑只捕获寿司郎接口参数。完成后请关闭手机 Wi-Fi 代理。</p>
-<p><a class="btn" href="` + html.EscapeString(data.CAURL) + `">下载并安装 CA 证书</a></p>
-<div class="warn">本页面向 iPhone：安装描述文件后，还需要到“设置 → 通用 → 关于本机 → 证书信任设置”里完全信任该证书，否则抓不到 HTTPS。安卓请改用电脑上的“手动导入凭证”（用手机抓包工具导出请求再粘贴），不需要这一页。</div>
-<h2>手机 Wi-Fi 代理</h2>
-<p>把当前 Wi-Fi 的 HTTP 代理改为“手动”，服务器和端口填下面任意一个：</p>
-<ul>` + hostList + `</ul>
-<h2>操作步骤</h2>
-<ol>
-<li>保持本页不关，先安装并信任 CA。</li>
-<li>回到 Wi-Fi 设置，手动代理指向上面的电脑 IP 和端口。</li>
-<li>彻底关闭再打开手机微信，进入寿司郎小程序。</li>
-<li>点一次门店列表、排队、预约或我的预约，让电脑捕获完整凭证参数。</li>
-<li>电脑提示捕获完成后，立刻把手机 Wi-Fi 代理改回“关闭”。</li>
+<p class="muted">让手机真实微信产生凭证请求，电脑只捕获寿司郎接口参数。选你的手机类型看对应步骤。</p>
+<div class="tabs">
+<button class="tab on" onclick="pickTab('ios')">🍎 iPhone</button>
+<button class="tab" onclick="pickTab('android')">🤖 安卓</button>
+</div>
+
+<div id="t-ios" class="panel on">
+<p><a class="btn" href="` + html.EscapeString(data.CAURL) + `">① 下载并安装 CA 证书</a></p>
+<ol class="steps">
+<li>点上面按钮下载描述文件，去「设置」顶部点「已下载描述文件」→ 安装。</li>
+<li><b>关键易漏：</b>再去「设置 → 通用 → 关于本机 → 证书信任设置」，把 Sushiro Proxy CA 的开关打开（完全信任），否则抓不到 HTTPS。</li>
+<li>回「Wi-Fi」→ 当前网络 → 「配置代理」选「手动」，服务器/端口填下面任一：
+<ul>` + hostList + `</ul></li>
+<li>彻底关闭再打开手机微信，进寿司郎小程序。</li>
+<li>点一次「门店」，再点一次「我的预约」（产生查询+预约两类请求）。</li>
+<li>电脑提示捕获完成后，立刻关闭手机 Wi-Fi 代理（改回「关闭」）。</li>
 </ol>
-<p class="muted">如果设置代理后手机完全没网，通常是电脑防火墙或手机/电脑不在同一个局域网。</p>
-</div>`))
+<div class="ok">装好信任后，回电脑端点「我已装好证书，验证一下」继续。</div>
+</div>
+
+<div id="t-android" class="panel">
+<div class="warn">安卓 7+ 默认不信任用户装的证书，直接走代理多半抓不到。安卓推荐用抓包 App（Reqable）自带证书 + 浏览器信任，步骤如下：</div>
+<ol class="steps">
+<li>手机装「Reqable」（或 HttpCanary），打开它，按引导装好它的 CA 证书并信任。</li>
+<li>在 Reqable 里开始抓包，过滤 <code>crm-cn-prd.sushiro.com.cn</code>。</li>
+<li>打开微信进寿司郎小程序，点一次「门店」+ 点一次「我的预约」。</li>
+<li>在 Reqable 找到那条请求，导出为 cURL 或复制请求头。</li>
+<li>把导出的内容发到电脑（微信文件传输助手），粘进电脑端「拿通行证」第 4 步。</li>
+</ol>
+<div class="ok">安卓这条路不用设 Wi-Fi 代理、不用回这页——抓完直接回电脑粘贴。</div>
+</div>
+
+<div class="warn">⚠ 如果 iPhone 设代理后手机完全没网，多半是电脑防火墙或手机/电脑不在同一局域网（路由器开了 AP 隔离），换网络或改用上面的安卓/手动方式。</div>
+</div>
+<script>function pickTab(t){document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',i===(t==='ios'?0:1)));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.getElementById('t-'+t).classList.add('on')}</script>
+`))
 }
 
 func serveMobileAuthCA(w http.ResponseWriter) {

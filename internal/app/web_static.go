@@ -75,6 +75,18 @@ body.advanced-mode .simple-only{display:none!important}
 .engine.booking .dot,.engine.sniping .dot{background:var(--blue)}
 .engine.success .dot{background:var(--green)}
 .engine.error .dot{background:var(--red)}
+.cprogress{display:flex;align-items:center;gap:6px;margin-top:14px;flex-wrap:wrap}
+.cstep{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:#F2F0EC;font-size:12px;color:var(--sub)}
+.cstep.done{background:var(--green-soft);color:#2d7a4f}
+.cstep.current{background:var(--red-soft);color:var(--red);font-weight:700}
+.cstep.pending{opacity:.5}
+.cstep-ic{font-size:14px;line-height:1}
+.cstep-arrow{color:#ccc;font-size:14px}
+.cstep-sub{margin-top:10px;font-size:12px;color:var(--sub);line-height:1.6}
+.cstep-sub.warn{color:#B5651D;background:var(--yellow-soft);border:1px solid #ECD681;padding:8px 10px;border-radius:8px}
+.err-card{margin-top:12px;padding:14px;border-radius:10px;background:var(--red-soft);border:1px solid #F0B7B9}
+.err-card b{color:var(--red);font-size:14px}
+.err-card p{margin:6px 0 10px;font-size:13px;color:#7a2a2a;line-height:1.6}
 .notice{margin-top:16px;padding:13px 14px;border-radius:10px;background:var(--yellow-soft);border:1px solid #ECD681;color:#6F4B00;font-size:13px;line-height:1.6}
 .ps{font-size:13px;line-height:1.9;color:var(--sub)}
 .ps b{color:var(--ink)}
@@ -1296,6 +1308,49 @@ function ticketHeroHTML(r){
 function openTicketForecast(storeId,no){qdSelected=storeId?[String(storeId)]:[];rememberStores('sushiro_qd_store',qdSelected);const t=el('qdTargetNo'),n=parseInt(String(no||'').replace(/\D+/g,''),10);if(t)t.value=n>0?n:'';go('qd')}
 function explainMsg(m){m=String(m||'');if(/机器级|LocalMachine|管理员权限|UAC|RunAs|elevated|exit code/i.test(m))return'Windows 机器级证书没装上：PC 微信只读机器级证书库，装它时会弹 UAC 请求管理员权限，点「是」即可。被拒或关掉就会失败——重新获取凭证会再弹一次，这次点同意。';if(/证书|trust|certificate/i.test(m))return'证书问题：先到设置页刷新诊断，确认 CA 证书已信任；失败后可重新获取凭证。';if(/代理|proxy/i.test(m))return'代理问题：先点击设置页的“修复代理”，再重新获取凭证。';if(/401|403|凭证|认证|token|auth/i.test(m))return'凭证过期：重新获取凭证参数后再启动。';if(/network|timeout|超时|不可达|connection/i.test(m))return'网络问题：确认网络可访问寿司郎接口，稍后重试。';if(/门店|store/i.test(m))return'门店配置问题：检查设置页的预约/取号门店是否仍在可用列表中。';return'先查看设置页本机诊断和日志，处理红色项后重试。'}
 function wechatLightHTML(w){if(!w)return'';let cls,txt,btn='';if(w.restarted&&w.running){cls='ok';txt='PC 微信已重新打开 ✓ 请在寿司郎小程序里点一次排队或预约'}else if(w.restarted){cls='ok';txt='检测到 PC 微信已重启'}else if(w.running){cls='warn';txt='检测到 PC 微信正在运行——请彻底退出（任务栏右键退出，不是最小化）后重新打开';btn=' <button class="bt bt-o bt-s" onclick="killWeChat()">一键结束微信</button>'}else{cls='bad';txt='没检测到 PC 微信在运行，请打开 PC 微信'}return'<p class="wechat-light '+cls+'">'+esc(txt)+btn+'</p>'}
+// captureProgressHTML 渲染采集阶段进度条。基于后端 stage 枚举（preparing_cert/...）高亮当前阶段。
+// 各阶段：装证书→起代理→设系统代理→抓包(等微信)→自检。已完成打绿勾，当前高亮，未来灰。
+function captureProgressHTML(s){
+  if(!s||s.status!=='capturing'||!s.stage||s.stage==='idle')return'';
+  const steps=[
+    {k:'cert',label:'装证书',stages:['preparing_cert','installing_cert_currentuser','installing_cert_localmachine_uac']},
+    {k:'proxy',label:'起代理',stages:['starting_proxy']},
+    {k:'sysproxy',label:'设系统代理',stages:['setting_system_proxy']},
+    {k:'capture',label:'抓包',stages:['waiting_capture']},
+    {k:'probe',label:'自检',stages:['probing']}
+  ];
+  const order=['preparing_cert','installing_cert_currentuser','installing_cert_localmachine_uac','starting_proxy','setting_system_proxy','waiting_capture','probing','done'];
+  const curIdx=order.indexOf(s.stage);
+  let cells=steps.map(st=>{
+    const stIdx=Math.max.apply(null,st.stages.map(x=>order.indexOf(x)));
+    let state='pending';
+    if(curIdx>stIdx)state='done';
+    else if(st.stages.indexOf(s.stage)>=0)state='current';
+    const icon=state==='done'?'✓':(state==='current'?'●':'○');
+    return '<div class="cstep '+state+'"><span class="cstep-ic">'+icon+'</span><span class="cstep-lb">'+st.label+'</span></div>';
+  }).join('<span class="cstep-arrow">›</span>');
+  let sub='';
+  if(s.stage==='waiting_capture'&&s.capture){
+    const got=countCaptured(s.capture);
+    sub='<p class="cstep-sub">已抓到 '+got+'/8 个字段'+(got<8?'，还差几个——请在小程序里点一次「我的预约」和门店':'，正在自检…')+'</p>';
+  }else if(s.stage==='installing_cert_localmachine_uac'){
+    sub='<p class="cstep-sub warn">马上会弹出系统窗口请求管理员权限，请点「是」（装机器级证书必须）</p>';
+  }
+  return '<div class="cprogress">'+cells+'</div>'+sub;
+}
+function countCaptured(c){if(!c)return 0;let n=0;['x_app_code','query_auth','reservation_auth','user_agent','referer','wechat_id','phone_number','store_ids'].forEach(k=>{if(c[k])n++});return n}
+// errorFromKind 用后端 error_kind 枚举生成人话文案 + 出路按钮，替代 explainMsg 正则猜。
+function errorFromKind(s){
+  const k=s.error_kind,m=s.message||'';
+  if(k==='cert_uac_declined')return{t:'Windows 机器级证书没装上',d:'刚才弹出的系统窗口你没点是。点下面按钮重装，弹出时务必点「是」（PC 微信只读机器级证书库，必须管理员权限）。',btn:'重新装证书',act:'startAuth()'};
+  if(k==='cert_locked')return{t:'钥匙串被锁住了',d:'macOS 钥匙串锁定，证书装不进去。在终端运行 security unlock-keychain 解锁后，点下面按钮重试。',btn:'我已解锁，重试',act:'startAuth()'};
+  if(k==='cert_install_failed')return{t:'证书没装上',d:'证书安装失败：'+esc(m)+'。可到设置页诊断看详情，或重试。',btn:'重新装证书',act:'startAuth()'};
+  if(k==='proxy_failed')return{t:'系统代理没设上',d:'设置系统代理失败：'+esc(m)+'。先到设置页点「修复代理」清理残留，再重试。',btn:'修复代理',act:'repairP()'};
+  if(k==='quic_block_failed')return{t:'微信可能走旁路了',d:m||'Windows QUIC 屏蔽失败，微信可能用 UDP 绕过代理导致抓不到包。建议重启微信再试，仍不行改用手机抓包。',btn:'重新获取',act:'startAuth()'};
+  if(k==='auth_stale')return{t:'凭证过期了',d:'凭证过期或被手机端登录顶掉。点下面重新获取。',btn:'重新获取凭证',act:'startAuth()'};
+  if(k==='network')return{t:'网络问题',d:'连不上寿司郎接口：'+esc(m)+'。确认网络后重试。',btn:'重试',act:'startAuth()'};
+  return{t:'需要处理',d:explainMsg(m),btn:'重新获取凭证',act:'startAuth()'};
+}
 function uD(){
   const b=el('bm'),bc=el('bc'),nc=el('nc'),pick=el('heroPick'),title=el('heroTitle'),copy=el('heroCopy'),badge=el('heroBadge');
   const run=isRun();
@@ -1355,8 +1410,15 @@ function uE(){
   const desc=s.message||({idle:'等待下一步。',capturing:'等待小程序请求。',booking:'正在查询未来预约时段。',sniping:'蹲未来预约窗口运行中。',success:'已保存预约信息。',error:'请查看日志。'}[s.status]||'');
   box.className='engine '+s.status+(s.status==='idle'?' hid':'');box.innerHTML='<div class="row"><span class="dot"></span><strong>'+esc(label)+'</strong></div><p>'+esc(desc)+'</p>';
   if(s.status==='booking'&&s.attempts)box.innerHTML+='<p>已查询 '+s.attempts+' 次</p>';
-  if(s.status==='error'&&s.message)box.innerHTML+='<p>'+esc(explainMsg(s.message))+'</p>';
-  if(s.status==='capturing'&&s.capture&&s.capture.wechat&&(pf==='windows'||pf==='darwin'))box.innerHTML+=wechatLightHTML(s.capture.wechat);
+  if(s.status==='capturing'){
+    box.innerHTML+=captureProgressHTML(s);
+    if(s.warning)box.innerHTML+='<p class="cstep-sub warn">⚠ '+esc(s.warning)+'</p>';
+    if(s.capture&&s.capture.wechat&&(pf==='windows'||pf==='darwin'))box.innerHTML+=wechatLightHTML(s.capture.wechat);
+  }
+  if(s.status==='error'){
+    const ek=errorFromKind(s);
+    box.innerHTML+='<div class="err-card"><b>'+esc(ek.t)+'</b><p>'+ek.d+'</p><div class="fl g8 fw"><button class="bt bt-r" onclick="'+ek.act+'">'+esc(ek.btn)+'</button><button class="bt bt-o" onclick="openDiagnostics()">打开诊断</button></div></div>';
+  }
   if(bs)bs.classList.toggle('hid',!isRun());
   const cb=el('cb');
   if(s.status==='capturing'&&s.capture){if(cb)cb.classList.remove('hid');rG(s.capture)}else if(s.status!=='capturing'){if(cb)cb.classList.add('hid')}

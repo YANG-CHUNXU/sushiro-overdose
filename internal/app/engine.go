@@ -42,6 +42,39 @@ const (
 	EngineError EngineStatus = "error"
 )
 
+// CaptureStage 是凭证采集（runCapture）的结构化阶段，前端据此渲染进度条。
+// 替代以前只靠一行 message 描述进度的做法——现在每个阶段有明确枚举，前端能高亮"当前在哪一步"。
+type CaptureStage string
+
+const (
+	StageIdle                  CaptureStage = "idle"
+	StagePreparingCert         CaptureStage = "preparing_cert"                   // 正在生成/检查本地 CA 证书
+	StageInstallingCertUser    CaptureStage = "installing_cert_currentuser"      // 装用户级证书（Windows 不需 UAC）
+	StageInstallingCertMachine CaptureStage = "installing_cert_localmachine_uac" // 装机器级证书（Windows 必弹 UAC，前端要预告）
+	StageStartingProxy         CaptureStage = "starting_proxy"                   // 正在起 MITM 代理监听
+	StageSettingSystemProxy    CaptureStage = "setting_system_proxy"             // 正在设系统代理（PAC/手动）
+	StageWaitingCapture        CaptureStage = "waiting_capture"                  // 代理就绪，等用户在微信里点门店/预约产生凭证请求
+	StageProbing               CaptureStage = "probing"                          // 已抓到凭证，自检基础接口
+	StageDone                  CaptureStage = "done"
+)
+
+// ErrorKind 是结构化错误分类，替代以前前端用正则猜 message 字符串（explainMsg）的脆弱做法。
+// 每类对应前端一条人话文案 + 一个出路按钮。
+type ErrorKind string
+
+const (
+	ErrKindNone            ErrorKind = ""
+	ErrKindCertUACDeclined ErrorKind = "cert_uac_declined"   // Windows 装 LocalMachine 证书时用户在 UAC 弹窗点了"否"
+	ErrKindCertInstall     ErrorKind = "cert_install_failed" // 证书安装失败（权限/锁定/其他）
+	ErrKindCertLocked      ErrorKind = "cert_locked"         // macOS keychain 锁定，需要解锁
+	ErrKindProxy           ErrorKind = "proxy_failed"        // 系统代理设置失败
+	ErrKindQUICBlock       ErrorKind = "quic_block_failed"   // Windows 屏蔽微信 QUIC 失败（可能抓不到包）
+	ErrKindCaptureTimeout  ErrorKind = "capture_timeout"     // 等待凭证超时
+	ErrKindAuthStale       ErrorKind = "auth_stale"          // 凭证过期/被手机端顶掉
+	ErrKindNetwork         ErrorKind = "network"             // 网络错误
+	ErrKindUnknown         ErrorKind = "unknown"
+)
+
 // weChatProbeInterval 是 runCapture 轮询里探测 PC 微信进程的节流间隔。
 // PowerShell/ps 冷启动约 300ms，4s 间隔下平均开销可忽略；capture 等待期本就空转，
 // 4s 粒度对「微信是否被关再重开」的信号灯足够（用户自己主导重启动作，不需秒级反馈）。
@@ -54,6 +87,16 @@ type EngineState struct {
 	Attempts    int                `json:"attempts"`
 	Capture     *CaptureStatusJSON `json:"capture,omitempty"`
 	Reservation *ReservationRecord `json:"reservation,omitempty"`
+	// Stage 是采集（capturing）阶段的结构化进度，前端渲染进度条。仅 capturing/error 期有意义。
+	Stage CaptureStage `json:"stage,omitempty"`
+	// StageStep/StageTotal 是子进度（如装证书 1/2 库、字段 5/8）。0 表示无子进度。
+	StageStep  int `json:"stage_step,omitempty"`
+	StageTotal int `json:"stage_total,omitempty"`
+	// ErrorKind 是结构化错误分类，前端据此显示人话文案 + 出路按钮（替代正则猜 message）。
+	ErrorKind ErrorKind `json:"error_kind,omitempty"`
+	// Warning 是非致命提示（如 Windows QUIC 屏蔽失败可能抓不到包），不改变 status/不中断采集，
+	// 前端显示一条黄色提示。空=无。
+	Warning string `json:"warning,omitempty"`
 }
 
 type CaptureStatusJSON struct {
@@ -150,6 +193,24 @@ func captureStatusForTokens(tokens *CapturedTokens) *CaptureStatusJSON {
 	}
 }
 
+// countCapturedFields 数已抓到的凭证字段数（0~8），供 waiting 阶段子进度"X/8"用。
+func countCapturedFields(tokens *CapturedTokens) int {
+	if tokens == nil {
+		return 0
+	}
+	cs := captureStatusForTokens(tokens)
+	if cs == nil {
+		return 0
+	}
+	n := 0
+	for _, ok := range []bool{cs.XAppCode, cs.QueryAuth, cs.ReservationAuth, cs.UserAgent, cs.Referer, cs.WechatID, cs.PhoneNumber, cs.StoreIDs} {
+		if ok {
+			n++
+		}
+	}
+	return n
+}
+
 // setState 更新状态文案并广播给 UI（经 SSE 总线）。运行循环中频繁调用，
 // 故写成「写 state + 发布快照」两步；读快照走 GetState 自带锁，避免调用方各处加锁。
 func (e *BookingEngine) setState(status EngineStatus, message string) {
@@ -158,6 +219,95 @@ func (e *BookingEngine) setState(status EngineStatus, message string) {
 	e.state.Message = message
 	e.mu.Unlock()
 	bus.publish("engine", mustJSON(e.GetState()))
+}
+
+// setStage 更新采集阶段进度（stage/子进度），并 publish 到前端。status/message 保持不变。
+// 用于 runCapture 在不改变状态机的前提下推进"当前在第几步"的细粒度进度。
+func (e *BookingEngine) setStage(stage CaptureStage, step, total int) {
+	e.mu.Lock()
+	e.state.Stage = stage
+	e.state.StageStep = step
+	e.state.StageTotal = total
+	snap := e.snapshotStateLocked()
+	e.mu.Unlock()
+	bus.publish("engine", mustJSON(snap))
+}
+
+// setError 标记结构化错误分类（前端据此显示人话 + 出路按钮），并 publish。
+// 通常紧跟 setState(EngineError, ...) 调用。
+func (e *BookingEngine) setError(kind ErrorKind) {
+	e.mu.Lock()
+	e.state.ErrorKind = kind
+	snap := e.snapshotStateLocked()
+	e.mu.Unlock()
+	bus.publish("engine", mustJSON(snap))
+}
+
+// resetProgress 清空 stage/error_kind，运行开始/结束时调用，避免上次状态残留。
+func (e *BookingEngine) resetProgress() {
+	e.mu.Lock()
+	e.state.Stage = StageIdle
+	e.state.StageStep = 0
+	e.state.StageTotal = 0
+	e.state.ErrorKind = ErrKindNone
+	e.state.Warning = ""
+	e.mu.Unlock()
+}
+
+// setWarning 设非致命提示（不改变 status，前端显示黄色提示条）。
+func (e *BookingEngine) setWarning(msg string) {
+	e.mu.Lock()
+	e.state.Warning = msg
+	snap := e.snapshotStateLocked()
+	e.mu.Unlock()
+	bus.publish("engine", mustJSON(snap))
+}
+
+// classifyCertError 按 err 文案兜底分类证书错误（仅当平台层未回填 ErrorKind 时）。
+// 平台层（platform_windows.go 等）应优先通过 setError 在 InstallCert 内部精确回填；
+// 这里是 message 原文兜底，覆盖平台层没设的情况。
+func (e *BookingEngine) classifyCertError(err error) {
+	if err == nil {
+		return
+	}
+	e.mu.Lock()
+	if e.state.ErrorKind != ErrKindNone {
+		e.mu.Unlock()
+		return // 平台层已设，不覆盖
+	}
+	e.mu.Unlock()
+	msg := strings.ToLower(err.Error())
+	var kind ErrorKind
+	switch {
+	case strings.Contains(msg, "exit code") || strings.Contains(msg, "runas") ||
+		strings.Contains(msg, "uac") || strings.Contains(msg, "管理员") ||
+		strings.Contains(msg, "elevated") || strings.Contains(msg, "localmachine") ||
+		strings.Contains(msg, "机器级"):
+		kind = ErrKindCertUACDeclined
+	case strings.Contains(msg, "locked") || strings.Contains(msg, "锁定") ||
+		strings.Contains(msg, "unlock") || strings.Contains(msg, "authfailed") ||
+		strings.Contains(msg, "user interaction is not allowed") ||
+		strings.Contains(msg, "interaction not allowed"):
+		// macOS keychain 锁定：security add-trusted-cert 报 "User interaction is not allowed"
+		kind = ErrKindCertLocked
+	default:
+		kind = ErrKindCertInstall
+	}
+	e.setError(kind)
+}
+
+// snapshotStateLocked 返回当前状态的深拷贝快照（调用方持锁）。
+func (e *BookingEngine) snapshotStateLocked() EngineState {
+	snap := e.state
+	if e.state.Capture != nil {
+		c := *e.state.Capture
+		snap.Capture = &c
+	}
+	if e.state.Reservation != nil {
+		r := *e.state.Reservation
+		snap.Reservation = &r
+	}
+	return snap
 }
 
 // finishRun 在一次运行（capture/booking/sniper）退出时收尾：清掉 cancel/done 句柄，
@@ -270,26 +420,45 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	doneActivity := markMainFlowActive("capturing")
 	defer doneActivity()
 
+	e.resetProgress()
 	e.setState(EngineCapturing, "正在准备证书...")
+	e.setStage(StagePreparingCert, 0, 0)
 
 	caCert, caKey, err := LoadOrGenerateCA()
 	if err != nil {
 		e.setState(EngineError, "CA证书加载失败: "+err.Error())
+		e.setError(ErrKindCertInstall)
 		e.addLogLevel("CA证书加载失败: "+err.Error(), "error")
 		return
 	}
 
 	trusted, _ := IsCertTrusted()
 	if !trusted {
-		e.addLog("首次运行，正在安装CA证书...")
+		// 装证书分两阶段：Windows 先装 CurrentUser（不需 UAC），再装 LocalMachine（弹 UAC）。
+		// 在装 LocalMachine 前把 stage 切到 uac 阶段，前端据此预告"马上会弹系统窗口，点是"。
+		if runtime.GOOS == "windows" {
+			e.addLog("首次运行，正在安装CA证书（用户级）...")
+			e.setStage(StageInstallingCertUser, 1, 2)
+		} else {
+			e.addLog("首次运行，正在安装CA证书...")
+			e.setStage(StageInstallingCertUser, 1, 1)
+		}
+		// Windows 装 LocalMachine 前，InstallCertToMachine 阶段由平台层内部触发 UAC；
+		// 这里先切到 machine 阶段，让前端提前预告（即便 InstallCert 是一步调用）。
+		if runtime.GOOS == "windows" {
+			e.setStage(StageInstallingCertMachine, 2, 2)
+		}
 		if err := InstallCert(); err != nil {
-			// 把底层错误关键词带进 message：Windows 机器级证书需 UAC，用户拒绝时会含
-			// 「管理员权限」「LocalMachine」等，前端 explainMsg 据此给精准人话 + 引导卡。
+			// ErrorKind 由 InstallCert 内部回填到 e.state.ErrorKind（见 platform 层 setErrorForCertFailure）。
+			// 这里兜底：若平台层没设，按 message 关键词粗分（UAC 拒绝/锁定/通用）。
 			e.setState(EngineError, "证书安装失败："+err.Error())
+			e.classifyCertError(err)
 			e.addLogLevel("证书安装失败: "+err.Error(), "error")
 			return
 		}
 		e.addLog("证书安装成功")
+	} else {
+		e.addLog("CA证书已信任，跳过安装")
 	}
 
 	tokens := NewCapturedTokens()
@@ -297,9 +466,11 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	e.tokens = tokens
 	e.mu.Unlock()
 
+	e.setStage(StageStartingProxy, 0, 0)
 	proxy, err := StartProxy(caCert, caKey, tokens, e.addLog)
 	if err != nil {
 		e.setState(EngineError, "启动代理失败: "+err.Error())
+		e.setError(ErrKindProxy)
 		e.addLogLevel("启动代理失败: "+err.Error(), "error")
 		return
 	}
@@ -308,14 +479,21 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 	e.mu.Unlock()
 	actualPort := proxy.Port()
 
+	e.setStage(StageSettingSystemProxy, 0, 0)
 	if err := SetSystemProxy(actualPort); err != nil {
 		proxy.Close()
 		e.setState(EngineError, "设置系统代理失败: "+err.Error())
+		e.setError(ErrKindProxy)
 		e.addLogLevel("设置系统代理失败: "+err.Error(), "error")
 		return
 	}
+	// 读平台层记录的非致命提示（如 Windows QUIC 屏蔽失败），推给前端但不中断。
+	if warns := DrainProxyWarnings(); len(warns) > 0 {
+		e.setWarning(strings.Join(warns, "；"))
+	}
 	markProxyActive(actualPort, os.Getpid())
 
+	e.setStage(StageWaitingCapture, 0, 8)
 	e.setState(EngineCapturing, "等待捕获凭证参数，请彻底关闭 PC 微信后重新打开，并在寿司郎小程序里点一次排队或预约...")
 	proxyHint := fmt.Sprintf("捕获代理已设置 (127.0.0.1:%d)", actualPort)
 	if GetActiveWebPort() > 0 && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
@@ -370,6 +548,14 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 				e.mu.Unlock()
 				wechatLastProbe = time.Now()
 			}
+			// waiting_capture 阶段每秒更新"已抓字段数"作为子进度，前端显示"X/8"。
+			// 不额外 publish，复用下面那次。仅 waiting 阶段有意义。
+			e.mu.Lock()
+			if e.state.Stage == StageWaitingCapture {
+				e.state.StageStep = countCapturedFields(e.tokens)
+				e.state.StageTotal = 8
+			}
+			e.mu.Unlock()
 			bus.publish("engine", mustJSON(e.GetState()))
 			if tokens.IsComplete() {
 				prefs := LoadPreferences()
@@ -389,12 +575,14 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 				}
 				// 自检只作诊断，不拦保存：抓到完整凭证就落盘并完成捕获，
 				// 自检结果仅决定提示语。避免基础接口偶发失败/被拒时把用户卡死。
+				e.setStage(StageProbing, 0, 0)
 				e.setState(EngineCapturing, "已抓到凭证参数，正在自检基础接口...")
 				report := runAuthProbeWithTokens(ctx, "", tokens, prefs)
 				if err := SaveLocalConfig(tokens); err != nil {
 					e.addLogLevel("保存配置失败: "+err.Error(), "error")
 					e.cleanupProxy()
 					e.setState(EngineError, "凭证参数保存失败: "+err.Error())
+					e.setError(ErrKindUnknown)
 					return
 				}
 				markAuthHealthy() // 重新捕获凭证 → 清除"凭证过期"提醒
@@ -402,6 +590,7 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 				e.cleanupProxy()
 				if report.OK {
 					e.addLog("凭证参数已捕获、基础接口自检通过并保存！")
+					e.setStage(StageDone, 8, 8)
 					e.setState(EngineIdle, "凭证参数捕获完成！")
 				} else {
 					e.addLogLevel("凭证参数已捕获并保存；基础接口自检未通过（"+authProbeFailureSummary(report)+"），可直接尝试使用，如不可用再重新捕获。", "warn")

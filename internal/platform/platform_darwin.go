@@ -151,6 +151,12 @@ func installCert() error {
 
 	out, err = exec.Command("security", "add-trusted-cert", "-r", "trustRoot", "-k", keychain, certPath).CombinedOutput()
 	if err != nil {
+		low := strings.ToLower(string(out))
+		// keychain 锁定时 security 报 "User interaction is not allowed" 或 "authfailed"。
+		// 给出明确关键词，engine.classifyCertError 据此归为 cert_locked 并提示解锁。
+		if strings.Contains(low, "user interaction is not allowed") || strings.Contains(low, "authfailed") {
+			return fmt.Errorf("add-trusted-cert: keychain locked (User interaction is not allowed): %w: %s；请在终端运行 security unlock-keychain 解锁钥匙串后重试", err, strings.TrimSpace(string(out)))
+		}
 		return fmt.Errorf("add-trusted-cert: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil

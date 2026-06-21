@@ -177,6 +177,9 @@ func blockSushiroQUIC() {
 		"name="+quicBlockRuleName, "dir=out", "action=block",
 		"protocol=UDP", "remoteport=443", "remoteip="+strings.Join(ips, ",")); err != nil {
 		LogMessage(time.Now(), "QUIC 屏蔽设置失败(可能需管理员权限): "+err.Error())
+		// 记录为非致命提示：QUIC 没屏蔽，微信可能走 UDP 绕过代理导致抓不到包。
+		// engine 读到后推给前端，建议用户重启微信再试。
+		RecordProxyWarning("Windows 微信 QUIC 屏蔽失败（可能需管理员权限），微信可能走旁路导致抓不到包；建议重启微信再试，或改用手机抓包。")
 		return
 	}
 	LogMessage(time.Now(), fmt.Sprintf("已屏蔽到 %s 的出站 QUIC(UDP 443)，强制微信走 TCP 以便抓包", SushiroHost))
