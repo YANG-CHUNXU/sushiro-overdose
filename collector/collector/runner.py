@@ -33,6 +33,24 @@ def _handle_signal(signum, _frame):
     _STOP.set()
 
 
+def _seconds_until_next_boundary(now: datetime, interval: int) -> int:
+    """算到下一个对齐边界的秒数。
+
+    当 interval 能整除 3600（如 900=15min）时，对齐到整点边界（:00/:15/:30/:45）。
+    不能整除则退化为固定 interval。返回值至少 1s。
+    """
+    if interval <= 0 or 3600 % interval != 0:
+        return max(1, interval)
+    # 当前分钟在小时内的秒偏移
+    cur = now.minute * 60 + now.second
+    boundary = interval
+    # 下一个边界：向上取整到 interval 的倍数
+    wait = boundary - (cur % boundary)
+    if wait <= 0:
+        wait = boundary
+    return max(1, wait)
+
+
 def run_loop(cfg: Dict[str, Any]) -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -46,9 +64,16 @@ def run_loop(cfg: Dict[str, Any]) -> None:
     last_archive_date = ""
 
     log.info(
-        "采集器启动：interval=%ds active=%s retention=%dd",
+        "采集器启动：interval=%ds active=%s retention=%dd（对齐整点 :00/:15/:30/:45）",
         interval, active_hours, retention,
     )
+
+    # 启动后先睡到下一个整点边界，让采集对齐 :00/:15/:30/:45（与 30min 聚合桶一致）
+    first_wait = _seconds_until_next_boundary(datetime.now(CST), interval)
+    log.info("首次采集等待 %ds 对齐到整点边界", first_wait)
+    if _STOP.wait(first_wait):
+        log.info("采集器已退出（启动等待期收到信号）")
+        return
 
     while not _STOP.is_set():
         now = datetime.now(CST)
@@ -93,7 +118,7 @@ def run_loop(cfg: Dict[str, Any]) -> None:
                 continue
             if not (lo <= now.hour < hi):
                 log.debug("非营业时段 %s，跳过采集", now.strftime("%H:%M"))
-                _STOP.wait(interval)
+                _STOP.wait(_seconds_until_next_boundary(datetime.now(CST), interval))
                 continue
 
         # 跑一轮采集
@@ -102,7 +127,7 @@ def run_loop(cfg: Dict[str, Any]) -> None:
         except Exception as e:
             log.error("采集轮失败（下轮重试）: %s", e)
 
-        # 等下一轮（可被信号中断）
-        _STOP.wait(interval)
+        # 等下一轮：对齐到整点边界（:00/:15/:30/:45），让快照时间规整、与 30min 聚合桶对齐
+        _STOP.wait(_seconds_until_next_boundary(datetime.now(CST), interval))
 
     log.info("采集器已退出")
