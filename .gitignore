@@ -23,3 +23,8 @@ __pycache__/
 collector/*.log
 collector/*.sqlite*
 
+# mcp（Python MCP server）—— 真实凭证与本地环境绝不进 git
+mcp/.env
+mcp/venv/
+mcp/.venv/
+
