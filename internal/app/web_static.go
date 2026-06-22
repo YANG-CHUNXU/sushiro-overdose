@@ -1034,6 +1034,12 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <summary><span class="setting-fold-title"><b>运行日志 <span class="pm" data-kind="maguro" data-mood="sleep" data-size="26"></span></b><span>排障时看；平时不用展开。</span></span></summary>
         <div class="setting-fold-body"><div class="lg" id="lv"></div></div>
       </details>
+      <details class="cd setting-fold settings-wide advanced-only" id="fold-mcp" ontoggle="if(this.open)lMCP()">
+        <summary><span class="setting-fold-title"><b>MCP 助手 <span class="pm" data-kind="maguro" data-mood="happy" data-size="26"></span></b><span>让 AI（Claude Desktop/Cursor）帮你查排队、看预约、给到店建议。</span></span></summary>
+        <div class="setting-fold-body">
+          <div id="mcpCard"></div>
+        </div>
+      </details>
       <div class="danger-zone settings-wide advanced-only">
         <div class="danger-zone-head"><b>⚠ 危险操作</b><span class="mu">不可恢复，执行前会再次确认。与上方日常配置隔离。</span></div>
         <div class="fl g8 fw mt8"><button class="bt bt-o bt-s" onclick="stopProcesses()">停止本应用进程</button><button class="bt bt-o bt-s" onclick="uninstallAll()">卸载清理</button></div>
@@ -1119,7 +1125,7 @@ const NAV_GROUPS=[
 const PAGE_GROUP={};NAV_GROUPS.forEach(g=>g.pages.forEach(([p])=>PAGE_GROUP[p]=g.id));
 const ADVANCED_GROUPS=new Set(['book','mine']);
 const ADVANCED_PAGES=new Set(['ca','sn','re']);
-const ADVANCED_FOLDS=new Set(['fold-sm','fold-in','fold-lo','fold-safe']);
+const ADVANCED_FOLDS=new Set(['fold-sm','fold-in','fold-lo','fold-safe','fold-mcp']);
 function currentUIMode(){return uiMode==='advanced'?'advanced':'simple'}
 function isAdvancedPage(page){return ADVANCED_PAGES.has(page)}
 function modeLabel(){return currentUIMode()==='advanced'?'进阶版':'简化版'}
@@ -1990,6 +1996,34 @@ async function killWeChat(){if(!await confirmDialog({title:'结束 PC 微信？'
 function countWeChatOK(d){try{return(d.results||[]).filter(x=>x.status==='ok').length}catch(e){return 0}}
 
 async function lL(){try{const ls=await(await fetch('/api/engine/logs')).json(),v=el('lv');v.innerHTML=(ls||[]).map(l=>'<div class="ll '+(l.level==='error'?'er':'')+'"><span class="lt">'+esc(l.time)+'</span><span class="lm">'+esc(l.message)+'</span></div>').join('');v.scrollTop=v.scrollHeight}catch(e){}}
+
+// ===== MCP 助手（设置页折叠卡）=====
+let mcpState={enabled:false,auto_start:false,turso_configured:false,python_ready:false,claude_config_written:false};
+async function lMCP(){await loadMCP()}
+async function loadMCP(){try{const d=await safeFetch('/api/mcp');mcpState=d||{};renderMCPCard()}catch(e){const c=el('mcpCard');if(c)c.innerHTML='<div class="ci bad">MCP 状态加载失败</div>'}}
+function renderMCPCard(){const c=el('mcpCard');if(!c)return;const s=mcpState||{};
+  const en=s.enabled?'checked':'',as=s.auto_start?'checked':'';
+  const py=s.python_ready?'<span class="ci ok">Python 依赖已就绪</span>':'<span class="ci warn">首次启用会自动装 Python 依赖（联网，约几十秒）</span>';
+  const cfg=s.claude_config_written?'<span class="ci ok">已注册到 Claude Desktop</span>':'<span class="ci mu">未注册（装了 Claude Desktop 并启用后自动写）</span>';
+  const turso=s.turso_configured?'<span class="ci ok">数据库已配</span>':'<span class="ci warn">未配 数据库只读密钥（查数据工具不可用）</span>';
+  c.innerHTML='<div class="fl g8 fw mb12">'+py+cfg+turso+'</div>'
+    +'<div class="row-wrap" style="gap:14px;align-items:center;margin-bottom:10px">'
+    +'<label class="switch"><input type="checkbox" id="mcpEnable" '+en+' onchange="toggleMCP(this.checked)"><span></span></label><b>启用 MCP 助手</b>'
+    +'</div>'
+    +'<div class="ps mb12">启用后，桌面端会自动准备 Python 环境，并把 sushiro 注册到 Claude Desktop。然后重启 Claude Desktop，就能在对话里让 AI 帮你查排队、看预约、给到店建议。</div>'
+    +'<div class="form-row mb8"><label>数据库地址</label><input id="mcpDBURL" value="'+esc(s.turso_url||'libsql://su-shiro-ryujoxys.aws-us-west-2.turso.io')+'" class="inp"></div>'
+    +'<div class="form-row mb8"><label>数据库只读密钥</label><input id="mcpDBToken" type="password" placeholder="去 turso.tech 控制台为该库建只读 token" class="inp"></div>'
+    +'<div class="fl g8 fw mb12"><button class="bt bt-r bt-s" onclick="saveMCPConfig()">保存数据库配置</button></div>'
+    +'<div class="row-wrap" style="gap:14px;align-items:center">'
+    +'<label class="switch"><input type="checkbox" id="mcpAutoStart" '+as+' onchange="toggleMCPAutostart(this.checked)"><span></span></label><b>开机自动准备 MCP 环境</b>'
+    +'</div>'
+    +(s.message?'<p class="mu mt8">'+esc(s.message)+'</p>':'');
+  // 预填 数据库地址（若配置已有）
+  if(s.turso_configured&&s.mcp_dir){/*已配，token 不回填（安全）*/}
+}
+async function toggleMCP(on){try{const r=await safeFetch('/api/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:on})});if(r.error){toast(r.error);await loadMCP();return}toast(on?'正在准备 MCP 环境（首次装依赖可能需几十秒）…':'已禁用 MCP');await loadMCP()}catch(e){toast('操作失败：'+String(e.message||e))}}
+async function saveMCPConfig(){const url=(el('mcpDBURL')?.value||'').trim(),tok=(el('mcpDBToken')?.value||'').trim();if(!tok){toast('请填 数据库只读密钥');return}try{const r=await safeFetch('/api/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({turso_url:url,turso_token:tok})});if(r.error){toast(r.error);return}toast('数据库配置已保存');await loadMCP()}catch(e){toast('保存失败：'+String(e.message||e))}}
+async function toggleMCPAutostart(on){try{const r=await safeFetch('/api/mcp/autostart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:on})});if(r.error){toast(r.error);await loadMCP();return}toast(on?'已设开机自启':'已取消自启');await loadMCP()}catch(e){toast('操作失败：'+String(e.message||e))}}
 function aL(e){const v=el('lv');if(!v)return;const d=document.createElement('div');d.className='ll '+(e.level==='error'?'er':'');d.innerHTML='<span class="lt">'+esc(e.time)+'</span><span class="lm">'+esc(e.message)+'</span>';v.appendChild(d);const lo=el('fold-lo');if(cp==='se'&&lo&&lo.open)v.scrollTop=v.scrollHeight}
 function sse(){if(cE)cE.close();const s=new EventSource('/api/events');cE=s;s.onopen=()=>{loadStatus()};s.addEventListener('engine',e=>{try{es=JSON.parse(e.data);uE();uD();if(cp==='sn'||['idle','success','error'].includes(es.status))loadSnPlan();if(es.status==='success'&&typeof lR==='function')lR();if(['idle','success','error'].includes(es.status))loadStatus()}catch(x){}});s.addEventListener('sampling',e=>{try{spState=JSON.parse(e.data);renderDashboardSamplingCard();if(cp==='se')renderSamplingState()}catch(x){}});s.addEventListener('log',e=>{try{aL(JSON.parse(e.data))}catch(x){}});s.addEventListener('calendar',e=>{try{const d=JSON.parse(e.data);if(cp==='ca'){as=[];(d.stores||[]).forEach(st=>(st.slots||[]).forEach(x=>as.push({...x,store_name:st.store_name,store_id:st.store_id})));if(as.length)rDB()}}catch(x){}});s.addEventListener('ping',()=>{});s.onerror=()=>{s.close();cE=null;setTimeout(sse,3000)}}
 init();

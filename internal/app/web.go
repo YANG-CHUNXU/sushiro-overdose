@@ -129,6 +129,9 @@ func cmdWeb() {
 	mux.HandleFunc("/api/sampling/once", handleSamplingOnce)
 	mux.HandleFunc("/api/sampling/autostart", handleSamplingAutoStart)
 
+	mux.HandleFunc("/api/mcp", handleMCP)
+	mux.HandleFunc("/api/mcp/autostart", handleMCPAutostart)
+
 	// SSE
 	mux.HandleFunc("/api/events", handleEvents)
 

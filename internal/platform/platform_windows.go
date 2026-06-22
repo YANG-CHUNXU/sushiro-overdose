@@ -655,3 +655,44 @@ func isRegMissingValue(_ *exec.Cmd, err error) bool {
 	}
 	return false
 }
+
+// --- MCP 助手自启（注册表 Run 项，拉起 sushiro --mcp-daemon-child 确保 venv 就绪）---
+
+func mcpAutoStartStatus() AutoStartStatus {
+	status := AutoStartStatus{
+		Supported: true,
+		Path:      `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\SushiroOverdoseMCP`,
+	}
+	cmd := exec.Command("reg", "query", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseMCP")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Run(); err == nil {
+		status.Enabled = true
+		status.Message = "已配置开机准备 MCP 环境"
+	} else {
+		status.Message = "未配置 MCP 开机自启动"
+	}
+	return status
+}
+
+func installMCPAutoStart() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	value := `"` + exe + `" --mcp-daemon-child`
+	cmd := exec.Command("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseMCP", "/t", "REG_SZ", "/d", value, "/f")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd.Run()
+}
+
+func removeMCPAutoStart() error {
+	cmd := exec.Command("reg", "delete", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "SushiroOverdoseMCP", "/f")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Run(); err != nil {
+		if isRegMissingValue(cmd, err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}

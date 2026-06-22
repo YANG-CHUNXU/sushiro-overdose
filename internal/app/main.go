@@ -123,6 +123,8 @@ func Run() {
 		cmdDaemon()
 	} else if len(args) == 1 && args[0] == "--sampler-daemon-child" {
 		cmdSamplerDaemon()
+	} else if len(args) == 1 && args[0] == "--mcp-daemon-child" {
+		cmdMCPDaemon()
 	} else if len(args) >= 1 && (args[0] == "sample" || args[0] == "sampling") {
 		cmdSample(args[1:])
 	} else if len(args) == 1 && (args[0] == "repair-proxy" || args[0] == "repair") {

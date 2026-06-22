@@ -412,3 +412,76 @@ func xmlEscape(value string) string {
 		"'", "&apos;",
 	).Replace(value)
 }
+
+// --- MCP 助手自启（LaunchAgent，拉起 sushiro --mcp-daemon-child 确保 venv 就绪）---
+
+func mcpAutoStartStatus() AutoStartStatus {
+	path := darwinMCPLaunchAgentPath()
+	if path == "" {
+		return AutoStartStatus{Supported: false, Message: "无法定位 LaunchAgents 目录"}
+	}
+	status := AutoStartStatus{Supported: true, Path: path}
+	if _, err := os.Stat(path); err == nil {
+		status.Enabled = true
+		status.Message = "已配置 LaunchAgent，登录后会准备 MCP 环境"
+	} else if os.IsNotExist(err) {
+		status.Message = "未配置 MCP 开机自启动"
+	} else {
+		status.Error = err.Error()
+	}
+	return status
+}
+
+func installMCPAutoStart() error {
+	path := darwinMCPLaunchAgentPath()
+	if path == "" {
+		return fmt.Errorf("无法定位 LaunchAgents 目录")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	// --mcp-daemon-child：确保 venv 就绪 + 写 claude_desktop_config 后退出（不常驻）。
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sushiro-overdose.mcp</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>` + xmlEscape(exe) + `</string>
+    <string>--mcp-daemon-child</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+`
+	if err := os.WriteFile(path, []byte(plist), 0o644); err != nil {
+		return err
+	}
+	_ = exec.Command("launchctl", "unload", path).Run()
+	return exec.Command("launchctl", "load", path).Run()
+}
+
+func removeMCPAutoStart() error {
+	path := darwinMCPLaunchAgentPath()
+	if path == "" {
+		return nil
+	}
+	_ = exec.Command("launchctl", "unload", path).Run()
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func darwinMCPLaunchAgentPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", "com.sushiro-overdose.mcp.plist")
+}

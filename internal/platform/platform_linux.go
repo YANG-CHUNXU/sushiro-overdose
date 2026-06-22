@@ -192,3 +192,74 @@ func linuxSamplingServicePath() string {
 	}
 	return filepath.Join(home, ".config", "systemd", "user", "sushiro-overdose-sampler.service")
 }
+
+// --- MCP 助手自启（同采样器，systemd user unit，ExecStart=sushiro --mcp-daemon-child）---
+
+func mcpAutoStartStatus() AutoStartStatus {
+	path := linuxMCPServicePath()
+	status := AutoStartStatus{Supported: true, Path: path}
+	if _, err := os.Stat(path); err == nil {
+		status.Enabled = true
+		status.Message = "已配置 systemd user 开机启动 MCP 助手"
+	} else if os.IsNotExist(err) {
+		status.Message = "未配置 MCP 开机自启动"
+	} else {
+		status.Error = err.Error()
+	}
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		status.Supported = false
+		status.Message = "未找到 systemctl，当前环境不支持自动配置开机启动"
+	}
+	return status
+}
+
+func installMCPAutoStart() error {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	path := linuxMCPServicePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	// --mcp-daemon-child：sushiro 启动后确保 MCP venv 就绪并写 claude_desktop_config，
+	// 然后退出（不常驻——MCP 进程由 Claude Desktop 拉起）。
+	unit := `[Unit]
+Description=Sushiro Overdose MCP helper (ensure venv ready)
+
+[Service]
+Type=oneshot
+ExecStart=` + exe + ` --mcp-daemon-child
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+`
+	if err := os.WriteFile(path, []byte(unit), 0o644); err != nil {
+		return err
+	}
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	return exec.Command("systemctl", "--user", "enable", "--now", "sushiro-overdose-mcp.service").Run()
+}
+
+func removeMCPAutoStart() error {
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		_ = exec.Command("systemctl", "--user", "disable", "--now", "sushiro-overdose-mcp.service").Run()
+		_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	}
+	if err := os.Remove(linuxMCPServicePath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func linuxMCPServicePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(AppDirPath(), "sushiro-overdose-mcp.service")
+	}
+	return filepath.Join(home, ".config", "systemd", "user", "sushiro-overdose-mcp.service")
+}

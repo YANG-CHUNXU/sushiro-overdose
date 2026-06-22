@@ -121,6 +121,21 @@ func RemoveSamplingAutoStart() error {
 	return removeSamplingAutoStart()
 }
 
+// MCPAutoStartStatus 查询 MCP 助手开机自启状态。
+func MCPAutoStartStatus() AutoStartStatus {
+	return mcpAutoStartStatus()
+}
+
+// InstallMCPAutoStart 注册 MCP 助手开机自启（启动 sushiro --mcp-daemon-child 确保 venv 就绪）。
+func InstallMCPAutoStart() error {
+	return installMCPAutoStart()
+}
+
+// RemoveMCPAutoStart 取消 MCP 助手开机自启。幂等。
+func RemoveMCPAutoStart() error {
+	return removeMCPAutoStart()
+}
+
 // IsQuarantined 报告当前可执行文件是否被 macOS Gatekeeper 隔离（带 com.apple.quarantine
 // 扩展属性）。隔离状态下系统可能限制网络/代理设置或弹 Gatekeeper 拦截。
 // Windows/Linux 恒返回 (false, nil)。
