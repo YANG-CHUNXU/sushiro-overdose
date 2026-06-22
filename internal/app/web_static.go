@@ -1339,7 +1339,7 @@ function captureProgressHTML(s){
   let sub='';
   if(s.stage==='waiting_capture'&&s.capture){
     const got=countCaptured(s.capture);
-    sub='<p class="cstep-sub">已抓到 '+got+'/8 个字段'+(got<8?'，还差几个——请在小程序里点一次「我的预约」和门店':'，正在自检…')+'</p>';
+    sub='<p class="cstep-sub">已抓到 '+got+'/8 个字段'+(got<8?'，还差几个——请真的排队/预约一次（之后可取消），再点一次门店':'，正在自检…')+'</p>';
   }else if(s.stage==='installing_cert_localmachine_uac'){
     sub='<p class="cstep-sub warn">马上会弹出系统窗口请求管理员权限，请点「是」（装机器级证书必须）</p>';
   }
@@ -1524,7 +1524,7 @@ function awzClear(){awz={step:1,device:'',cap:null};try{localStorage.removeItem(
 function awzGo(n){awz.step=n;awzSave();authWizStep(n)}
 function awzDevice(d){awz.device=d;awz.step=2;awzSave();authWizStep(2)}
 function awzDraft(v){try{localStorage.setItem('sushiro_wizard_draft',v)}catch(e){}}
-function awzStartPC(){closeAuthWizard();sC();go('da');toast('已启动 PC 微信自动捕获：打开 PC 微信里的寿司郎小程序，点一次门店，再点一次「我的预约」')}
+function awzStartPC(){closeAuthWizard();sC();go('da');toast('已启动 PC 微信自动捕获：打开 PC 微信里的寿司郎小程序，点一次门店，再真的排队/预约一下（之后可取消）')}
 function openAuthWizard(){let ov=el('authWiz');if(!ov){ov=document.createElement('div');ov.id='authWiz';ov.className='ov';document.body.appendChild(ov)}
  try{const s=JSON.parse(localStorage.getItem('sushiro_wizard_state')||'null');if(s&&s.step)awz={step:s.step,device:s.device||'',cap:s.cap||null}}catch(e){}
  if(awz.step>1&&awz.step<5&&!awz.device)awz.step=1;
@@ -1535,7 +1535,7 @@ const AWZ_STEPS=['选设备','抓一次','传到电脑','粘贴解析','验证']
 function awzBar(cur){return'<div class="wsteps">'+AWZ_STEPS.map((s,i)=>{const n=i+1;return'<div class="wstep '+(n<cur?'done':n===cur?'on':'')+'"><i>'+(n<cur?'✓':n)+'</i>'+s+'</div>'}).join('')+'</div>'}
 function authWizShell(cur,body){return'<div class="ovc"><div class="fl ai jb mb16"><b>拿通行证 🎫 <span class="mu" style="font-weight:400">约 3 分钟 · 全程只在本机处理</span></b><button class="bt bt-w bt-s" onclick="closeAuthWizard()">稍后再说</button></div>'+(cur?awzBar(cur):'')+'<div style="overflow:auto">'+body+'</div></div>'}
 // authCaptureFlowSVG 画"两类请求"分步图——解决"抓不全"的视觉化方案：
-// 门店请求带查询auth+UA+referer，我的预约请求带预约auth+wechatId+手机号，两者都要抓。
+// 门店请求带查询auth+UA+referer，排队/预约请求带预约auth+wechatId+手机号，两者都要抓。
 function authCaptureFlowSVG(){return ''+
 '<svg viewBox="0 0 520 240" class="awz-flow" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="凭证采集流程">'+
 '<defs><marker id="awzArr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#B81C22"/></marker></defs>'+
@@ -1544,8 +1544,8 @@ function authCaptureFlowSVG(){return ''+
 '<text x="85" y="60" text-anchor="middle" font-size="11" fill="#666">产生「查询请求」</text>'+
 '<text x="85" y="74" text-anchor="middle" font-size="10" fill="#999">查询auth · UA · referer</text>'+
 '<rect x="185" y="20" width="150" height="62" rx="10" fill="#ECF7EF" stroke="#21823F" stroke-width="1.5"/>'+
-'<text x="260" y="42" text-anchor="middle" font-size="13" font-weight="700" fill="#21823F">② 点「我的预约」</text>'+
-'<text x="260" y="60" text-anchor="middle" font-size="11" fill="#666">产生「预约请求」</text>'+
+'<text x="260" y="42" text-anchor="middle" font-size="13" font-weight="700" fill="#21823F">② 排队或预约一下</text>'+
+'<text x="260" y="60" text-anchor="middle" font-size="11" fill="#666">产生「预约请求」（之后可取消）</text>'+
 '<text x="260" y="74" text-anchor="middle" font-size="10" fill="#999">预约auth · 微信ID · 手机号</text>'+
 '<path d="M85,82 L85,108 L260,108 L260,82" fill="none" stroke="#B81C22" stroke-width="1.5" marker-end="url(#awzArr)"/>'+
 '<rect x="170" y="115" width="170" height="50" rx="10" fill="#FBFAF8" stroke="#999" stroke-width="1.5"/>'+
@@ -1569,8 +1569,8 @@ function authWizStep(step){const ov=el('authWiz');if(!ov)return;if(authWizPoll){
     ?intro+'<div class="wnum"><b class="n">!</b><div><b>Windows 上的 PC 微信抓不到小程序请求</b>，需要用手机拿一次，两条路任选：手机抓包（最稳），或同 Wi-Fi 自动代理。</div></div><div class="fl g8 fw mt16">'+phones+'</div>'+autoHint
     :intro+'<div class="fl g8 fw mt16"><button class="bt bt-r bt-l" onclick="awzStartPC()">💻 PC 微信自动抓（推荐 · 本机最省事）</button></div><p class="mu mt8">本机微信不方便？也可以用手机：</p><div class="fl g8 fw mt8">'+phones+'</div>'+autoHint;
    ov.innerHTML=authWizShell(1,body)}
-  else if(step===2){ov.innerHTML=authWizShell(2,'<h3 style="margin:0 0 4px">第 2 步：在手机上“抓一次”</h3><p class="mu">'+awzToolHint()+'</p>'+authCaptureFlowSVG()+'<div class="wnum"><b class="n">1</b><div>打开微信里的<b>寿司郎小程序</b></div></div><div class="wnum"><b class="n">2</b><div>随便点开一家门店 <span class="mu">← 这一下产生「查询请求」</span></div></div><div class="wnum"><b class="n">3</b><div>再点一次「<b>我的预约</b>」 <span class="mu">← 这一下产生「预约请求」</span></div></div><div class="why">💡 为什么要点两次？两类请求各含通行证的一半信息，缺一不可。</div><div class="fl ai jb mt16"><button class="bt bt-w bt-s" onclick="awzGo(1)">← 上一步</button><button class="bt bt-r" onclick="awzGo(3)">我点完了，下一步 →</button></div>')}
-  else if(step===3){ov.innerHTML=authWizShell(3,'<h3 style="margin:0 0 4px">第 3 步：把抓到的内容传到电脑</h3><div class="wnum"><b class="n">1</b><div>在抓包工具里找到 <code>crm-cn-prd.sushiro.com.cn</code> 的请求——<b>第 2 步点门店和我的预约产生的两条都要选</b>（长按多选），少一条就抓不全</div></div><div class="wnum"><b class="n">2</b><div>导出 / 复制成 <b>cURL</b>（首选）或<b>原始请求头</b>。Stream：点请求 → 右上角分享 →「复制 cURL」</div></div><div class="wnum"><b class="n">3</b><div>手机微信搜「<b>文件传输助手</b>」发给它 → 电脑微信打开同一会话复制</div></div><div class="why">💡 手机和电脑不在同一网络也没关系，文件传输助手走微信通道。两条请求的内容都粘进下一步即可（不用分开粘）。</div><div class="fl ai jb mt16"><button class="bt bt-w bt-s" onclick="awzGo(2)">← 上一步</button><button class="bt bt-r" onclick="awzGo(4)">内容已复制，去粘贴 →</button></div>')}
+  else if(step===2){ov.innerHTML=authWizShell(2,'<h3 style="margin:0 0 4px">第 2 步：在手机上“抓一次”</h3><p class="mu">'+awzToolHint()+'</p>'+authCaptureFlowSVG()+'<div class="wnum"><b class="n">1</b><div>打开微信里的<b>寿司郎小程序</b></div></div><div class="wnum"><b class="n">2</b><div>随便点开一家门店 <span class="mu">← 这一下产生「查询请求」</span></div></div><div class="wnum"><b class="n">3</b><div>找一家店<b>真的排队或预约一下</b> <span class="mu">← 这下产生「预约请求」（含微信ID/手机号）；抓到后再去取消即可</span></div></div><div class="why">💡 为什么要点两次？门店查询和排队/预约是两类请求，各含通行证的一半信息，缺一不可。光看「我的预约」列表不行，得真的提交一次排队/预约。</div><div class="fl ai jb mt16"><button class="bt bt-w bt-s" onclick="awzGo(1)">← 上一步</button><button class="bt bt-r" onclick="awzGo(3)">我点完了，下一步 →</button></div>')}
+  else if(step===3){ov.innerHTML=authWizShell(3,'<h3 style="margin:0 0 4px">第 3 步：把抓到的内容传到电脑</h3><div class="wnum"><b class="n">1</b><div>在抓包工具里找到 <code>crm-cn-prd.sushiro.com.cn</code> 的请求——<b>第 2 步点门店、排队/预约产生的两条都要选</b>（长按多选），少一条就抓不全</div></div><div class="wnum"><b class="n">2</b><div>导出 / 复制成 <b>cURL</b>（首选）或<b>原始请求头</b>。Stream：点请求 → 右上角分享 →「复制 cURL」</div></div><div class="wnum"><b class="n">3</b><div>手机微信搜「<b>文件传输助手</b>」发给它 → 电脑微信打开同一会话复制</div></div><div class="why">💡 手机和电脑不在同一网络也没关系，文件传输助手走微信通道。两条请求的内容都粘进下一步即可（不用分开粘）。</div><div class="fl ai jb mt16"><button class="bt bt-w bt-s" onclick="awzGo(2)">← 上一步</button><button class="bt bt-r" onclick="awzGo(4)">内容已复制，去粘贴 →</button></div>')}
   else if(step===4){let draft='';try{draft=localStorage.getItem('sushiro_wizard_draft')||''}catch(e){}
    ov.innerHTML=authWizShell(4,'<h3 style="margin:0 0 4px">第 4 步：粘贴并解析</h3><p class="mu">支持 JSON / cURL / 原始请求头。第一次没抓齐也没关系：<b>不要清空</b>，把新抓的内容接着粘在后面，再点一次解析。</p><div class="fg mt8"><label>抓包内容</label><textarea id="awImport" oninput="awzDraft(this.value)" placeholder="粘贴包含 X-App-Code、Authorization、User-Agent、Referer、wechatId、phoneNumber、storeId 的请求…"></textarea></div><div id="awChecklist">'+awzChecklistHTML()+'</div><div id="awImportState" class="diag-detail mt8 hid"></div><div class="fl ai jb mt16"><button class="bt bt-w bt-s" onclick="awzGo(3)">← 上一步</button><button class="bt bt-r" onclick="authWizImport()">解析并保存 →</button></div>');
    const ta=el('awImport');if(ta&&draft)ta.value=draft}
@@ -1579,14 +1579,14 @@ function authWizStep(step){const ov=el('authWiz');if(!ov)return;if(authWizPoll){
 async function authWizStartAuto(){try{const d=await safeFetch('/api/mobile-auth/start',{method:'POST'},12000);authWizRenderAuto(d);if(authWizPoll){clearInterval(authWizPoll);authWizPoll=null}authWizPoll=setInterval(authWizPollAuto,2500)}catch(e){const b=el('awAuto');if(b)b.innerHTML='<span class="bad">启动失败：'+esc(String(e.message||e))+'</span>'}}
 async function authWizPollAuto(){try{const d=await safeFetch('/api/mobile-auth');authWizRenderAuto(d);if(d.saved||d.config_complete){if(authWizPoll){clearInterval(authWizPoll);authWizPoll=null}await loadStatus();toast('已捕获完成！记得把手机 Wi-Fi 代理改回关闭。');awz.step=5;awzSave();authWizStep(5)}}catch(e){}}
 function awzAutoStages(d){const cap=d.capture||{},anyField=need.some(k=>cap[k]),done=!!(d.saved||d.config_complete);const st=[['电脑侧服务已启动，二维码可扫',!!d.active],['捕获到小程序请求',anyField],['字段齐全，已保存',done]];return st.map(x=>'<div class="strip"><span class="st '+(x[1]?'ok':'warn')+'">'+(x[1]?'✓':'…')+'</span><div><b>'+esc(x[0])+'</b></div></div>').join('')}
-function authWizRenderAuto(d){const b=el('awAuto'),sg=el('awAutoStages');if(sg)sg.innerHTML=awzAutoStages(d);if(!b)return;const urls=d.guide_urls||[],hosts=d.hosts||[];b.innerHTML='<div class="wnum"><b class="n">1</b><div>手机微信「扫一扫」右侧二维码打开引导页，按页面提示<b>安装并信任 CA 证书</b>（iPhone 还需在 设置→通用→关于本机→证书信任设置 里完全信任）</div></div><div class="wnum"><b class="n">2</b><div>把手机 Wi-Fi 的 HTTP 代理设为下方 <b>电脑IP:端口</b></div></div><div class="wnum"><b class="n">3</b><div>彻底关掉再打开微信，进寿司郎小程序点一次门店，再点一次「我的预约」</div></div><div class="mt8" style="text-align:center">'+((d.active&&d.qr_svg)?d.qr_svg:'<span class="mu">二维码加载中…</span>')+'</div><div class="ps mt8">'+(urls.length?'<b>扫码或手机浏览器打开：</b><br>'+urls.map(u=>'<code>'+esc(u)+'</code>').join('<br>'):'')+'<div class="mu mt8"><b>Wi-Fi 代理：</b>'+hosts.map(h=>'<code>'+esc(h)+':'+esc(d.proxy_port||'')+'</code>').join(' ')+'</div><div class="mu mt8">扫码打不开 / 连不上？多半是路由器开了 AP（客户端）隔离，<button class="bt bt-w bt-s" onclick="awzDevice(awz.device||\'ios\')">改用手动抓（更稳）</button></div></div><div class="diag-detail mt8">'+esc(d.message||'')+'</div>'}
+function authWizRenderAuto(d){const b=el('awAuto'),sg=el('awAutoStages');if(sg)sg.innerHTML=awzAutoStages(d);if(!b)return;const urls=d.guide_urls||[],hosts=d.hosts||[];b.innerHTML='<div class="wnum"><b class="n">1</b><div>手机微信「扫一扫」右侧二维码打开引导页，按页面提示<b>安装并信任 CA 证书</b>（iPhone 还需在 设置→通用→关于本机→证书信任设置 里完全信任）</div></div><div class="wnum"><b class="n">2</b><div>把手机 Wi-Fi 的 HTTP 代理设为下方 <b>电脑IP:端口</b></div></div><div class="wnum"><b class="n">3</b><div>彻底关掉再打开微信，进寿司郎小程序点一次门店，再真的排队/预约一下（之后可取消）</div></div><div class="mt8" style="text-align:center">'+((d.active&&d.qr_svg)?d.qr_svg:'<span class="mu">二维码加载中…</span>')+'</div><div class="ps mt8">'+(urls.length?'<b>扫码或手机浏览器打开：</b><br>'+urls.map(u=>'<code>'+esc(u)+'</code>').join('<br>'):'')+'<div class="mu mt8"><b>Wi-Fi 代理：</b>'+hosts.map(h=>'<code>'+esc(h)+':'+esc(d.proxy_port||'')+'</code>').join(' ')+'</div><div class="mu mt8">扫码打不开 / 连不上？多半是路由器开了 AP（客户端）隔离，<button class="bt bt-w bt-s" onclick="awzDevice(awz.device||\'ios\')">改用手动抓（更稳）</button></div></div><div class="diag-detail mt8">'+esc(d.message||'')+'</div>'}
 async function authWizImport(){const txt=(el('awImport')?.value||'').trim();if(!txt){toast('请先粘贴抓到的内容');return}const st=el('awImportState');if(st){st.classList.remove('hid');st.innerHTML='解析中…'}
  try{const d=await safeFetch('/api/auth/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt})},15000);
   const cap={};need.forEach(k=>{cap[k]=!!(d.capture&&d.capture[k])});awz.cap=cap;awzSave();
   const ck=el('awChecklist');if(ck)ck.innerHTML=awzChecklistHTML();
   if(d.saved){await loadStatus();awz.step=5;awzSave();authWizStep(5);return}
   const miss=d.missing||[],fix=[];
-  if(miss.some(x=>/预约|微信|手机/.test(x)))fix.push('回到第 2 步，再点一次「我的预约」');
+  if(miss.some(x=>/预约|微信|手机/.test(x)))fix.push('回到第 2 步，真的排队/预约一次（之后可取消）');
   if(miss.some(x=>/查询|Referer|门店/i.test(x)))fix.push('回到第 2 步，再点一次门店/排队');
   if(st)st.innerHTML='<span class="bad">还差一点，缺：</span>'+esc(miss.join('、')||'未知')+'<br><span class="mu">'+(fix.length?esc(fix.join('；'))+'，把新抓的内容接着粘在后面（不要清空），再点解析。':'再补一段包含缺失字段的请求，接着粘在后面即可。')+'</span>'
  }catch(e){if(st)st.innerHTML='<span class="bad">导入失败：'+esc(String(e.message||e))+'</span>'}}
