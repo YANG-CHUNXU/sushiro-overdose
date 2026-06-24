@@ -585,7 +585,8 @@ func (e *BookingEngine) runCapture(ctx context.Context) {
 					e.setError(ErrKindUnknown)
 					return
 				}
-				markAuthHealthy() // 重新捕获凭证 → 清除"凭证过期"提醒
+				markAuthHealthy()                         // 重新捕获凭证 → 清除"凭证过期"提醒
+				recordAuthCaptured(captureMethodPCWechat) // 记录捕获时间/方式，重置寿命周期
 				setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 				e.cleanupProxy()
 				if report.OK {

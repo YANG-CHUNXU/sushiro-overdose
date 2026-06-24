@@ -21,6 +21,13 @@ type Notifier interface {
 	Name() string
 }
 
+// SessionNotifier 是可选能力：同一 sessionKey 的连续通知「原地更新」同一条消息，
+// 而不是堆叠多条——用于叫号进度卡（「还差 12 桌 → 5 桌 → 1 桌」更新同一张卡）。
+// 不实现该接口的渠道由 MultiNotifier 回退到普通 Send。
+type SessionNotifier interface {
+	SendSession(ctx context.Context, sessionKey, title, content string) error
+}
+
 // MultiNotifier fans out notifications to multiple channels.
 type MultiNotifier struct {
 	mu        sync.Mutex
@@ -46,6 +53,33 @@ func (m *MultiNotifier) Send(ctx context.Context, title, content string) {
 		go func(n Notifier) {
 			defer wg.Done()
 			if err := n.Send(ctx, title, content); err != nil {
+				LogMessage(time.Now(), fmt.Sprintf("[%s] 通知发送失败: %s", n.Name(), err))
+			}
+		}(n)
+	}
+	wg.Wait()
+}
+
+// SendSession 扇出「会话内可原地更新」的通知：实现了 SessionNotifier 的渠道（如 Telegram）
+// 用 sessionKey 更新同一条消息；其余渠道回退到普通 Send（仍会逐条推送）。
+func (m *MultiNotifier) SendSession(ctx context.Context, sessionKey, title, content string) {
+	m.mu.Lock()
+	snapshot := make([]Notifier, len(m.notifiers))
+	copy(snapshot, m.notifiers)
+	m.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for _, n := range snapshot {
+		wg.Add(1)
+		go func(n Notifier) {
+			defer wg.Done()
+			var err error
+			if sn, ok := n.(SessionNotifier); ok && sessionKey != "" {
+				err = sn.SendSession(ctx, sessionKey, title, content)
+			} else {
+				err = n.Send(ctx, title, content)
+			}
+			if err != nil {
 				LogMessage(time.Now(), fmt.Sprintf("[%s] 通知发送失败: %s", n.Name(), err))
 			}
 		}(n)

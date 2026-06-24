@@ -56,7 +56,8 @@ func handleAuthImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "保存凭证参数失败: "+err.Error())
 		return
 	}
-	markAuthHealthy() // 重新导入凭证 → 清除"凭证过期"提醒
+	markAuthHealthy()                       // 重新导入凭证 → 清除"凭证过期"提醒
+	recordAuthCaptured(captureMethodImport) // 记录捕获时间/方式，重置寿命周期
 	prefs := LoadPreferences()
 	tokens.Lock()
 	if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {

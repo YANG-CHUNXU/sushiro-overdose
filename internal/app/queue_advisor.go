@@ -68,7 +68,8 @@ type QueueAdvisorEta struct {
 	Source                 string          `json:"source,omitempty"`
 	SourceLabel            string          `json:"source_label,omitempty"`
 	SourceNote             string          `json:"source_note,omitempty"`
-	Risk                   string          `json:"risk"` // low/medium/high/unknown
+	Risk                   string          `json:"risk"`                    // low/medium/high/unknown
+	AccuracyNote           string          `json:"accuracy_note,omitempty"` // 基于实测回测的可信度话术
 }
 
 type QueueAdvisor struct {
@@ -459,7 +460,70 @@ func buildQueueAdvisorEta(targetNo, travelMinutes int, snapshot QueueObservation
 			hist = &r
 		}
 	}
-	return computeQueueEta(targetNo, snapshot.DisplayCalledNo, travelMinutes, store.Wait, store.WaitTimeCap, rate, cv, realtimeN, trend, rates, hist, now)
+	eta := computeQueueEta(targetNo, snapshot.DisplayCalledNo, travelMinutes, store.Wait, store.WaitTimeCap, rate, cv, realtimeN, trend, rates, hist, now)
+	// 实测回测校准：用这家店历史「预测 vs 实际」误差修正系统性偏差、适度加宽区间，
+	// 并把可信度话术挂到 AccuracyNote。仅对有可靠时间区间的预测生效。
+	if eta != nil && eta.EstimatedCalledAtRange != nil {
+		if cal, ok := storeEtaCalibration(storeID); ok {
+			applyEtaCalibration(eta, cal, travelMinutes, now)
+		}
+	}
+	// 登记开放预测（首次为准），等号被叫到时由 backfillEtaOnObservation 结算。
+	if eta != nil && eta.EstimatedCalledAt != "" && eta.WaitMinutesRange != nil && eta.WaitMinutesRange.High > 0 {
+		if predicted, err := time.Parse(time.RFC3339, eta.EstimatedCalledAt); err == nil {
+			recordEtaPrediction(storeID, targetNo, snapshot.DisplayCalledNo, predicted, now)
+		}
+	}
+	return eta
+}
+
+// applyEtaCalibration 把回测校准量应用到一条已算好的 ETA：
+//   - 等待区间整体平移 BiasMin（修正系统性偏早/偏晚），并左右各外扩 ExtraSpread；
+//   - 据修正后的区间重算「叫到时间区间 / 中点 / 出发建议」；
+//   - 写一条人话可信度 AccuracyNote。
+//
+// 只动时间相关字段，不改 Source/Risk 语义。
+func applyEtaCalibration(eta *QueueAdvisorEta, cal etaCalibration, travelMinutes int, now time.Time) {
+	if eta == nil || eta.WaitMinutesRange == nil {
+		return
+	}
+	low := float64(eta.WaitMinutesRange.Low) + cal.BiasMin - cal.ExtraSpread
+	high := float64(eta.WaitMinutesRange.High) + cal.BiasMin + cal.ExtraSpread
+	if low < 0 {
+		low = 0
+	}
+	if high < low {
+		high = low
+	}
+	lowMin := int(math.Round(low))
+	highMin := int(math.Round(high))
+	eta.WaitMinutesRange = &QueueWaitRange{Low: lowMin, High: highMin}
+	early := now.Add(time.Duration(lowMin) * time.Minute)
+	late := now.Add(time.Duration(highMin) * time.Minute)
+	mid := now.Add(time.Duration((lowMin+highMin)/2) * time.Minute)
+	eta.EstimatedCalledAt = mid.Format(time.RFC3339)
+	eta.EstimatedCalledAtRange = &QueueTimeRange{Early: early.Format(time.RFC3339), Late: late.Format(time.RFC3339)}
+	depart := early.Add(-time.Duration(max(0, travelMinutes)) * time.Minute)
+	if depart.Before(now) {
+		eta.ArrivalSuggestion = "建议现在就出发。"
+	} else {
+		eta.ArrivalSuggestion = fmt.Sprintf("建议 %s 前后出发。", depart.Format("15:04"))
+	}
+	eta.AccuracyNote = etaAccuracyNote(cal)
+}
+
+// etaAccuracyNote 把校准量说成可信度人话，给用户建立预期。
+func etaAccuracyNote(cal etaCalibration) string {
+	note := fmt.Sprintf("这家店最近 %d 次预测平均偏差 ±%.0f 分钟", cal.Samples, math.Abs(cal.BiasMin)+cal.ExtraSpread*2)
+	switch {
+	case cal.BiasMin >= 5:
+		note += "，且通常比预测略晚叫到，已据此把时间往后修正。"
+	case cal.BiasMin <= -5:
+		note += "，且通常比预测略早叫到，已据此把时间往前修正。"
+	default:
+		note += "，区间已按实测误差校准。"
+	}
+	return note
 }
 
 // computeQueueEta 是 ETA 估算的纯函数核心（不读磁盘），便于单测。

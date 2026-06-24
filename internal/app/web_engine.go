@@ -33,6 +33,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		"engine":            engine.GetState(),
 		"sampling":          sampler.GetState(),
 		"auth_health":       getAuthHealth(),
+		"auth_meta":         getAuthMeta(),
 		"notify_configured": len(configuredNotificationChannels()) > 0,
 		"quarantined":       quarantined,
 		"executable_path":   exePath,
@@ -710,6 +711,7 @@ func handleAuthReset(w http.ResponseWriter, r *http.Request) {
 	DeleteLocalConfig()
 	clearWebSettings()
 	resetAuthHealth()
+	resetAuthMeta()
 	resetNetTicketPlanAfterAuthReset()
 	writeJSON(w, map[string]any{
 		"ok":          true,

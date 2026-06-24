@@ -287,6 +287,11 @@ func appendQueueObservation(observation QueueObservation) error {
 	if _, err := f.Write(append(data, '\n')); err != nil {
 		return err
 	}
+	// 叫号推进了 → 回填可能已被叫到的开放预测，积累「预测 vs 实际」回测样本。
+	// 放在写盘成功之后、best-effort：失败不影响观测写入。
+	if observation.DisplayCalledNo > 0 {
+		backfillEtaOnObservation(observation.StoreID, observation.DisplayCalledNo, time.Now())
+	}
 	return nil
 }
 

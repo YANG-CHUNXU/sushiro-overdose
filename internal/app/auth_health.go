@@ -49,6 +49,7 @@ func getAuthHealth() AuthHealthJSON {
 }
 
 // markAuthHealthy：一次凭证请求成功，或刚重新捕获/导入凭证后调用。清除 stale 与通知去重。
+// 顺手做一次「年龄接近历史寿命」的被动柔性提醒判断（maybeSoftWarnAuthAge 内部自有去重）。
 func markAuthHealthy() {
 	authHealth.mu.Lock()
 	authHealth.status = authHealthOK
@@ -56,6 +57,8 @@ func markAuthHealthy() {
 	authHealth.checkedAt = time.Now()
 	authHealth.notified = false
 	authHealth.mu.Unlock()
+
+	maybeSoftWarnAuthAge()
 }
 
 // resetAuthHealth 把状态机重置回 unknown（不清除 notified 之外的语义），
@@ -85,10 +88,13 @@ func markAuthStale(reason string) {
 	authHealth.mu.Unlock()
 
 	if shouldNotify {
-		body := "寿司郎凭证会过期；在手机上用过寿司郎小程序后，电脑这边的凭证也会失效（同一账号只认一个会话）。请在工具里重置认证并重新获取凭证。"
+		// 新一段 stale 才回填寿命样本，喂给「年龄接近寿命」的提前提醒模型。
+		recordAuthStaleLifespan()
+		body := "寿司郎凭证会过期；在手机上用过寿司郎小程序后，电脑这边的凭证也会失效（同一账号只认一个会话）。请在工具里重新获取凭证——若上次用某种方式抓过，会默认沿用、点一下即可。"
 		if reason != "" {
 			body = reason + "。" + body
 		}
+		body += recaptureDeepLinkSuffix()
 		sendNotification("寿司郎 - 凭证可能已过期",
 			body)
 	}

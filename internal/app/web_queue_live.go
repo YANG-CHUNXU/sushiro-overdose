@@ -88,6 +88,15 @@ func handleQueueAdvisor(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, advisor)
 }
 
+// handleQueueAccuracy 返回基于实测回测的「预测 vs 实际」精度报告（按店）。
+func handleQueueAccuracy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	writeJSON(w, getEtaAccuracyReport())
+}
+
 func handleQueuePressureCurve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET only")

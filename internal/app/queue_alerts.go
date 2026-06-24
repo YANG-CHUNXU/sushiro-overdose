@@ -276,7 +276,14 @@ func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName st
 			if name == "" {
 				name = storeID
 			}
-			out = append(out, queueAlertNotification{Title: title, Content: name + "：" + body})
+			// called_reach 的多档提醒（还差 12→5→1 桌）共用一个会话键，让支持的渠道
+			// （Telegram）原地更新同一张进度卡，而不是堆叠多条。键按「店+目标号」而非
+			// 按档位，否则每档又各自成一条。
+			session := ""
+			if rule.Type == queueAlertCalledReach && rule.TargetNo > 0 {
+				session = fmt.Sprintf("called|%s|%d", storeID, rule.TargetNo)
+			}
+			out = append(out, queueAlertNotification{Title: title, Content: name + "：" + body, SessionKey: session})
 		}
 		if changed {
 			// 先落盘 state：失败则丢弃本次通知（不更新内存 state、不发通知），
@@ -290,13 +297,14 @@ func evaluateQueueAlerts(ctx context.Context, obs QueueObservation, storeName st
 	}()
 
 	for _, item := range notifications {
-		sendQueueAlert(ctx, item.Title, item.Content)
+		sendQueueAlertSession(ctx, item.Title, item.Content, item.SessionKey)
 	}
 }
 
 type queueAlertNotification struct {
-	Title   string
-	Content string
+	Title      string
+	Content    string
+	SessionKey string // 非空时走原地更新（同一进度卡）
 }
 
 // queueAlertEvaluateRule 评估单条规则，更新 state，返回是否需要推送及内容。
@@ -381,4 +389,15 @@ func queueAlertLabel(rule QueueAlertRule) string {
 func sendQueueAlert(ctx context.Context, title, content string) {
 	LogMessage(time.Now(), fmt.Sprintf("[排队提醒] %s — %s", title, content))
 	BuildNotifierFromConfig().Send(ctx, title, content)
+}
+
+// sendQueueAlertSession 同 sendQueueAlert，但带会话键：支持原地更新的渠道（Telegram）
+// 会把同一会话的连续提醒更新到同一条消息；sessionKey 为空时退化为普通推送。
+func sendQueueAlertSession(ctx context.Context, title, content, sessionKey string) {
+	if sessionKey == "" {
+		sendQueueAlert(ctx, title, content)
+		return
+	}
+	LogMessage(time.Now(), fmt.Sprintf("[排队提醒·更新] %s — %s", title, content))
+	BuildNotifierFromConfig().SendSession(ctx, sessionKey, title, content)
 }

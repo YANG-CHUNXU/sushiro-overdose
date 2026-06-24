@@ -224,7 +224,8 @@ func (m *mobileAuthCaptureManager) finish(tokens *CapturedTokens) {
 		m.mu.Unlock()
 		return
 	}
-	markAuthHealthy() // 手机重新捕获凭证 → 清除"凭证过期"提醒
+	markAuthHealthy()                            // 手机重新捕获凭证 → 清除"凭证过期"提醒
+	recordAuthCaptured(captureMethodMobileProxy) // 记录捕获时间/方式，重置寿命周期
 	setWebSettings(tokens.ToSettingsWithPrefs(prefs))
 	tokens.Lock()
 	if len(tokens.StoreIDs) > 0 && len(prefs.SelectedStores) == 0 {
