@@ -307,14 +307,57 @@ func isNoCurrentNetTicketError(err error) bool {
 		strings.Contains(text, "missing ticket id/number") && (strings.Contains(text, "null") || strings.Contains(text, "{}") || strings.Contains(text, "[]"))
 }
 
+// localRecordIsStale 判断本地保存的记录（排队号或预约）是否已过期、该刷掉：
+//   - 排队号：沿用跨天失效（localNetTicketIsStale）；
+//   - 预约：预约日期（QueueDate / Start / SlotLabel 里的 YYYYMMDD）早于今天即为过期遗留。
+//
+// 解决「过去的预约历史记录一直挂着不消失」——以前只清排队号，预约只要存过就永远留着。
+func localRecordIsStale(record ReservationRecord, savedAt string, now time.Time) bool {
+	if isLocalNetTicketRecord(record) {
+		return localNetTicketIsStale(record, savedAt, now)
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	today := now.Format("20060102")
+	if code, ok := reservationRecordDateCode(record); ok {
+		return code < today
+	}
+	return false
+}
+
+// reservationRecordDateCode 从记录里抽一个可比较的 YYYYMMDD：优先 QueueDate，其次 Start/SlotLabel
+// 里形如 2026-06-24 / 20260624 的日期（用 4 位年份 20xx 把它和纯时间 "1100" 区分开）。
+func reservationRecordDateCode(record ReservationRecord) (string, bool) {
+	if d := strings.TrimSpace(record.QueueDate); len(d) >= 8 {
+		return d[:8], true
+	}
+	for _, raw := range []string{record.Start, record.SlotLabel, record.End} {
+		var digits []rune
+		for _, c := range raw {
+			if c >= '0' && c <= '9' {
+				digits = append(digits, c)
+			}
+		}
+		if len(digits) >= 8 {
+			code := string(digits[:8])
+			if code[:4] >= "2020" && code[:4] <= "2099" {
+				return code, true
+			}
+		}
+	}
+	return "", false
+}
+
 func loadReservationsFallback() []ReservationRecord {
 	state, err := LoadState(StateFilePath())
 	if err != nil || state.ActiveReservation == nil {
 		return []ReservationRecord{}
 	}
 	reservation := *state.ActiveReservation
-	if localNetTicketIsStale(reservation, state.SavedAt, time.Now()) {
+	if localRecordIsStale(reservation, state.SavedAt, time.Now()) {
 		clearLocalNetTicketState()
+		_ = ClearState(StateFilePath())
 		return []ReservationRecord{}
 	}
 	if strings.TrimSpace(reservation.Status) == "" {
@@ -395,6 +438,21 @@ func handleLocalReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "reservation": record})
+}
+
+// handleClearLocalReservations 清掉本机保存的预约/排队号「本地记录」（不动寿司郎服务器上的真实单据）。
+// 用于清理过去遗留、已无意义的本地记录。下次读「我的单据」会从官方接口重新同步。
+func handleClearLocalReservations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	clearLocalNetTicketState()
+	if err := ClearState(StateFilePath()); err != nil {
+		writeError(w, http.StatusInternalServerError, "清除本地记录失败: "+err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "message": "已清除本机保存的预约/排队号记录；这不会影响寿司郎小程序里的真实单据，下次会从官方重新同步。"})
 }
 
 func normalizeLocalReservationDate(value string) string {

@@ -13,7 +13,8 @@
    - 排队取号使用 `CreateNetTicket` / `CancelNetTicket`。
    - UI 和后端都必须带 `kind` 或独立入口，禁止用同一个取消接口模糊处理两类记录。
    - 允许的预约取消入口只有显式 Web `handleCancelReservation` 和 CLI `cmdCancel`。
-   - 允许的排队取消入口只有显式 Web `handleCancelNetTicket`。
+   - 允许的排队取消入口只有显式 Web `handleCancelNetTicket`，以及凭证验证入口 `runAuthVerify`（仅取消本次验证刚取的号；若官方提示已有号则绝不取消）。
+   - 允许的排队取号入口只有 `handleQueueTicket` / `fireNetTicket`，以及凭证验证入口 `runAuthVerify`（用户显式点「验证凭证」时，对开放门店取号一次并立即取消，用于确认凭证是否仍可取号）。
 
 3. 公开排队数据和认证预约数据必须分层隔离。
    - 公开接口可以用于看板、趋势、排队估算、门店状态。
