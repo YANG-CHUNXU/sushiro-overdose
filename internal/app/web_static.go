@@ -104,8 +104,9 @@ body.advanced-mode .simple-only{display:none!important}
 .fg{margin-bottom:16px}
 .fg label{display:block;margin-bottom:6px;color:var(--sub);font-size:12px;font-weight:800}
 .fr{display:flex;gap:12px;flex-wrap:wrap}
-input[type=number],input[type=text],input[type=time],input[type=date],select,textarea{width:100%;height:40px;padding:0 12px;background:#fff;border:1px solid var(--line-strong);border-radius:8px;color:var(--ink);font-size:14px}
-input[type=number]{width:86px}
+input[type=number],input[type=text],input[type=time],input[type=date],input[type=tel],input[type=url],input[type=email],input[type=password],input[type=search],select,textarea{width:100%;height:40px;padding:0 12px;background:#fff;border:1px solid var(--line-strong);border-radius:8px;color:var(--ink);font-size:14px}
+input[type=number]{width:120px}
+.fr .fg input[type=number]{width:100%}
 textarea{height:88px;padding:10px 12px;resize:vertical;line-height:1.5}
 input:focus,select:focus,textarea:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 3px rgba(184,28,34,.08)}
 input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weight:400}
@@ -371,7 +372,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .diag-detail code{display:inline-block;max-width:100%;overflow:auto;padding:2px 5px;border-radius:6px;background:#EEE9E4;color:var(--ink)}
 .ft{padding:26px 0 46px;text-align:center;color:var(--mute);font-size:12px}.ft a{color:var(--red);text-decoration:none}
 .hid{display:none!important}.mu{color:var(--mute)}.tc{text-align:center}.tg{color:var(--green)}.tre{color:var(--red)}
-.mt8{margin-top:8px}.mt16{margin-top:16px}.mb16{margin-bottom:16px}
+.mt4{margin-top:4px}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mb16{margin-bottom:16px}
 .fl{display:flex}.g8{gap:8px}.g12{gap:12px}.ai{align-items:center}.jb{justify-content:space-between}.fw{flex-wrap:wrap}
 @media(max-width:900px){
   .grid,.settings-grid,.sn-row,.dash-split,.dash-head,.advisor-card,.task-grid,.quick-panel,.curve-sampling,.home-decision-grid{grid-template-columns:1fr}
@@ -400,6 +401,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
   .dash-chart svg,.chart svg{min-width:0;height:auto}
   #qdPressChart{overflow:auto}
   #qdPressChart svg{min-width:0;height:auto}
+  .fr .fg{flex:1 1 100%}
 }
 /* 中等宽度（平板竖屏 / 大手机 600-768px）：多列网格降为 2 列，避免拥挤 */
 @media(min-width:601px) and (max-width:768px){
@@ -558,7 +560,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 /* ===== 溢出兜底 + 组件统一（修 qd/qt 文字越界、输入框高度不一）=====
    根因：多处 flex/grid 子项没有 min-width:0，长数字/长文本把容器撑爆；
    部分大字号（叫号 38px、KPI 28px）在窄列里溢出。这里统一加溢出兜底。 */
-.grid,.settings-grid,.dash-split,.quick-panel,.advisor-card,.curve-sampling,.queue-live-top,.queue-live-main,.queue-live-foot,.home-decision-grid,.journey-head,.rank-row,.store-row,.sprow,.strip,.fl{min-width:0}
+.grid,.settings-grid,.dash-split,.quick-panel,.advisor-card,.curve-sampling,.queue-live-top,.queue-live-main,.queue-live-foot,.home-decision-grid,.journey-head,.rank-row,.store-row,.sprow,.strip,.fl,.fr{min-width:0}
 /* 卡片本身不撑破父级 */
 .cd,.card,.qbox,.answer-card,.rec-card,.queue-live-card,.kpi,.hl-card,.ci,.metric,.sample-state,.data-source,.pick-out,.diag-next,.status-card,.home-decision{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 /* 叫号大数字：允许收缩，过长（如老号码上千）按字号自适应，不顶破右侧折线 */
