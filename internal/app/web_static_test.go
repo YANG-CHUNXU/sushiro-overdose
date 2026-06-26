@@ -131,7 +131,9 @@ func TestEmbeddedUXCommandCenterAnchors(t *testing.T) {
 	for _, needle := range []string{
 		"function renderJourneyPanel(",
 		"function diagnosticAdvice(",
-		"只读 / 通行证 / 会执行",
+		"journeyStepHTML('read','只读'",
+		"journeyStepHTML('auth','通行证'",
+		"journeyStepHTML('action','会执行'",
 		"今天该走哪条路",
 		"先处理这件事",
 	} {
@@ -156,7 +158,7 @@ func TestEmbeddedHomeDecisionOnboarding(t *testing.T) {
 		"今天去吃",
 		"我有当天排队号",
 		"想约未来某天",
-		"通行证只在提交动作前需要",
+		"看排队和预测不用登录",
 		`class="home-decision-card read" onclick="go('qt')"`,
 		`class="home-decision-card read" onclick="go('qd')"`,
 		`class="home-decision-card auth" onclick="currentUIMode()==='advanced'?go('ca'):enterAdvanced('ca')"`,

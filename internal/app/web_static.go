@@ -32,7 +32,8 @@ button,input,select{font:inherit}
 .brand strong{display:block;font-size:16px;line-height:1;color:var(--ink)}
 .brand span{display:block;margin-top:4px;font-size:11px;color:var(--mute);letter-spacing:.08em;text-transform:uppercase}
 .nav{margin-left:auto;display:flex;gap:4px;padding:5px;background:#F0EDEA;border:1px solid var(--line);border-radius:999px}
-.nav a{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:999px;color:var(--sub);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
+.nav a{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:999px;color:var(--sub);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:color .18s,background .18s,box-shadow .18s}
+.nav a:hover{color:var(--text)}
 .nav a.on{background:var(--paper);color:var(--red);box-shadow:0 2px 10px rgba(32,25,18,.08)}
 .subnav{margin:0 0 18px;background:transparent;border:0;padding:0;gap:6px;flex-wrap:wrap;justify-content:flex-start}
 .subnav a{background:#F0EDEA;border:1px solid var(--line)}
@@ -45,6 +46,9 @@ button,input,select{font:inherit}
 body.simple-mode .advanced-only,body.simple-mode .advanced-page{display:none!important}
 body.advanced-mode .simple-only{display:none!important}
 .wrap{padding:30px 0 80px}
+.wrap>section[id^="p-"]:not(.hid){animation:pageIn .28s cubic-bezier(.22,.61,.36,1)}
+@keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.wrap>section[id^="p-"]:not(.hid){animation:none}}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
 .hero{min-height:250px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:30px;box-shadow:var(--shadow);position:relative;overflow:hidden}
 .hero:before{content:"";position:absolute;inset:0 0 auto 0;height:6px;background:var(--red)}
@@ -507,8 +511,7 @@ input::placeholder,textarea::placeholder{color:var(--mute);opacity:.85;font-weig
 .journey-panel.warn{border-color:#E8D7AA;background:linear-gradient(135deg,#FFFDF7 0,#FBFAF8 100%)}
 .journey-panel.bad{border-color:#F0B7B9;background:linear-gradient(135deg,#FFF6F6 0,#FBFAF8 100%)}
 .journey-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.journey-kicker{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:#EEE9E4;color:var(--sub);font-size:11px;font-weight:950}
-.journey-head h2{margin:9px 0 0;color:var(--ink);font-size:22px;line-height:1.2;font-weight:950}
+.journey-head h2{margin:0;color:var(--ink);font-size:22px;line-height:1.2;font-weight:950}
 .journey-copy{margin-top:7px;color:var(--sub);font-size:13px;line-height:1.65;max-width:700px}
 .journey-mode{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--sub);font-size:12px;font-weight:900;white-space:nowrap}
 .journey-mode.ok{color:var(--green);border-color:#BFE4CC;background:var(--green-soft)}
@@ -642,7 +645,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
 .plan-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
 .plan-basis>summary{cursor:pointer;list-style:none;font-size:12px;font-weight:800;color:var(--mute);padding-top:6px}
 .plan-basis>summary::-webkit-details-marker{display:none}
-.plan-basis>summary::before{content:'▸ 为什么这么算 '}
+.plan-basis>summary::before{content:'▸ '}
 .plan-basis[open]>summary::before{content:'▾ '}
 /* 设置页危险操作隔离区（NN/G proximity：与良性配置空间隔离） */
 .danger-zone{margin-top:24px;padding:16px 18px;border:1.5px solid #F0B7B9;border-radius:14px;background:linear-gradient(135deg,#FFF6F6 0,#fff 60%)}
@@ -716,23 +719,23 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <div id="homeDecisionPanel" class="home-decision mt16">
           <div class="home-decision-head">
             <div><div class="eyebrow">寿司郎机制</div><h2>你现在是哪种情况</h2></div>
-            <p>通行证只在提交动作前需要；只看排队、叫号预测和图表不用登录。</p>
+            <p>看排队和预测不用登录，抢预约才要通行证。</p>
           </div>
           <div class="home-decision-grid">
             <button class="home-decision-card read" onclick="go('qt')" type="button">
               <span>今天去吃</span>
               <b>先看哪家排得少</b>
-              <small>比较门店、等位和当前叫号；远程取当天排队号会再次确认。</small>
+              <small>比门店、等位、当前叫号。</small>
             </button>
             <button class="home-decision-card read" onclick="go('qd')" type="button">
               <span>我有当天排队号</span>
               <b>算几点叫到我</b>
-              <small>输入号码和门店，估算到店时间；图表直接展开解释依据。</small>
+              <small>填号码，估到店时间。</small>
             </button>
             <button class="home-decision-card auth" onclick="currentUIMode()==='advanced'?go('ca'):enterAdvanced('ca')" type="button">
               <span>想约未来某天</span>
               <b>查未来预约</b>
-              <small>看未来可约日历；需要创建预约时再获取通行证。</small>
+              <small>看可约日历，要约再拿证。</small>
             </button>
           </div>
         </div>
@@ -782,7 +785,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
         <div>
           <div class="cd-t" style="margin-bottom:8px">我有号码 <span class="pm" data-kind="maguro" data-size="30"></span></div>
           <div class="dash-title">输入当天排队号，判断几点到店</div>
-          <p class="dash-copy"><span class="tag read">只读 · 直接用</span> 这里填的是当天排队号，不是未来预约号。选门店、输入号码后，系统会估算大概几点叫到和建议到店时间；图表直接展开解释依据。</p>
+          <p class="dash-copy"><span class="tag read">只读 · 直接用</span> 选门店、填当天排队号，算几点叫到、几点出发。</p>
         </div>
         <div id="qdPrimaryActions" class="dash-controls">
           <label class="dash-target">当天排队号 <input id="qdTargetNo" type="number" min="1" placeholder="如 893" oninput="qdInputDebounced()" onkeydown="if(event.key==='Enter'){clearTimeout(_qdInputTimer);loadQueueDashboard()}"></label>
@@ -871,9 +874,9 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
   </section>
   <section id="p-qt" class="hid">
     <div class="cd">
-      <div class="page-lead"><div><h2 class="ph">现在去吃 <span class="pm" data-kind="salmon" data-size="32"></span></h2><p class="ph-sub"><span class="tag read">只读 · 直接用</span> 这里看今天的排队：门店是否营业、前面还有几桌、大概等多久。简化版不会替你取号。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新</button></div></div>
+      <div class="page-lead"><div><h2 class="ph">现在去吃 <span class="pm" data-kind="salmon" data-size="32"></span></h2><p class="ph-sub"><span class="tag read">只读 · 直接用</span> 今天哪家在营业、前面几桌、还要等多久。</p></div><div class="fl g8 fw"><button class="bt bt-w bt-s" onclick="refreshQueueView()">刷新</button></div></div>
       <div class="fg"><label>关注门店</label>
-        <div class="fl g8 fw" style="align-items:center"><button class="bt bt-w bt-s" onclick="openStorePicker({selected:qtSelected,onConfirm:applyQueueStores})">+ 选择门店（全国）</button><span class="mu">从全国门店里搜城市/门店名直接勾选。</span></div>
+        <div class="fl g8 fw" style="align-items:center"><button class="bt bt-w bt-s" onclick="openStorePicker({selected:qtSelected,onConfirm:applyQueueStores})">+ 选择门店（全国）</button><span class="mu">搜城市或门店名，勾选关注。</span></div>
         <div id="qtStores" class="chips mt8"><span class="mu">尚未选择门店</span></div>
       </div>
       <div id="qtRecommend" class="mb16"></div>
@@ -908,7 +911,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
 
   <section id="p-sn" class="hid advanced-page">
     <div class="cd">
-      <div class="page-lead"><div><h2 class="ph">自动抢预约 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 这里抢的是未来预约，不是当天排队号。已放出的可约时段可以立即抢；还没放出的时段可以「蹲未来预约时段」。启动前都会确认，抢到即停。</p></div></div>
+      <div class="page-lead"><div><h2 class="ph">自动抢预约 <span class="pm" data-kind="ebi" data-size="32"></span></h2><p class="ph-sub"><span class="tag action">会执行操作</span> 抢的是未来预约。已放出的立即抢，没放出的可蹲点；启动前确认，抢到即停。</p></div></div>
       <div class="qbox mb16">
         <div class="fl ai jb fw g8"><label style="margin:0">自动抢预约（已放出的时段）</label><span class="mu">按你的门店和时段偏好扫描可约日历，抢到第一个符合的未来预约就停止。</span></div>
         <div class="fl g8 fw mt8"><button class="bt bt-r bt-s" onclick="sB()">按偏好抢预约</button><button class="bt bt-w bt-s" onclick="go('ca')">先看可约日历</button><button class="bt bt-w bt-s" onclick="expandSnPrefs()">改预约偏好</button></div>
@@ -963,7 +966,7 @@ input:disabled:focus,select:disabled:focus,textarea:disabled:focus{box-shadow:no
   <section id="p-se" class="hid">
     <div class="settings-grid">
       <div class="cd settings-wide">
-        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">按从上到下分区配置：凭证 → 通知 → 数据 → 排障。顶部状态条红色要处理，黄色按需配置。</p></div></div>
+        <div class="page-lead"><div><h2 class="ph">设置 <span class="pm" data-kind="tamago" data-size="32"></span></h2><p class="ph-sub">凭证 → 通知 → 数据 → 排障。红色要处理，黄色按需配。</p></div></div>
         <div id="settingsStatus"><div class="ci">状态加载中</div></div>
         <div class="mode-settings mt16" id="uiModeSettings">
           <div><b>界面模式</b><p class="mu mt8">简化版只保留必要看板；进阶版显示完整预约、取号、采集和维护功能。</p></div>
@@ -1263,21 +1266,21 @@ function renderJourneyPanel(){
  const hasStores=(pr.selected_stores||[]).length>0,st=(ah&&ah.status)||'unknown',stale=hc&&st==='stale',running=isRun(),tickets=(activeTickets||[]).length;
  const aw=awzPeek(),authDesc=hc?(stale?'可能已失效，建议更新':'已就绪'):(aw&&aw.fields>0?('已拿到 '+aw.fields+'/'+need.length+' 项，可继续'):'抢预约前再拿');
  const actionDesc=running?'正在运行':(es.status==='error'?'需要先排障':(hc&&hasStores?'可以开始未来预约或远程取号':'先补齐门店和通行证'));
- let plan={level:'ok',mode:'只读优先',title:'今天该走哪条路',copy:'看排队、叫号预测可以直接用；抢未来预约、远程取号、读取我的单据才需要通行证；会提交到寿司郎的动作会再次确认。',buttons:[{l:'先看实时排队',f:"go('qt')"},{l:'拿通行证',f:'startAuth()'}]};
- if(tickets>0)plan={level:'ok',mode:'已有单据',title:'先看你手上的单据',copy:'你已经有未完成的未来预约或当天排队号。先确认叫号和记录，避免重复取号或重复预约。',buttons:[{l:'查看我的单据',f:"enterAdvanced('re')"},{l:'几点叫到我',f:"go('qd')"}]};
- else if(es.status==='error'){const certUAC=/机器级|LocalMachine|管理员权限|UAC|RunAs|elevated|exit code/i.test(es.message||'');plan={level:'bad',mode:'需要处理',title:'先处理这件事',copy:explainMsg(es.message||'')+' 处理前不会自动取消你的未来预约或当天排队号。',buttons:certUAC?[{l:'重新装证书（会弹UAC，点“是”）',f:'startAuth()'},{l:'改用手机抓包（更稳）',f:'closeAuthWizard();openAuthWizard();setTimeout(()=>awzDevice("ios"),50)'},{l:'打开本机诊断',f:'openDiagnostics()'}]:[{l:'打开本机诊断',f:'openDiagnostics()'},{l:hc?'重新拿通行证':'拿通行证',f:'startAuth()}'}]};}
- else if(running)plan={level:'warn',mode:'运行中',title:'当前有任务正在执行',copy:'页面可以保持打开；想看细节去运行日志，想换目标前先停止当前任务。',buttons:[{l:'查看运行日志',f:"openSettingsFold('fold-lo')"},{l:'停止当前任务',f:'sE()'}]};
- else if(!hc)plan={level:'warn',mode:'只读可用',title:'先不用登录，也能看排队',copy:'现在去吃、叫号预测都不需要通行证。等你要抢未来预约、远程取当天排队号或读取我的单据时，再按引导拿通行证。',buttons:[{l:'选门店看排队',f:'openGuestStorePicker()'},{l:'我要抢未来预约：拿通行证',f:'startAuth()'}]};
- else if(stale)plan={level:'bad',mode:'通行证待更新',title:'通行证可能失效了',copy:'看排队仍然能用；抢预约、远程取号、读取单据前，建议先重新获取通行证。',buttons:[{l:'重新拿通行证',f:'resetAuthAndStart()'},{l:'先看实时排队',f:"go('qt')"}]};
- else if(!hasStores)plan={level:'warn',mode:'还差门店',title:'通行证好了，下一步选门店',copy:'选好常用门店后，排队、预测、可约日历和自动抢预约都会自动带入，不用每页重选。',buttons:[{l:'设置门店和偏好',f:'openSnPrefs()'},{l:'先看实时排队',f:"go('qt')"}]};
- else plan={level:'ok',mode:'准备就绪',title:'可以开始未来预约或取号',copy:'通行证和门店偏好都已就绪。先查未来可约日历，目标明确再交给自动抢预约。',buttons:[{l:'查可约时段',f:"enterAdvanced('ca')"},{l:'自动抢预约',f:"enterAdvanced('sn')"}]};
+ let plan={level:'ok',mode:'只读优先',title:'今天该走哪条路',copy:'排队和预测直接用；抢预约、取号、看单据才要通行证。',buttons:[{l:'先看实时排队',f:"go('qt')"},{l:'拿通行证',f:'startAuth()'}]};
+ if(tickets>0)plan={level:'ok',mode:'已有单据',title:'先看你手上的单据',copy:'你有未完成的预约或排队号，先确认避免重复。',buttons:[{l:'查看我的单据',f:"enterAdvanced('re')"},{l:'几点叫到我',f:"go('qd')"}]};
+ else if(es.status==='error'){const certUAC=/机器级|LocalMachine|管理员权限|UAC|RunAs|elevated|exit code/i.test(es.message||'');plan={level:'bad',mode:'需要处理',title:'先处理这件事',copy:explainMsg(es.message||'')+' 处理前不会动你的预约或排队号。',buttons:certUAC?[{l:'重新装证书（会弹UAC，点“是”）',f:'startAuth()'},{l:'改用手机抓包（更稳）',f:'closeAuthWizard();openAuthWizard();setTimeout(()=>awzDevice("ios"),50)'},{l:'打开本机诊断',f:'openDiagnostics()'}]:[{l:'打开本机诊断',f:'openDiagnostics()'},{l:hc?'重新拿通行证':'拿通行证',f:'startAuth()}'}]};}
+ else if(running)plan={level:'warn',mode:'运行中',title:'当前有任务正在执行',copy:'可保持页面打开；换目标前先停止当前任务。',buttons:[{l:'查看运行日志',f:"openSettingsFold('fold-lo')"},{l:'停止当前任务',f:'sE()'}]};
+ else if(!hc)plan={level:'warn',mode:'只读可用',title:'先不用登录，也能看排队',copy:'排队和预测都不用登录；要抢预约或取号时再拿通行证。',buttons:[{l:'选门店看排队',f:'openGuestStorePicker()'},{l:'我要抢未来预约：拿通行证',f:'startAuth()'}]};
+ else if(stale)plan={level:'bad',mode:'通行证待更新',title:'通行证可能失效了',copy:'看排队仍可用；抢预约或取号前建议重新拿通行证。',buttons:[{l:'重新拿通行证',f:'resetAuthAndStart()'},{l:'先看实时排队',f:"go('qt')"}]};
+ else if(!hasStores)plan={level:'warn',mode:'还差门店',title:'通行证好了，下一步选门店',copy:'选好常用门店，各页面自动带入，不用每页重选。',buttons:[{l:'设置门店和偏好',f:'openSnPrefs()'},{l:'先看实时排队',f:"go('qt')"}]};
+ else plan={level:'ok',mode:'准备就绪',title:'可以开始未来预约或取号',copy:'通行证和门店都就绪，可查日历或交给自动抢预约。',buttons:[{l:'查可约时段',f:"enterAdvanced('ca')"},{l:'自动抢预约',f:"enterAdvanced('sn')"}]};
  const steps=[
   journeyStepHTML('read','只读','排队、预测、叫号估算，直接用','ok'),
   journeyStepHTML('auth','通行证',authDesc,hc?(stale?'bad':'ok'):'warn'),
   journeyStepHTML('action','会执行',actionDesc,es.status==='error'?'bad':(running?'warn':(hc&&hasStores?'ok':'warn')))
  ];
  box.className='journey-panel mt16 '+plan.level;
- box.innerHTML='<div class="journey-head"><div><div class="journey-kicker">只读 / 通行证 / 会执行</div><h2>'+esc(plan.title)+'</h2><p class="journey-copy">'+esc(plan.copy)+'</p></div><span class="journey-mode '+escA(plan.level)+'">'+esc(plan.mode)+'</span></div><div class="journey-steps">'+steps.join('')+'</div><div class="journey-cta">'+journeyButtonsHTML(plan.buttons)+'</div>';
+ box.innerHTML='<div class="journey-head"><div><h2>'+esc(plan.title)+'</h2><p class="journey-copy">'+esc(plan.copy)+'</p></div><span class="journey-mode '+escA(plan.level)+'">'+esc(plan.mode)+'</span></div><div class="journey-steps">'+steps.join('')+'</div><div class="journey-cta">'+journeyButtonsHTML(plan.buttons)+'</div>';
 }
 function openGuestStorePicker(){openStorePicker({selected:(pr.selected_stores||[]).map(String),onConfirm:saveStarterStores})}
 async function saveStarterStores(ids){if(!ids||!ids.length){toast('先勾选至少一家门店');return}const b={...pr,selected_stores:ids,store_priority:ids};if(!await savePrefsPayload(b,true))return;qtSelected=ids.map(String);rememberStores('sushiro_qt_stores',qtSelected);toast('已记住常用门店，看看现在排多久');go('qt')}
@@ -1759,10 +1762,10 @@ function runPlanCalcDebounced(){clearTimeout(_planCalcTimer);_planCalcTimer=setT
 function onPlanDirChange(){applyPlanDir();runPlanCalcDebounced()}
 function runPlanCalc(){planDir()==='meal'?loadQueueMealPlan():loadQueuePickupPlan()}
 async function loadQueuePickupPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const pickup=(el('qpPickup')?.value||'').replace(':','');ans.innerHTML='<div class="ci">正在估算…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&pickup='+encodeURIComponent(pickup),null,15000);renderPickupPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueuePickupPlan()','取号规划')}}
-function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.meal_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const wr=d.wait_minutes_range||{},mr=d.meal_range||{},lead='如果 '+esc(d.pickup)+' 取号，预计 '+esc(mr.early||'?')+'-'+esc(mr.late||'?')+' 吃上（等待约 '+(wr.low||0)+'-'+(wr.high||0)+' 分钟）。';const chips=[answerChip('推荐就餐',esc((mr.early||'?')+'-'+(mr.late||'?')),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+lead+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<details class="plan-basis mt8"><summary>为什么</summary><div class="mu mt8">'+esc(d.basis)+'</div></details>':'')}
+function renderPickupPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.meal_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const wr=d.wait_minutes_range||{},mr=d.meal_range||{},lead='如果 '+esc(d.pickup)+' 取号，预计 '+esc(mr.early||'?')+'-'+esc(mr.late||'?')+' 吃上（等待约 '+(wr.low||0)+'-'+(wr.high||0)+' 分钟）。';const chips=[answerChip('推荐就餐',esc((mr.early||'?')+'-'+(mr.late||'?')),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+lead+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<details class="plan-basis mt8"><summary>为什么这么算</summary><div class="mu mt8">'+esc(d.basis)+'</div></details>':'')}
 // ---------- 想几点吃→几点取号 ----------
 async function loadQueueMealPlan(){const ans=el('qpAnswer');if(!ans)return;const store=qdSelected[0];if(!store){ans.innerHTML='<div class="ci">先在上方选一家门店。</div>';return}const meal=(el('qwMeal')?.value||'').replace(':',''),travel=Math.max(0,parseInt(el('qwTravel')?.value||'',10)||0);ans.innerHTML='<div class="ci">正在倒推…</div>';try{const d=await safeFetch('/api/queue/plan?store='+encodeURIComponent(store)+'&target_meal='+encodeURIComponent(meal)+(travel>0?'&travel_minutes='+travel:''),null,15000);renderMealPlan(d)}catch(e){ans.innerHTML=loadErrBoxHTML(e,'loadQueueMealPlan()','取号倒推')}}
-function renderMealPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<details class="plan-basis mt8"><summary>为什么</summary><div class="mu mt8">'+esc(d.basis)+'</div></details>':'')+'<div class="mu mt8">⚠ 倒推按历史等待估的；取号后前面可能被插队，实际等待可能 ±15 分钟，别把建议取号时间当死线。</div>'}
+function renderMealPlan(d){const ans=el('qpAnswer');if(!ans)return;if(d.message&&!d.recommend_pickup_range){ans.innerHTML='<div class="answer-lead">'+esc(d.message)+'</div>';return}const rp=d.recommend_pickup_range||{},wr=d.wait_minutes_range||{},lead='想 '+esc(d.target_meal)+' 吃，建议 '+esc(rp.early||d.stable_pickup||'?')+'-'+esc(rp.late||d.stable_pickup||'?')+' 取号。'+(d.latest_pickup?(' 最晚别拖过 '+esc(d.latest_pickup)+'。'):'');const chips=[answerChip('建议取号',esc((rp.early||'?')+'-'+(rp.late||'?')),''),answerChip('偏稳取号',esc(d.stable_pickup||'-'),''),answerChip('最晚取号',esc(d.latest_pickup||'-'),''),answerChip('预计等待',(wr.low||0)+'-'+(wr.high||0)+' 分',''),answerChip('风险',riskLabelCN(d.risk),riskClass(d.risk))].join('');ans.innerHTML='<div class="answer-lead">'+esc(lead)+'</div><div class="answer-chips">'+chips+'</div>'+(d.basis?'<details class="plan-basis mt8"><summary>为什么这么算</summary><div class="mu mt8">'+esc(d.basis)+'</div></details>':'')+'<div class="mu mt8">⚠ 倒推按历史等待估的；取号后前面可能被插队，实际等待可能 ±15 分钟，别把建议取号时间当死线。</div>'}
 function renderQueueDashboard(d){renderDashboardAdvisor(d.advisor||{});renderDashboardInsights(d);renderDashboardDataSource(d)}
 function dashboardBaselineStatusHTML(d){const b=(d&&d.baseline)||{};const configured=!!b.configured,authenticated=!!b.authenticated,used=!!b.used,rollupCount=Number(b.rollup_count||0),latestCount=Number(b.latest_count||0),rollup=fmtN(rollupCount),latest=fmtN(latestCount);let title,lines=[],cls='ok';if(used){title='本次图表已使用线上数据库基准';lines.push('来源：线上数据库基准');if(rollupCount||latestCount)lines.push('聚合样本 '+rollup+' 条，最新明细 '+latest+' 条');else lines.push('基准已响应，暂无样本');cls='ok'}else if(authenticated){title='仍在用本机数据，线上数据库基准未参与本次图表';lines.push('GitHub 已登录，但线上数据库还没验证成功，需在设置页确认。');cls='warn'}else if(configured){title='本次图表用本机数据，GitHub 尚未登录';lines.push('云端服务已配置；登录 GitHub 后可验证线上基准并叠加参考。');cls='warn'}else{title='本次图表用本机数据，未配置线上基准';lines.push('可在「设置」登录 GitHub 并验证线上基准后，叠加全国线上参考。');cls='warn'}const ws=(d&&d.warnings)||[];if(ws.length){cls=cls==='ok'?'warn':cls;lines.push('注意：'+ws.join('；'));if(ws.some(w=>/明细|基准|曲线/.test(w)))lines.push('这能解释为什么基准可用、但叫号曲线仍没明细。')}return{cls:cls,html:'<b>📊 图表数据来源</b><p>'+esc(title)+'</p><div class="data-source-lines">'+lines.map(l=>'<span>'+esc(l)+'</span>').join('')+'</div>'}}
 function renderDashboardDataSource(d){const box=el('qdDataSource');if(!box)return;const s=dashboardBaselineStatusHTML(d);box.className='data-source mt16 '+(s.cls||'');box.innerHTML=s.html||''}
