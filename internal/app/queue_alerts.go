@@ -408,21 +408,8 @@ func sendQueueAlert(ctx context.Context, title, content string) {
 	BuildNotifierFromConfig().Send(ctx, title, content)
 }
 
-// sendQueueAlertSession 同 sendQueueAlert，但带会话键：支持原地更新的渠道（Telegram）
-// 会把同一会话的连续提醒更新到同一条消息；sessionKey 为空时退化为普通推送。
-func sendQueueAlertSession(ctx context.Context, title, content, sessionKey string) {
-	if sessionKey == "" {
-		sendQueueAlert(ctx, title, content)
-		return
-	}
-	LogMessage(time.Now(), fmt.Sprintf("[排队提醒·更新] %s — %s", title, content))
-	// 多档进度卡场景：外部通道已用 SendSession 合并多档为一条消息，桌面通知也只弹一次（本次更新代表整个会话的最新状态）。
-	DesktopNotification(title, content)
-	BuildNotifierFromConfig().SendSession(ctx, sessionKey, title, content)
-}
-
-// sendQueueAlertWithChannels 同 sendQueueAlertSession，但支持 per-rule 通道路由：
-// channels 为空 = 全通道（兼容老配置/无 channels 字段的规则）；非空时只发到指定通道。
+// sendQueueAlertWithChannels 同 sendQueueAlert，但额外带会话键（sessionKey 非空时走原地更新）
+// 和 per-rule 通道路由：channels 为空 = 全通道（兼容老配置/无 channels 字段的规则）；非空时只发到指定通道。
 // 用于 evaluateQueueAlerts 走「按规则限定通道」的提醒；netticket 等不需要分通道的路径继续用 sendQueueAlert。
 func sendQueueAlertWithChannels(ctx context.Context, title, content, sessionKey string, channels []string) {
 	if sessionKey == "" {
